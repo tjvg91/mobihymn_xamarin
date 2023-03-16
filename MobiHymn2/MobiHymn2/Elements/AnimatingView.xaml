@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView
+    xmlns="http://xamarin.com/schemas/2014/forms"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    x:Class="MobiHymn2.Elements.AnimatingView"
+    xmlns:forms="clr-namespace:Lottie.Forms;assembly=Lottie.Forms"
+    xmlns:ffil="clr-namespace:FFImageLoading.Forms;assembly=FFImageLoading.Forms">
+    <ContentView.Content>
+        <StackLayout>
+            <forms:AnimationView
+                x:Name="animation"
+                RepeatMode="Infinite"
+                AutoPlay="True"
+                Speed="1"
+                IsVisible="{OnPlatform Android=True, iOS=False, macOS=False}"
+            />
+            <ffil:CachedImage
+                x:Name="gif"
+                IsVisible="{OnPlatform Android=False, iOS=True, macOS=True}"
+            />
+        </StackLayout>
+        
+    </ContentView.Content>
+</ContentView>
+

@@ -1,0 +1,73 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    xmlns="http://xamarin.com/schemas/2014/forms"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:ViewModels="clr-namespace:MobiHymn2.ViewModels"
+    xmlns:fontawesome="clr-namespace:FontAwesome"
+    x:Class="MobiHymn2.Views.SettingsPage"
+    Title="App Settings">
+	<ContentPage.BindingContext>
+		<ViewModels:SettingsViewModel/>
+	</ContentPage.BindingContext>
+    <ContentPage.Resources>
+        <Style TargetType="FlexLayout">
+            <Setter Property="Padding" Value="15" />
+            <Setter Property="JustifyContent" Value="SpaceBetween" />
+            <Setter Property="AlignItems" Value="Center" />
+         </Style>
+
+    </ContentPage.Resources>
+    <StackLayout Padding="0, 10, 0, 0">
+        <FlexLayout BackgroundColor="Transparent">
+            <Label Text="Dark Mode" Style="{StaticResource Key=Title}"/>
+            <Switch
+                IsToggled="{Binding IsDarkMode}"
+                x:Name="swDarkMode"
+                Toggled="swDarkMode_Toggled"
+                ThumbColor="{StaticResource Primary}"
+                OnColor="{StaticResource PrimaryLight}"
+            />
+        </FlexLayout>
+        <FlexLayout BackgroundColor="Transparent">
+            <Label Text="Keep Awake" Style="{StaticResource Key=Title}"/>
+            <Switch
+                IsToggled="{Binding KeepAwake}"
+                x:Name="swKeepAwake"
+                Toggled="swKeepAwake_Toggled"
+                ThumbColor="{StaticResource Primary}"
+                OnColor="{StaticResource PrimaryLight}"
+            />
+        </FlexLayout>
+        <FlexLayout BackgroundColor="Transparent" IsVisible="False">
+            <Label Text="Lock Orientation" Style="{StaticResource Key=Title}"/>
+            <Switch
+                IsToggled="{Binding IsOrientationLocked}"
+                x:Name="swOrientationLock"
+                Toggled="swOrientationLock_Toggled"
+                ThumbColor="{StaticResource Primary}"
+                OnColor="{StaticResource PrimaryLight}"
+            />
+        </FlexLayout>
+        <FlexLayout BackgroundColor="Transparent">
+            <Label Text="Resync Resources" Style="{StaticResource Key=Title}"/>
+            <Button
+                x:Name="swResync"
+                HorizontalOptions="Center"
+                Style="{StaticResource Button-Clear}"
+                WidthRequest="20"
+                Clicked="swResync_Clicked"
+            >
+                <Button.ImageSource>
+                    <FontImageSource
+                        FontFamily="FAS"
+                        Color="{AppThemeBinding Dark={StaticResource Primary}, Light={StaticResource PrimaryText}}"
+                        Size="Small"
+                        Glyph="{x:Static fontawesome:FontAwesomeIcons.Sync}"
+                    />
+                </Button.ImageSource>
+            </Button>
+        </FlexLayout>
+    </StackLayout>
+
+</ContentPage>
+

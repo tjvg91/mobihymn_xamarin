@@ -1,0 +1,98 @@
+﻿<ContentPage xmlns="http://xamarin.com/schemas/2014/forms"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:MobiHymn2.ViewModels"
+             xmlns:fontawesome="clr-namespace:FontAwesome"
+             xmlns:elements="clr-namespace:MobiHymn2.Elements"
+             x:Class="MobiHymn2.Views.SearchPage"
+             x:Name="root"
+             Title="{Binding Title}"
+             Appearing="root_Appearing">
+    <ContentPage.BindingContext>
+        <vm:SearchViewModel />
+    </ContentPage.BindingContext>
+    <ContentPage.ToolbarItems>
+        <ToolbarItem x:Name="tbHome" Clicked="tbHome_Clicked">
+            <ToolbarItem.IconImageSource>
+                <FontImageSource
+                    FontFamily="FAS"
+                    Color="{StaticResource PrimaryText}"
+                    Size="Medium"
+                    Glyph="{x:Static fontawesome:FontAwesomeIcons.BookOpenReader}"/>
+            </ToolbarItem.IconImageSource>
+        </ToolbarItem>
+    </ContentPage.ToolbarItems>
+    
+    <StackLayout VerticalOptions="FillAndExpand">
+        <SearchBar x:Name="searchBar"
+                   HorizontalOptions="Fill"
+                   Placeholder="Search hymns..."
+                   IsEnabled="{Binding IsNotBusy}"
+                   SearchCommand="{Binding SearchHymns}" 
+                   SearchCommandParameter="{Binding Text, Source={x:Reference searchBar}}"
+                   Keyboard="Text"/>
+        <FlexLayout
+            x:Name="layoutSearching"
+            AlignItems="Center"
+            JustifyContent="Center"
+            HorizontalOptions="FillAndExpand"
+            HeightRequest="500"
+            IsVisible="False"
+        >
+            <FlexLayout.Triggers>
+                <DataTrigger TargetType="FlexLayout" Binding="{Binding IsBusy}" Value="True">
+                    <Setter Property="IsVisible" Value="True" />
+                </DataTrigger>
+            </FlexLayout.Triggers>
+            <elements:AnimatingView
+                Source="{AppThemeBinding Light=search-light, Dark=search-dark}"
+                Size="{OnPlatform Android=200, iOS=1.2}"
+                Speed="3"
+            />
+                <!--<lottie:AnimationView
+                    x:Name="searchLottie"
+                    Animation="{AppThemeBinding Light=search-light.json, Dark=search-dark.json}"
+                    RepeatMode="Infinite"
+                    AnimationSource="AssetOrBundle"
+                    WidthRequest="200"
+                    HeightRequest="200"
+                    Speed="3"
+                    AutoPlay="True"
+                    AbsoluteLayout.LayoutBounds="1, 1, 1, 1"
+                    AbsoluteLayout.LayoutFlags="All"
+                />-->
+        </FlexLayout>
+        <CollectionView x:Name="MyListView"
+                ItemsSource="{Binding Items}"
+                ChildAdded="MyListView_ChildAdded"
+                VerticalOptions="StartAndExpand">
+            
+        <!--Built in Cells-->
+        <!--<ListView.ItemTemplate>
+            <DataTemplate>
+                <TextCell Text="{Binding .}" />
+            </DataTemplate>
+        </ListView.ItemTemplate>-->
+    
+        <!--Custom View Cells-->
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <StackLayout Padding="10">
+                        <StackLayout.GestureRecognizers>
+                            <TapGestureRecognizer
+                                Command="{Binding Source={x:Reference root}, Path=BindingContext.SearchItemSelected}"
+                                CommandParameter="{Binding .}"/>
+                        </StackLayout.GestureRecognizers>
+                        <Label Text="{Binding Line}" Style="{StaticResource Title}"/>
+                        <Label
+                            Text="{Binding NumberText}"
+                            Style="{StaticResource Subtitle}"
+                            FontSize="12"
+                            Margin="{OnPlatform iOS='0,-15,0,0'}"
+                        />
+                    </StackLayout>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+      </CollectionView>
+    </StackLayout>
+</ContentPage>
+

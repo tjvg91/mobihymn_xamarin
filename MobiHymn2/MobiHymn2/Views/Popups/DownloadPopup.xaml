@@ -1,0 +1,37 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<xct:Popup
+    xmlns="http://xamarin.com/schemas/2014/forms"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:xct="http://xamarin.com/schemas/2020/toolkit"
+    xmlns:ViewModels="clr-namespace:MobiHymn2.ViewModels"
+    xmlns:elements="clr-namespace:MobiHymn2.Elements"
+    x:Class="MobiHymn2.Views.Popups.DownloadPopup"
+    BackgroundColor="Black">
+	<xct:Popup.BindingContext>
+		<ViewModels:DownloadViewModel/>
+	</xct:Popup.BindingContext>
+    <FlexLayout HorizontalOptions="FillAndExpand" VerticalOptions="FillAndExpand"
+                JustifyContent="Center" AlignItems="Center"
+                Direction="Column" Style="{StaticResource FLChanger}">
+
+        <elements:AnimatingView
+            Size="{OnPlatform Android=150, iOS=0.8}"
+            Source="{Binding LottieIcon}" />
+        <!--<lottie:AnimationView
+            Animation="{Binding LottieIcon}"
+            RepeatMode="Infinite"
+            AnimationSource="AssetOrBundle"
+            WidthRequest="150"
+            HeightRequest="150"
+            AutoPlay="True"
+        />-->
+        <Label
+            Text="{Binding Message}"
+            FontSize="Small"
+            Style="{StaticResource Title}"
+            HorizontalTextAlignment="Center"
+            HorizontalOptions="FillAndExpand"
+        />
+    </FlexLayout>
+</xct:Popup>
+

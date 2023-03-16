@@ -1,0 +1,100 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView
+    xmlns="http://xamarin.com/schemas/2014/forms"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:fa="clr-namespace:FontAwesome"
+    x:Name="this"
+    x:Class="MobiHymn2.Elements.TimelineItem">
+    <FlexLayout
+        Margin="10,0,0,0"
+        Direction="Row"
+        HeightRequest="80"
+        JustifyContent="Start">
+
+        <!--  VERTICAL LINE WITH IMAGE  -->
+        <StackLayout
+            x:Name="firstStackLayout"
+            Margin="0,0,0,-6"
+            HorizontalOptions="Center"
+            Orientation="Vertical"
+            VerticalOptions="Center">
+            <!--  FIRST CENTER VERTICAL LINE  -->
+            <BoxView
+                Grid.Row="0"
+                Grid.Column="0"
+                Margin="0,0,0,-6"
+                HeightRequest="18"
+                HorizontalOptions="Center"
+                WidthRequest="5"
+                Color="{AppThemeBinding Dark={StaticResource GrayLight}, Light={StaticResource Gray}}" />
+            <Label
+                FontSize="20"
+                FontFamily="FAS"
+                TextColor="{AppThemeBinding Dark={StaticResource GrayLight}, Light={StaticResource Gray}}"
+                Text="{Static Member=fa:FontAwesomeIcons.CircleCheck}"
+                Margin="-2,0,0,0"/>
+            <!--  LAST CENTER VERTICAL LINE  -->
+            <BoxView
+                Grid.Row="2"
+                Grid.Column="0"
+                Margin="0,-6,0,0"
+                HeightRequest="42"
+                HorizontalOptions="Center"
+                WidthRequest="1"
+                Color="{AppThemeBinding Dark={StaticResource GrayLight}, Light={StaticResource Gray}}" />
+        </StackLayout>
+
+        <!--  MESSAGE  -->
+        <StackLayout
+            Padding="15,0,0,0"
+            Orientation="Horizontal"
+            VerticalOptions="Center">
+            <StackLayout
+                Margin="0,0,5,0"
+                HorizontalOptions="Start"
+                Orientation="Vertical"
+                VerticalOptions="Center">
+                <Label
+                    FontAttributes="Bold"
+                    FontSize="15"
+                    HorizontalOptions="Start"
+                    Text="{Binding Item.Header, Source={x:Reference this}, FallbackValue='Title'}"
+                    TextColor="{StaticResource Primary}"
+                    HorizontalTextAlignment="Start"/>
+                <CollectionView ItemsSource="{Binding Item.Details, Source={x:Reference this}, FallbackValue=[]}">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate>
+                            <StackLayout
+                                Margin="0,0,5,0"
+                                Orientation="Horizontal"
+                                VerticalOptions="EndAndExpand">
+                                <FlexLayout AlignItems="Start">
+                                    <Label
+                                        FontSize="7"
+                                        FontFamily="FAS"
+                                        TextColor="{AppThemeBinding Dark={StaticResource GrayLight}, Light={StaticResource Gray}}"
+                                        Text="{Static Member=fa:FontAwesomeIcons.Circle}"
+                                        Margin="0,3.5,5,0"/>
+                                    <Label
+                                        FontSize="14"
+                                        Text="{Binding ., FallbackValue='Detail'}"
+                                        Padding="0,-3,0,0"
+                                        TextColor="{AppThemeBinding Dark={StaticResource GrayLight}, Light={StaticResource Gray}}" />
+                                </FlexLayout>
+                            </StackLayout>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+                
+                <StackLayout Orientation="Horizontal" VerticalOptions="EndAndExpand" IsVisible="False">
+                    <Label
+                        FontAttributes="Bold"
+                        FontSize="12"
+                        Text="test"
+                        TextColor="#3b0999" />
+                </StackLayout>
+            </StackLayout>
+        </StackLayout>
+    </FlexLayout>
+</ContentView>
+
