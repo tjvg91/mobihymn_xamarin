@@ -7,7 +7,8 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 
 using Acr.UserDialogs;
-
+using HtmlAgilityPack;
+using Microsoft.AppCenter.Crashes;
 using MobiHymn2.Models;
 using MobiHymn2.Utils;
 using Xamarin.Forms;
@@ -17,6 +18,7 @@ namespace MobiHymn2.ViewModels
 	public class SearchViewModel : MvvmHelpers.BaseViewModel
     {
         private Globals globalInstance = Globals.Instance;
+        HtmlDocument htmlDocument;
 
         private ObservableCollection<ShortHymn> items;
         public ObservableCollection<ShortHymn> Items
@@ -48,6 +50,8 @@ namespace MobiHymn2.ViewModels
             bwSearcher.DoWork += BwSearcher_DoWork;
             bwSearcher.RunWorkerCompleted += BwSearcher_RunWorkerCompleted;
 
+            htmlDocument = new HtmlDocument();
+
             Title = "Search";
         }
 
@@ -59,6 +63,7 @@ namespace MobiHymn2.ViewModels
             if (!e.Cancelled)
             {
                 Items = (ObservableCollection<ShortHymn>)e.Result;
+                Globals.LogAppCenter($"Searched", "Search Count", Items.Count().ToString());
                 OnSearchFinished(Items, EventArgs.Empty);
             }
         }
@@ -97,25 +102,42 @@ namespace MobiHymn2.ViewModels
         {
             string text = (string)e.Argument;
 
-            var res = (from hymn in globalInstance.HymnList
-                       where new Regex(text, RegexOptions.IgnoreCase).IsMatch(hymn.Lyrics)
-                       select new
-                       {
-                           Number = hymn.Number,
-                           Lines = hymn.Lyrics.Split('\n')
-                                     .Where(line => new Regex(text, RegexOptions.IgnoreCase).IsMatch(line))
-                                     .Select(line => new ShortHymn
-                                     {
-                                         Number = hymn.Number,
-                                         Line = line
-                                     })
-                       }).Select(arr => arr.Lines).SelectMany(x => x)
-                       .OrderBy(searchRes => searchRes.Line.StripPunctuation())
-                       .GroupBy(s => s.Line.StripPunctuation())
-                       .Select(s => s.FirstOrDefault())
-                       .ToList().ToObservableCollection();
-            e.Result = res;
+            Globals.LogAppCenter($"Searching", "Search Term", text);
+
+            try
+            {
+
+                var res = (from hymn in globalInstance.HymnList
+                           where new Regex(text, RegexOptions.IgnoreCase).IsMatch(hymn.Lyrics)
+                           select new
+                           {
+                               Number = hymn.Number,
+                               Lines = new Regex("<br>").Split(parsedLyrics(hymn.Lyrics))
+                                         .Where(line => new Regex(text, RegexOptions.IgnoreCase).IsMatch(line))
+                                         .Select(line => new ShortHymn
+                                         {
+                                             Number = hymn.Number,
+                                             Line = line
+                                         })
+                           }).Select(arr => arr.Lines).SelectMany(x => x)
+                               .OrderBy(searchRes => searchRes.Line.StripPunctuation())
+                               .GroupBy(s => s.Line.StripPunctuation())
+                               .Select(s => s.FirstOrDefault())
+                               .ToList().ToObservableCollection();
+                e.Result = res;
+            }
+            catch (Exception ex)
+            {
+                Crashes.TrackError(ex);
+            }
+        }
+
+        private string parsedLyrics(string lyrics)
+        {
+            htmlDocument.LoadHtml(lyrics);
+            var root = htmlDocument.DocumentNode;
+            var preText = root.Descendants("pre").SingleOrDefault();
+            return preText.InnerHtml;
         }
     }
 }
-

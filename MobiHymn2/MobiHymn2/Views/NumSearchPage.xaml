@@ -5,8 +5,8 @@
     xmlns:fontawesome="clr-namespace:FontAwesome"
     xmlns:vm="clr-namespace:MobiHymn2.ViewModels"
     xmlns:utils="clr-namespace:MobiHymn2.Utils"
-    xmlns:lottie="clr-namespace:Lottie.Forms;assembly=Lottie.Forms"
     xmlns:ess="clr-namespace:Xamarin.Essentials;assembly=Xamarin.Essentials"
+    xmlns:elems="clr-namespace:MobiHymn2.Elements"
     Shell.TabBarIsVisible="False"
     Shell.NavBarIsVisible="{Binding IsNotBusy}"
     x:Class="MobiHymn2.Views.NumSearchPage"
@@ -79,14 +79,9 @@
                     <Setter Property="IsVisible" Value="True" />
                 </DataTrigger>
             </FlexLayout.Triggers>
-            <lottie:AnimationView
-                Animation="settingup.json"
-                RepeatMode="Infinite"
-                AnimationSource="AssetOrBundle"
-                WidthRequest="400"
-                HeightRequest="400"
-                AutoPlay="True"
-            />
+            <elems:AnimatingView
+                Source="settingup"
+                Size="{OnPlatform iOS=1.5, Android=400}"/>
         </FlexLayout>
         <FlexLayout Direction="Column" AlignItems="End" JustifyContent="Start" Margin="5" IsVisible="False">
             <FlexLayout.Triggers>

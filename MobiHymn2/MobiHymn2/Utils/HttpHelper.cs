@@ -12,13 +12,16 @@ using PCLStorage;
 
 using Xamarin.Essentials;
 using MvvmHelpers;
+using HtmlAgilityPack;
 
 namespace MobiHymn2.Utils
 {
 	public class HttpHelper
 	{
 		HttpClient httpClient;
-		bool isDone = true;
+        HtmlDocument htmlDocument;
+
+        bool isDone = true;
 		string jsonFile = "lyrics.mb";
         string folderName = "mobihymn";
         string message = "Could not complete download";
@@ -26,7 +29,9 @@ namespace MobiHymn2.Utils
         public HttpHelper()
 		{
 			httpClient = new HttpClient();
-		}
+            htmlDocument = new HtmlDocument();
+
+        }
 
 		public async Task<HymnList> DownloadHymns(
             string parentUrl,
@@ -47,6 +52,8 @@ namespace MobiHymn2.Utils
                 {
                     progress?.Report(message);
                     hymnList = new HymnList();
+
+                    Globals.LogAppCenter((sync ? "Resyncing" : "Downloading") + " Cancelled");
                     return hymnList;
                 }
                     
@@ -65,22 +72,38 @@ namespace MobiHymn2.Utils
                         var tune = tunes[j];
                         var number = $"{i}{tune}";
 
-                        var lyrics = await httpClient.GetStringAsync($"{parentUrl}{number}.txt");
-                        if (string.IsNullOrEmpty(lyrics))
+                        var lyrics = await httpClient.GetStringAsync($"{parentUrl}{number}");
+                        lyrics = lyrics.Replace(Environment.NewLine, "<br/>");
+                        lyrics = Regex.Replace(lyrics, "TAGS>.+<pre>", "TAGS><pre>");
+                        lyrics = Regex.Replace(lyrics, "<pre>[^A-Z]+", "<pre>");
+                        lyrics = Regex.Replace(lyrics, "\\r<br\\/>", "<br/>");
+                        lyrics = Regex.Replace(lyrics, "<br\\/><\\/pre>", "</pre>");
+
+                        if (string.IsNullOrEmpty(lyrics) || new Regex("Error:", RegexOptions.IgnoreCase).IsMatch(lyrics))
                         {
                             if (j > 0) return;
-                            else isDone = true;
+                            else
+                            {
+                                isDone = true;
+                                return;
+                            }
                         }
+
+                        htmlDocument.LoadHtml(lyrics);
+                        var root = htmlDocument.DocumentNode;
+                        var preText = root.Descendants("pre").SingleOrDefault();
+
                         var newHymn = new Hymn
                         {
                             Lyrics = lyrics,
-                            FirstLine = new Regex(Environment.NewLine).Split(lyrics)[0],
+                            FirstLine = new Regex("<br>").Split(preText.InnerHtml)[0],
                             Title = tune == "f" ? number.Replace("f", " (4th tune)") :
                                     tune == "s" ? number.Replace("s", " (2nd tune)") : number.Replace("t", " (3rd tune)"),
                             Number = number
                         };
                         var origHymn = origList[newHymn.Number];
-                        if (sync && (origHymn == null || origHymn.Number != newHymn.Number || origHymn.Lyrics != newHymn.Lyrics))
+                        if (sync && (origHymn == null || origHymn.Number != newHymn.Number || origHymn.Lyrics != newHymn.Lyrics ||
+                                newHymn.FirstLine != origHymn.FirstLine))
                             syncables.Add(newHymn);
                         hymnList.Add(newHymn);
 

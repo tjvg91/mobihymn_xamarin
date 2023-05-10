@@ -8,6 +8,7 @@
        xmlns:ios="clr-namespace:Xamarin.Forms.PlatformConfiguration.iOSSpecific;assembly=Xamarin.Forms.Core" 
        ios:Page.UseSafeArea="true"
        Padding="0"
+       BackgroundColor="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}"
        FlyoutBackgroundColor="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}"
        Title="MobiHymn"
        x:Class="MobiHymn2.AppShell">

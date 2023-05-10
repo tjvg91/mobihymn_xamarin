@@ -33,6 +33,7 @@ namespace MobiHymn2.iOS
             global::Xamarin.Forms.Forms.Init();
             FFImageLoading.Forms.Platform.CachedImageRenderer.Init();
             CardsViewRenderer.Preserve();
+            Distribute.DontCheckForUpdatesInDebug();
             LoadApplication(new App());
 
             // The following are all optional settings to change the behavior on iOS

@@ -17,6 +17,7 @@ using Xamanimation;
 using Plugin.AudioRecorder;
 using MobiHymn2.Models;
 using static System.Net.WebRequestMethods;
+using Xamarin.Essentials;
 
 namespace MobiHymn2.Views
 {
@@ -92,7 +93,7 @@ namespace MobiHymn2.Views
             if (model.BookmarkFont == "FAR")
             {
                 globalInstance.AddBookmark();
-                Acr.UserDialogs.UserDialogs.Instance.Toast("Bookmard added.", new TimeSpan(3));
+                Globals.ShowToastPopup(this, "bookmark-saved", "Bookmard added.");
                 model.BookmarkFont = "FAS";
             }
             else
@@ -108,7 +109,11 @@ namespace MobiHymn2.Views
                         if (confirmed)
                         {
                             globalInstance.RemoveBookmark();
-                            UserDialogs.Instance.Toast($"Hymn #{globalInstance.ActiveHymn.Number} bookmark deleted.", new TimeSpan(3));
+                            Globals.ShowToastPopup(this,
+                                "bookmark-deleted",
+                                "Bookmard deleted.",
+                                DeviceInfo.Platform == DevicePlatform.Android ? 100: 0.75,
+                                DeviceInfo.Platform == DevicePlatform.Android ? new Rectangle(0.5, -0.2, 2, 2) : new Rectangle(0.8, 0.8, 1, 1));
                             model.BookmarkFont = "FAR";
                         }
                     }
@@ -135,8 +140,8 @@ namespace MobiHymn2.Views
             catch (Exception ex)
             {
                 Console.Write(ex.StackTrace);
-            }*/
-            UserDialogs.Instance.Toast("Player coming soon.", new TimeSpan(3));
+            }*
+            UserDialogs.Instance.Toast("Player coming soon.", new TimeSpan(3));*/
         }
 
         void TapGestureRecognizer_Tapped(System.Object sender, System.EventArgs e)

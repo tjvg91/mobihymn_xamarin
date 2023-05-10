@@ -8,6 +8,8 @@ using Acr.UserDialogs;
 using AndroidX.AppCompat.App;
 using Microsoft.AppCenter;
 using PanCardView.Droid;
+using Microsoft.AppCenter.Analytics;
+using Microsoft.AppCenter.Crashes;
 
 namespace MobiHymn2.Droid
 {
@@ -27,8 +29,9 @@ namespace MobiHymn2.Droid
             FFImageLoading.Forms.Platform.CachedImageRenderer.Init(true);
             CardsViewRenderer.Preserve();
 
-            AppCenter.Start("0b73296a-5659-4024-8c87-52893d062e8a");
+            AppCenter.Start("0b73296a-5659-4024-8c87-52893d062e8a", typeof(Analytics), typeof(Crashes));
             LoadApplication(new App());
+            Window.SetStatusBarColor(Android.Graphics.Color.ParseColor("#F5D200"));
 
         }
         public override void OnRequestPermissionsResult(int requestCode, string[] permissions, [GeneratedEnum] Android.Content.PM.Permission[] grantResults)

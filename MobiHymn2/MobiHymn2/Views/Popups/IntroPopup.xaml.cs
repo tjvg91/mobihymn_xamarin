@@ -46,7 +46,7 @@ namespace MobiHymn2.Views.Popups
 
         void Button_Clicked(System.Object sender, System.EventArgs e)
         {
-            Dismiss(null);
+            Dismiss(btnSkipDone.Text);
         }
     }
 }

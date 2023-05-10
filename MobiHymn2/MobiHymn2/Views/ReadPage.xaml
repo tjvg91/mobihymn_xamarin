@@ -88,7 +88,18 @@
                             LineHeight="1.2"
                             TextDecorations="Underline"
                             Margin="0,0,15,0"/>
-                        <elements:SelectableLabel
+                        <Label
+                            Text="{Binding Lyrics}"
+                            FontFamily="{Binding ActiveFont}"
+                            FontSize="{Binding ActiveFontSize}"
+                            HorizontalTextAlignment="{Binding ActiveAlignment}"
+                            TextColor="{Binding ActiveColorText}"
+                            BackgroundColor="{Binding ActiveColor}"
+                            LineHeight="1.2"
+                            Margin="0,0,15,0"
+                            IsVisible="{OnPlatform Android=True, iOS=False}"
+                            TextType="Html"/>
+                        <!--<elements:SelectableLabel
                             Text="{Binding Lyrics}"
                             FontFamily="{Binding ActiveFont}"
                             FontSize="{Binding ActiveFontSize}"
@@ -96,12 +107,8 @@
                             TextColor="{Binding ActiveColorText}"
                             BackgroundColor="{Binding ActiveColor}"
                             Margin="0,0,15,0"
-                            IsVisible="True">
-                            <elements:SelectableLabel.GestureRecognizers>
-                                <PinchGestureRecognizer PinchUpdated="PinchGestureRecognizer_PinchUpdated" />
-                                <TapGestureRecognizer Tapped="TapGestureRecognizer_Tapped" />
-                            </elements:SelectableLabel.GestureRecognizers>
-                        </elements:SelectableLabel>
+                            IsVisible="{OnPlatform Android=False, iOS=True}">
+                        </elements:SelectableLabel>-->
                     </StackLayout>
                 </ScrollView>
                 <Button

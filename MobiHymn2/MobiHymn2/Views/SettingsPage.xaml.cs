@@ -3,6 +3,7 @@ using System.Collections.Generic;
 
 using MobiHymn2.Utils;
 using Xamarin.CommunityToolkit.Extensions;
+using Xamarin.Essentials;
 using Xamarin.Forms;
 
 namespace MobiHymn2.Views
@@ -34,15 +35,21 @@ namespace MobiHymn2.Views
 
         void swResync_Clicked(System.Object sender, System.EventArgs e)
         {
-            Popups.DownloadPopup downloadPopup = new Popups.DownloadPopup
+            if (Connectivity.NetworkAccess == NetworkAccess.None)
+                Globals.ShowToastPopup(this, Application.Current.UserAppTheme == OSAppTheme.Light ?
+                                "no-internet-light" : "no-internet-dark", "Please connect to download resources");
+            else
             {
-                IsLightDismissEnabled = false
-            };
-            downloadPopup.Todo = SyncHymns;
-            //downloadPopup.Dismissed += DownloadPopup_Dismissed;
-            
-            SyncHymns();
-            Navigation.ShowPopup(downloadPopup);
+                Popups.DownloadPopup downloadPopup = new Popups.DownloadPopup
+                {
+                    IsLightDismissEnabled = false
+                };
+                downloadPopup.Todo = SyncHymns;
+                //downloadPopup.Dismissed += DownloadPopup_Dismissed;
+
+                SyncHymns();
+                Navigation.ShowPopup(downloadPopup);
+            }
         }
 
         async void SyncHymns()

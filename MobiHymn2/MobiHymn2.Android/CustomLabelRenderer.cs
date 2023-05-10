@@ -13,7 +13,6 @@ using MobiHymn2.Droid;
 using MobiHymn2.Elements;
 using Xamarin.Forms;
 using Xamarin.Forms.Platform.Android;
-using static Android.Views.GestureDetector;
 
 [assembly: ExportRenderer(typeof(SelectableLabel), typeof(SelectableLabelRenderer))]
 namespace MobiHymn2.Droid
@@ -116,13 +115,18 @@ namespace MobiHymn2.Droid
             textView.SetTextIsSelectable(true);
             textView.SetHighlightColor(Color.FromHex("F5D200").ToAndroid());
 
-            textView.Background = new ColorDrawable(label.BackgroundColor.ToAndroid());28;
+            textView.Background = new ColorDrawable(label.BackgroundColor.ToAndroid());
 
             // Initial properties Set
             textView.Text = label.Text;
             textView.SetTextColor(label.TextColor.ToAndroid());
             textView.Gravity = UpdateTextAlignment(label.HorizontalTextAlignment);
             textView.TextSize = (float)label.FontSize;
+
+            //textView.SetText(
+            //    HtmlCompat.FromHtml(
+            //        textView.Text.ToString(), HtmlCompat.FromHtmlModeLegacy),
+            //    TextView.BufferType.Spannable);
 
             UpdateFont(label);
 

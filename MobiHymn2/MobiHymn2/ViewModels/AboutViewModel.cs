@@ -81,6 +81,17 @@ namespace MobiHymn2.ViewModels
             Revisions = new ObservableRangeCollection<Timeline>();
             Revisions.Add(new Timeline
             {
+                Header = "0.8.3",
+                Details =
+                {
+                    "Disable selection of lyrics for Android temporarily",
+                    "New UI",
+                    "Disable MIDI playng temporarily.",
+                    "Feature to sync updates from cloud."
+                }
+            });
+            Revisions.Add(new Timeline
+            {
                 Header = "0.8.0",
                 Details = {"Slider intro", "Splash Screen", "Can play MIDI"}
             });
@@ -111,21 +122,21 @@ namespace MobiHymn2.ViewModels
                 Title = "Welcome",
                 Subitle = "Browsing a hymn is now a few taps away.",
                 Image = "welcome",
-                Size = 1.5,
+                Size = Device.RuntimePlatform == Device.Android ? 150 : 1.5 ,
             });
             IntroSlides.Add(new IntroSlide
             {
                 Title = "Read",
                 Subitle = "Read & play a hymn anytime, anywhere",
                 Image = "read-play",
-                Size = 1
+                Size = Device.RuntimePlatform == Device.Android ? 150 : 1
             });
             IntroSlides.Add(new IntroSlide
             {
                 Title = "Save",
                 Subitle = "Bookmark your favorite hymns now.",
                 Image = "save-music",
-                Size = 1
+                Size = Device.RuntimePlatform == Device.Android ? 150 : 1
             });
 
             var isNew = Preferences.Get("isNew", true);
@@ -136,7 +147,7 @@ namespace MobiHymn2.ViewModels
                     Title = "All Set!",
                     Subitle = "Let's go!",
                     Image = "done",
-                    Size = 1
+                    Size = Device.RuntimePlatform == Device.Android ? 100 : 1
                 });
             }
             

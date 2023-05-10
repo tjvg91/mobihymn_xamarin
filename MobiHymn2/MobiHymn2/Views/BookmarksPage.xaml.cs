@@ -8,6 +8,7 @@ using MobiHymn2.Utils;
 using Acr.UserDialogs;
 
 using Xamarin.Forms;
+using Microsoft.AppCenter.Crashes;
 
 namespace MobiHymn2.Views
 {
@@ -37,7 +38,7 @@ namespace MobiHymn2.Views
                         if (confirmed)
                         {
                             globalInstance.RemoveBookmark(shortHymn);
-                            UserDialogs.Instance.Toast($"Hymn #{shortHymn.Number} bookmark deleted.", new TimeSpan(3));
+                            Globals.ShowToastPopup(this, "bookmark-deleted", $"Hymn #{shortHymn.Number} bookmark deleted.");
                         }
                     }
                 });
@@ -46,6 +47,7 @@ namespace MobiHymn2.Views
             catch (Exception ex)
             {
                 Console.Write(ex.Message);
+                Crashes.TrackError(ex);
             }
         }
 

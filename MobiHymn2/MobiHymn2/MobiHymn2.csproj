@@ -25,6 +25,7 @@
     <PackageReference Include="Xamarin.FFImageLoading.Forms" Version="2.4.11.982" />
     <PackageReference Include="CardsView" Version="2.8.1" />
     <PackageReference Include="Plugin.AudioRecorder" Version="1.1.0" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.11.46" />
   </ItemGroup>
   <ItemGroup Condition=" '$(Configuration)' != 'GooglePlay' ">
     <PackageReference Include="Microsoft.AppCenter.Distribute" Version="5.0.1" />
@@ -89,6 +90,10 @@
     <None Remove="Resources\GIF\no-internet-light.gif" />
     <None Remove="Resources\GIF\history-dark.gif" />
     <None Remove="Resources\GIF\history-light.gif" />
+    <None Remove="Resources\GIF\settingup.gif" />
+    <None Remove="Resources\GIF\bookmark-deleted.gif" />
+    <None Remove="Resources\GIF\bookmark-saved.gif" />
+    <None Remove="Resources\GIF\not-found.gif" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Resources\Fonts\faRegular.ttf" />
@@ -120,6 +125,10 @@
     <EmbeddedResource Include="Resources\GIF\no-internet-light.gif" />
     <EmbeddedResource Include="Resources\GIF\history-dark.gif" />
     <EmbeddedResource Include="Resources\GIF\history-light.gif" />
+    <EmbeddedResource Include="Resources\GIF\settingup.gif" />
+    <EmbeddedResource Include="Resources\GIF\bookmark-deleted.gif" />
+    <EmbeddedResource Include="Resources\GIF\bookmark-saved.gif" />
+    <EmbeddedResource Include="Resources\GIF\not-found.gif" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Utils\" />

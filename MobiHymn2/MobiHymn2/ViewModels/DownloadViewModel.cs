@@ -49,7 +49,7 @@ namespace MobiHymn2.ViewModels
             }
         }
 
-        private bool isConnected;
+        private bool isConnected = true;
 		public bool IsConnected
 		{
 			get => isConnected;
@@ -78,9 +78,10 @@ namespace MobiHymn2.ViewModels
 
         private void Connectivity_ConnectivityChanged(object sender, ConnectivityChangedEventArgs e)
         {
+            bool prevState = IsConnected;
             IsConnected = e.NetworkAccess == NetworkAccess.Internet;
-            if (IsConnected) Todo();
-            else
+            if (IsConnected && !prevState) Todo();
+            else if(!IsConnected)
             {
                 SetNoInternet();
                 globalInstance.CTS.Cancel();

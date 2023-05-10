@@ -48,8 +48,13 @@
             <controls:IndicatorsControl Margin="0,40,0,0"/>
             <controls:RightArrowControl />
         </cards:CarouselView>
-        <FlexLayout JustifyContent="Center" AlignItems="End" Padding="20"> 
-            <Button x:Name="btnSkipDone" Style="{StaticResource Button-Clear}" Text="Skip" Clicked="Button_Clicked" />
+        <FlexLayout JustifyContent="End" AlignItems="End" Padding="20"> 
+            <Button
+                x:Name="btnSkipDone"
+                Style="{StaticResource Button-Clear}"
+                Text="Skip"
+                Clicked="Button_Clicked"
+                Margin="{OnPlatform Android='0,0,0,60', Default=0}"/>
         </FlexLayout>
     </StackLayout>
     

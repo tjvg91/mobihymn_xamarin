@@ -1,10 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
-
 using MobiHymn2.Utils;
 using MobiHymn2.ViewModels;
-
+using MobiHymn2.Views.Popups;
 using Xamarin.CommunityToolkit.Extensions;
 using Xamarin.Essentials;
 using Xamarin.Forms;
@@ -46,11 +46,6 @@ namespace MobiHymn2.Views
             model = ((NumSearchViewModel)this.BindingContext);
             model.OnHymnInputChanged += Model_OnHymnInputChanged;
 
-
-            globalInstance.DownloadStarted += GlobalInstance_DownloadStarted;
-            globalInstance.DownloadError += GlobalInstance_DownloadStarted;
-            globalInstance.InitFinished += Globals_InitFinsihed;
-
             var isNew = Preferences.Get(isAppNew, true);
             downloadPopup.Todo = globalInstance.Init;
             if (isNew)
@@ -61,13 +56,20 @@ namespace MobiHymn2.Views
                 };
                 popup.Dismissed += Popup_Dismissed;
                 Navigation.ShowPopup(popup);
-                Preferences.Set(isAppNew, false);
             }
-            
+            else globalInstance.InitFinished += Globals_InitFinsihed;
         }
 
         private void Popup_Dismissed(object sender, Xamarin.CommunityToolkit.UI.Views.PopupDismissedEventArgs e)
         {
+            Globals.LogAppCenter("Finished Intro Popup", "Last Type", (string)e.Result);
+
+            globalInstance.DownloadStarted += GlobalInstance_DownloadStarted;
+            globalInstance.DownloadError += GlobalInstance_DownloadStarted;
+            globalInstance.InitFinished += Globals_InitFinsihed;
+
+            Preferences.Set(isAppNew, false);
+
             globalInstance.Init();
         }
 
@@ -226,7 +228,7 @@ namespace MobiHymn2.Views
                         isNewInput = true;
                         await Shell.Current.GoToAsync($"//{Routes.READ}");
                     }
-                    else Acr.UserDialogs.UserDialogs.Instance.Toast("Hymn number does not exist.", new TimeSpan(3));
+                    else Globals.ShowToastPopup(this, "not-found", "Hymn not found");
                 }
             }
             

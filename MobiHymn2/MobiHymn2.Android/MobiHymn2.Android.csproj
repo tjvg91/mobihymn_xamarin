@@ -235,6 +235,9 @@
     <AndroidAsset Include="Assets\Fonts\StyleScript.ttf" />
     <AndroidAsset Include="Assets\Fonts\UnifrakturMaguntia.ttf" />
     <AndroidAsset Include="Assets\Fonts\NotoSerif.ttf" />
+    <AndroidAsset Include="Assets\bookmark-deleted.json" />
+    <AndroidAsset Include="Assets\bookmark-saved.json" />
+    <AndroidAsset Include="Assets\not-found.json" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Assets\Soundfonts\" />

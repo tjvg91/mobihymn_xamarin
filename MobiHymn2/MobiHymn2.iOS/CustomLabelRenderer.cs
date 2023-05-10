@@ -101,6 +101,12 @@ namespace MobiHymn2.iOS
             uiTextView.TextAlignment = UpdateTextAlignment(label.HorizontalTextAlignment);
             uiTextView.Font = UpdateFontAttribute(label);
 
+            var attr = new NSAttributedStringDocumentAttributes();
+            var nsError = new NSError();
+            attr.DocumentType = NSDocumentType.HTML;
+
+            uiTextView.AttributedText = new NSAttributedString(label.Text, attr, ref nsError);
+
             SetNativeControl(uiTextView);
         }
 

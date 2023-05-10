@@ -11,10 +11,15 @@ using MobiHymn2.Models;
 
 using Xamarin.Forms;
 using Xamarin.Essentials;
+using Xamarin.CommunityToolkit.Extensions;
+
 using MvvmHelpers;
 using Newtonsoft.Json;
 using PCLStorage;
 using Newtonsoft.Json.Linq;
+using Microsoft.AppCenter.Crashes;
+using MobiHymn2.Views.Popups;
+using Microsoft.AppCenter.Analytics;
 
 namespace MobiHymn2.Utils
 {
@@ -80,6 +85,10 @@ namespace MobiHymn2.Utils
             {
                 if (hymnInputType != value)
                 {
+                    LogAppCenter(
+                        "Set Hymn Input Type", "Input Type",
+                        Enum.GetName(typeof(InputType), value)
+                    );
                     hymnInputType = value;
                     OnHymnInputTypeChanged(value);
                 }
@@ -94,6 +103,10 @@ namespace MobiHymn2.Utils
             {
                 if (activeHymn == null || !activeHymn.Equals(value))
                 {
+                    LogAppCenter(
+                        "Set Active Hymn", "Active Hymn",
+                        JObject.FromObject(value).ToString(Formatting.None)
+                    );
                     activeHymn = value;
                     var newHymn = new ShortHymn
                     {
@@ -117,6 +130,10 @@ namespace MobiHymn2.Utils
             {
                 if (activeAlignment != value)
                 {
+                    LogAppCenter(
+                        "Set Active Alignment", "Active Alignment",
+                        Enum.GetName(typeof(TextAlignment), value)
+                    );
                     activeAlignment = value;
                     OnAlignmentChanged(activeAlignment);
                 }
@@ -138,7 +155,12 @@ namespace MobiHymn2.Utils
             {
                 if (!activeReadTheme.Equals(value))
                 {
+                    LogAppCenter(
+                        "Set Active Read Theme", "Active Read Theme",
+                        value.ToHex()
+                    );
                     activeReadTheme = value;
+
 
                     if (value == PrimaryText || value == Gray || value == Brown)
                         ActiveThemeText = Color.White;
@@ -155,6 +177,10 @@ namespace MobiHymn2.Utils
             get => activeFontSize;
             set
             {
+                LogAppCenter(
+                    "Set Active Font Size", "Active Font Size",
+                    value.ToString()
+                );
                 activeFontSize = value;
                 OnActiveFontSizeChanged(activeFontSize);
             }
@@ -166,6 +192,11 @@ namespace MobiHymn2.Utils
             get => activeFont;
             set
             {
+                LogAppCenter(
+                    "Set Active Font", "Active Font",
+                    activeFont,
+                    value
+                );
                 activeFont = value;
                 OnActiveFontChanged(value);
             }
@@ -177,6 +208,10 @@ namespace MobiHymn2.Utils
             get => darkMode;
             set
             {
+                LogAppCenter(
+                    "Set Dark Mode", "Dark Mode",
+                    value.ToString()
+                );
                 darkMode = value;
                 Application.Current.UserAppTheme = value ? OSAppTheme.Dark : OSAppTheme.Light;
                 Preferences.Set("darkMode", value);
@@ -190,6 +225,10 @@ namespace MobiHymn2.Utils
             get => keepAwake;
             set
             {
+                LogAppCenter(
+                    "Set Keep Awake", "Keep Awake",
+                    value.ToString()
+                );
                 keepAwake = value;
                 DeviceDisplay.KeepScreenOn = value;
                 OnKeepAwakeChanged(value);
@@ -290,9 +329,10 @@ namespace MobiHymn2.Utils
         #region Methods
         public async Task<bool> DownloadHymns(bool sync = false)
         {
+            LogAppCenter((sync ? "Resync" : "Download") + " Starting");
             HttpHelper httpHelper = new HttpHelper();
 
-            var hymnUrl = "http://157.230.9.81/hymn/data/lyrics/";
+            var hymnUrl = "http://157.230.9.81/hymn/tim.dna?q=";
             var exists = await httpHelper.HymnListFileExists();
 
             if (exists && !sync)
@@ -307,12 +347,19 @@ namespace MobiHymn2.Utils
                 HymnList = await httpHelper.DownloadHymns(hymnUrl, downloadProgress, CTS.Token, HymnList, sync);
             }
             else
-                OnDownloadError("Please connect to download resources.");
+            {
+                var errorMessage = "Please connect to download resources.";
+                Crashes.TrackError(new Exception(errorMessage));
+                OnDownloadError(errorMessage);
+            }
+
+            LogAppCenter((sync ? "Resync" : "Download") + " Finished", "Hymn Count", HymnList.Count().ToString());
             return true;
         }
 
         public async void Init()
         {
+            LogAppCenter("Init Started");
             try
             {
                 if(await DownloadHymns())
@@ -323,16 +370,18 @@ namespace MobiHymn2.Utils
 
                     if (!(await LoadSettings()))
                     {
+                        LogAppCenter("New device");
                         activeHymn = HymnList[0];
                         activeReadTheme = Color.White;
                     }
-
+                    LogAppCenter("Init Finished");
                     OnInitFinished(null);
                 }
             }
             catch (Exception ex)
             {
                 OnDownloadError(ex.Message);
+                Crashes.TrackError(ex);
             }
         }
 
@@ -345,11 +394,14 @@ namespace MobiHymn2.Utils
         {
             if (!IsBookmarked())
             {
-                BookmarkList.Add(new Models.ShortHymn
+                LogAppCenter("Adding bookmark...");
+                var val = new Models.ShortHymn
                 {
                     Number = ActiveHymn.Number,
                     Line = ActiveHymn.FirstLine,
-                });
+                };
+                BookmarkList.Add(val);
+                LogAppCenter("Bookmark Added", "Bookmark", JObject.FromObject(val).ToString(Formatting.None));
                 OnBookmarksChanged(BookmarkList);
             }
         }
@@ -358,13 +410,15 @@ namespace MobiHymn2.Utils
         {
             try
             {
+                LogAppCenter("Removing bookmark...");
                 var res = BookmarkList.Remove(hymn);
+                LogAppCenter("Bookmark Removed", "Bookmark", JObject.FromObject(hymn).ToString(Formatting.None));
                 OnBookmarksChanged(BookmarkList);
                 return res;
             }
             catch (Exception ex)
             {
-                Console.Write(ex.Message);
+                Crashes.TrackError(ex);
                 return false;
             }
         }
@@ -373,29 +427,42 @@ namespace MobiHymn2.Utils
         {
             try
             {
+                LogAppCenter("Removing bookmark...");
                 var filtered = BookmarkList
                                     .Where(bk => bk.Number == ActiveHymn.Number).First();
                 var res = BookmarkList.Remove(filtered);
+                LogAppCenter("Bookmark Removed", "Bookmark", JObject.FromObject(filtered).ToString(Formatting.None));
                 OnBookmarksChanged(BookmarkList);
                 return res;
             }
             catch (Exception ex)
             {
+                Crashes.TrackError(ex);
                 return false;
             }
         }
 
         public async void SaveSettings()
         {
-            var settings = JsonConvert.SerializeObject(Globals.Instance);
-            IFolder rootFolder = PCLStorage.FileSystem.Current.LocalStorage;
-            IFolder folder = await rootFolder.CreateFolderAsync("mobihymn", CreationCollisionOption.OpenIfExists);
-            IFile file = await folder.CreateFileAsync(settingsName, CreationCollisionOption.ReplaceExisting);
-            await file.WriteAllTextAsync(settings);
+            LogAppCenter("Saving settings...");
+            try
+            {
+                var settings = JsonConvert.SerializeObject(Globals.Instance);
+                IFolder rootFolder = PCLStorage.FileSystem.Current.LocalStorage;
+                IFolder folder = await rootFolder.CreateFolderAsync("mobihymn", CreationCollisionOption.OpenIfExists);
+                IFile file = await folder.CreateFileAsync(settingsName, CreationCollisionOption.ReplaceExisting);
+                await file.WriteAllTextAsync(settings);
+                LogAppCenter("Settings saved", "Settings", settings);
+            }
+            catch (Exception ex)
+            {
+                Crashes.TrackError(ex);
+            }
         }
 
         public async Task<bool> LoadSettings()
         {
+            LogAppCenter("Loading settings...");
             try
             {
 
@@ -458,6 +525,7 @@ namespace MobiHymn2.Utils
                                 break;
                         }
                     }
+                    LogAppCenter("Settings loaded", "Settings", settings);
 
                     return true;
                 }
@@ -465,9 +533,85 @@ namespace MobiHymn2.Utils
             }
             catch (Exception ex)
             {
+                Crashes.TrackError(ex);
                 return false;
             }
             
+        }
+        #endregion
+
+        #region ToastPopup
+        public static void ShowToastPopup(ContentPage context, string source, string label)
+        {
+            ToastPopup toastPopup = new ToastPopup
+            {
+                PopupAnim = source,
+                PopupLabel = label,
+                IsLightDismissEnabled = false,
+            };
+            context.Navigation.ShowPopup(toastPopup);
+            Task.Delay(2000).ContinueWith((t) =>
+            {
+                toastPopup.Dismiss(null);
+            });
+        }
+
+        public static void ShowToastPopup(ContentPage context, string source, string label, double size, Rectangle layoutBounds)
+        {
+            ToastPopup toastPopup = new ToastPopup
+            {
+                PopupAnim = source,
+                PopupLabel = label,
+                PopupAnimSize = size,
+                LayoutBounds = layoutBounds,
+                IsLightDismissEnabled = false,
+            };
+            context.Navigation.ShowPopup(toastPopup);
+            Task.Delay(2000).ContinueWith((t) =>
+            {
+                toastPopup.Dismiss(null);
+            });
+        }
+        #endregion
+
+        #region AppCenter
+        public static void LogAppCenter(string title)
+        {
+
+            Analytics.TrackEvent(title, new Dictionary<string, string>
+            {
+                { "Device Name", DeviceInfo.Name },
+                { "Device Manufacturer", DeviceInfo.Manufacturer },
+                { "Device Model", DeviceInfo.Model },
+                { "Device OS Version", DeviceInfo.VersionString }
+            });
+        }
+
+        public static void LogAppCenter(string title, string valueName, string value)
+        {
+
+            Analytics.TrackEvent(title, new Dictionary<string, string>
+            {
+                { "Device Name", DeviceInfo.Name },
+                { "Device Manufacturer", DeviceInfo.Manufacturer },
+                { "Device Model", DeviceInfo.Model },
+                { "Device OS Version", DeviceInfo.VersionString },
+                { valueName, value }
+            });
+        }
+
+        public static void LogAppCenter(string title, string valueName, string oldValue, string newValue)
+        {
+
+            Analytics.TrackEvent(title, new Dictionary<string, string>
+            {
+                { "Device Name", DeviceInfo.Name },
+                { "Device Manufacturer", DeviceInfo.Manufacturer },
+                { "Device Model", DeviceInfo.Model },
+                { "Device OS Version", DeviceInfo.VersionString },
+                { $"Old {valueName}", oldValue },
+                { $"New {valueName}", newValue }
+            });
         }
         #endregion
     }
