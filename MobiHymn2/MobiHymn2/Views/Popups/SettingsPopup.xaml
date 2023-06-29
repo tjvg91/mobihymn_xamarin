@@ -64,7 +64,7 @@
                    WidthRequest="15"
                    CornerRadius="5"
                    BorderColor="{AppThemeBinding Dark=White, Light={StaticResource PrimaryText},Default={StaticResource PrimaryText}}"
-                   BackgroundColor="Transparent">
+                   BackgroundColor="{Binding Path=Value, Source={x:RelativeSource AncestorType={x:Type RadioButton}}}">
                 <ContentPresenter>
                     <ContentPresenter.Resources>
                         <Style TargetType="Label">
@@ -96,9 +96,10 @@
     </xct:Popup.Resources>
 
     <StackLayout Padding="10" Style="{StaticResource SLChanger}">
+        <!--Alignment-->
         <FlexLayout JustifyContent="SpaceBetween" Padding="10">
             <Label Text="Alignment" Style="{StaticResource Title}"/>
-            <StackLayout Orientation="Horizontal" RadioButtonGroup.SelectedValue="{Binding ActiveAlignment}">
+            <StackLayout Orientation="Horizontal" RadioButtonGroup.GroupName="Alignment" RadioButtonGroup.SelectedValue="{Binding ActiveAlignment}">
                 <RadioButton
                     ControlTemplate="{StaticResource ToggleRadioTemplate}"
                     TextColor="{StaticResource PrimaryText}"
@@ -159,223 +160,434 @@
                 </RadioButton>
             </StackLayout>
         </FlexLayout>
+
+        <!--Theme-->
         <FlexLayout JustifyContent="SpaceBetween" AlignItems="Center" Padding="10">
             <Label Text="Theme" Style="{StaticResource Title}"/>
-            <StackLayout Orientation="Horizontal" RadioButtonGroup.SelectedValue="{Binding ActiveColor}">
-                <RadioButton
-                    ControlTemplate="{StaticResource ToggleThemeTemplate}"
-                    BackgroundColor="White"
-                    TextColor="{StaticResource PrimaryText}"
-                    Value="{StaticResource White}"
-                    CheckedChanged="rbTheme_CheckedChanged">
-                    <RadioButton.Content>
-                        <Label
-                            Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
-                            FontSize="Small"
-                            FontFamily="FAS"/>
-                    </RadioButton.Content>
-                    <RadioButton.Triggers>
-                        <DataTrigger
-                            TargetType="RadioButton"
-                            Binding="{Binding ActiveColor}"
-                            Value="{StaticResource White}">
-                            <Setter Property="IsChecked" Value="True" />
-                        </DataTrigger>
-                    </RadioButton.Triggers>
-                </RadioButton>
+            <StackLayout Orientation="Vertical" RadioButtonGroup.GroupName="Theme" RadioButtonGroup.SelectedValue="{Binding ActiveColor}">
+                <StackLayout Orientation="Horizontal">
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleThemeTemplate}"
+                        TextColor="{StaticResource PrimaryText}"
+                        Value="{StaticResource White}"
+                        CheckedChanged="rbTheme_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
+                                FontSize="Small"
+                                FontFamily="FAS"/>
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveColor}"
+                                Value="{StaticResource White}">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
 
-                <RadioButton
-                    ControlTemplate="{StaticResource ToggleThemeTemplate}"
-                    BackgroundColor="{StaticResource Sepia}"
-                    TextColor="{StaticResource PrimaryText}"
-                    Value="{StaticResource Sepia}"
-                    CheckedChanged="rbTheme_CheckedChanged">
-                    <RadioButton.Content>
-                        <Label
-                            Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
-                            FontSize="Small"
-                            FontFamily="FAS"/>
-                    </RadioButton.Content>
-                    <RadioButton.Triggers>
-                        <DataTrigger
-                            TargetType="RadioButton"
-                            Binding="{Binding ActiveColor}"
-                            Value="{StaticResource Sepia}">
-                            <Setter Property="IsChecked" Value="True" />
-                        </DataTrigger>
-                    </RadioButton.Triggers>
-                </RadioButton>
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleThemeTemplate}"
+                        TextColor="{StaticResource PrimaryText}"
+                        Value="{StaticResource Sepia}"
+                        CheckedChanged="rbTheme_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
+                                FontSize="Small"
+                                FontFamily="FAS"/>
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveColor}"
+                                Value="{StaticResource Sepia}">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleThemeTemplate}"
+                        TextColor="{StaticResource White}"
+                        Value="{StaticResource Brown}"
+                        CheckedChanged="rbTheme_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
+                                FontSize="Small"
+                                FontFamily="FAS"/>
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveColor}"
+                                Value="{StaticResource Brown}">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
 
-                <RadioButton
-                    ControlTemplate="{StaticResource ToggleThemeTemplate}"
-                    BackgroundColor="{StaticResource Brown}"
-                    TextColor="White"
-                    Value="{StaticResource Brown}"
-                    CheckedChanged="rbTheme_CheckedChanged">
-                    <RadioButton.Content>
-                        <Label
-                            Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
-                            FontSize="Small"
-                            FontFamily="FAS"/>
-                    </RadioButton.Content>
-                    <RadioButton.Triggers>
-                        <DataTrigger
-                            TargetType="RadioButton"
-                            Binding="{Binding ActiveColor}"
-                            Value="{StaticResource Brown}">
-                            <Setter Property="IsChecked" Value="True" />
-                        </DataTrigger>
-                    </RadioButton.Triggers>
-                </RadioButton>
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleThemeTemplate}"
+                        TextColor="{StaticResource White}"
+                        Value="{StaticResource Gray}"
+                        CheckedChanged="rbTheme_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
+                                FontSize="Small"
+                                FontFamily="FAS"/>
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveColor}"
+                                Value="{StaticResource Gray}">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleThemeTemplate}"
+                        TextColor="{StaticResource White}"
+                        Value="{StaticResource PrimaryText}"
+                        CheckedChanged="rbTheme_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
+                                FontSize="Small"
+                                FontFamily="FAS"/>
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveColor}"
+                                Value="{StaticResource PrimaryText}">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
 
-                <RadioButton
-                    ControlTemplate="{StaticResource ToggleThemeTemplate}"
-                    BackgroundColor="{StaticResource Gray}"
-                    TextColor="White"
-                    Value="{StaticResource Gray}"
-                    CheckedChanged="rbTheme_CheckedChanged">
-                    <RadioButton.Content>
-                        <Label
-                            Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
-                            FontSize="Small"
-                            FontFamily="FAS"/>
-                    </RadioButton.Content>
-                    <RadioButton.Triggers>
-                        <DataTrigger
-                            TargetType="RadioButton"
-                            Binding="{Binding ActiveColor}"
-                            Value="{StaticResource Gray}">
-                            <Setter Property="IsChecked" Value="True" />
-                        </DataTrigger>
-                    </RadioButton.Triggers>
-                </RadioButton>
+                </StackLayout>
+                <StackLayout Orientation="Horizontal" >
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleThemeTemplate}"
+                        TextColor="{StaticResource Primary}"
+                        Value="{StaticResource Green}"
+                        CheckedChanged="rbTheme_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
+                                FontSize="Small"
+                                FontFamily="FAS"/>
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveColor}"
+                                Value="{StaticResource Green}">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
 
-                <RadioButton
-                    ControlTemplate="{StaticResource ToggleThemeTemplate}"
-                    BackgroundColor="{StaticResource PrimaryText}"
-                    TextColor="White"
-                    Value="{StaticResource PrimaryText}"
-                    CheckedChanged="rbTheme_CheckedChanged">
-                    <RadioButton.Content>
-                        <Label
-                            Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
-                            FontSize="Small"
-                            FontFamily="FAS"/>
-                    </RadioButton.Content>
-                    <RadioButton.Triggers>
-                        <DataTrigger
-                            TargetType="RadioButton"
-                            Binding="{Binding ActiveColor}"
-                            Value="{StaticResource PrimaryText}">
-                            <Setter Property="IsChecked" Value="True" />
-                        </DataTrigger>
-                    </RadioButton.Triggers>
-                </RadioButton>
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleThemeTemplate}"
+                        TextColor="{StaticResource White}"
+                        Value="{StaticResource Orange}"
+                        CheckedChanged="rbTheme_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
+                                FontSize="Small"
+                                FontFamily="FAS"/>
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveColor}"
+                                Value="{StaticResource Orange}">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleThemeTemplate}"
+                        TextColor="{StaticResource Primary}"
+                        Value="{StaticResource Blue}"
+                        CheckedChanged="rbTheme_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
+                                FontSize="Small"
+                                FontFamily="FAS"/>
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveColor}"
+                                Value="{StaticResource Blue}">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
+
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleThemeTemplate}"
+                        TextColor="{StaticResource Primary}"
+                        Value="{StaticResource Purple}"
+                        CheckedChanged="rbTheme_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
+                                FontSize="Small"
+                                FontFamily="FAS"/>
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveColor}"
+                                Value="{StaticResource Purple}">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleThemeTemplate}"
+                        TextColor="{StaticResource Primary}"
+                        Value="{StaticResource Pink}"
+                        CheckedChanged="rbTheme_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
+                                FontSize="Small"
+                                FontFamily="FAS"/>
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveColor}"
+                                Value="{StaticResource Pink}">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
+
+                </StackLayout>
+                
             </StackLayout>
         </FlexLayout>
+
+        <!--Font-->
         <FlexLayout JustifyContent="SpaceBetween" AlignItems="Center" Padding="10">
             <Label Style="{StaticResource Title}">Font Type</Label>
-            <StackLayout Orientation="Horizontal" RadioButtonGroup.SelectedValue="{Binding ActiveFont}">
-                <RadioButton
-                    ControlTemplate="{StaticResource ToggleRadioTemplate}"
-                    TextColor="{StaticResource PrimaryText}"
-                    Value="{OnPlatform Android=Roboto, iOS=SFPro}"
-                    CheckedChanged="rbFont_CheckedChanged">
-                    <RadioButton.Content>
-                        <Label
-                            Text="A"
-                            FontFamily="{OnPlatform Android=Roboto, iOS=SFPro}"
-                            FontSize="Small" />
-                    </RadioButton.Content>
-                    <RadioButton.Triggers>
-                        <DataTrigger
-                            TargetType="RadioButton"
-                            Binding="{Binding ActiveFont}"
-                            Value="{OnPlatform Android=Roboto, iOS=SFPro}">
-                            <Setter Property="IsChecked" Value="True" />
-                        </DataTrigger>
-                    </RadioButton.Triggers>
-                </RadioButton>
-                <RadioButton
-                    ControlTemplate="{StaticResource ToggleRadioTemplate}"
-                    TextColor="{StaticResource PrimaryText}"
-                    Value="NotoSerif"
-                    CheckedChanged="rbFont_CheckedChanged">
-                    <RadioButton.Content>
-                        <Label
-                            Text="A"
-                            FontFamily="NotoSerif"
-                            FontSize="Small" />
-                    </RadioButton.Content>
-                    <RadioButton.Triggers>
-                        <DataTrigger
-                            TargetType="RadioButton"
-                            Binding="{Binding ActiveFont}"
-                            Value="NotoSerif">
-                            <Setter Property="IsChecked" Value="True" />
-                        </DataTrigger>
-                    </RadioButton.Triggers>
-                </RadioButton>
-                <RadioButton
-                    ControlTemplate="{StaticResource ToggleRadioTemplate}"
-                    TextColor="{StaticResource PrimaryText}"
-                    Value="ChelseaMarket"
-                    CheckedChanged="rbFont_CheckedChanged">
-                    <RadioButton.Content>
-                        <Label
-                            Text="A"
-                            FontFamily="ChelseaMarket"
-                            FontSize="Small" />
-                    </RadioButton.Content>
-                    <RadioButton.Triggers>
-                        <DataTrigger
-                            TargetType="RadioButton"
-                            Binding="{Binding ActiveFont}"
-                            Value="ChelseaMarket">
-                            <Setter Property="IsChecked" Value="True" />
-                        </DataTrigger>
-                    </RadioButton.Triggers>
-                </RadioButton>
-                <RadioButton
-                    ControlTemplate="{StaticResource ToggleRadioTemplate}"
-                    TextColor="{StaticResource PrimaryText}"
-                    Value="UnifrakturMaguntia"
-                    CheckedChanged="rbFont_CheckedChanged">
-                    <RadioButton.Content>
-                        <Label
-                            Text="A"
-                            FontFamily="UnifrakturMaguntia"
-                            FontSize="Small" />
-                    </RadioButton.Content>
-                    <RadioButton.Triggers>
-                        <DataTrigger
-                            TargetType="RadioButton"
-                            Binding="{Binding ActiveFont}"
-                            Value="UnifrakturMaguntia">
-                            <Setter Property="IsChecked" Value="True" />
-                        </DataTrigger>
-                    </RadioButton.Triggers>
-                </RadioButton>
-                <RadioButton
-                    ControlTemplate="{StaticResource ToggleRadioTemplate}"
-                    TextColor="{StaticResource PrimaryText}"
-                    Value="StyleScript"
-                    CheckedChanged="rbFont_CheckedChanged">
-                    <RadioButton.Content>
-                        <Label
-                            Text="A"
-                            FontFamily="StyleScript"
-                            FontSize="Small" />
-                    </RadioButton.Content>
-                    <RadioButton.Triggers>
-                        <DataTrigger
-                            TargetType="RadioButton"
-                            Binding="{Binding ActiveFont}"
-                            Value="StyleScript">
-                            <Setter Property="IsChecked" Value="True" />
-                        </DataTrigger>
-                    </RadioButton.Triggers>
-                </RadioButton>
+            <StackLayout Orientation="Vertical" RadioButtonGroup.GroupName="Font" RadioButtonGroup.SelectedValue="{Binding ActiveFont}">
+                <StackLayout Orientation="Horizontal">
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleRadioTemplate}"
+                        TextColor="{StaticResource PrimaryText}"
+                        Value="{OnPlatform Android=Roboto, iOS=SFPro}"
+                        CheckedChanged="rbFont_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="A"
+                                FontFamily="{OnPlatform Android=Roboto, iOS=SFPro}"
+                                FontSize="Small" />
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveFont}"
+                                Value="{OnPlatform Android=Roboto, iOS=SFPro}">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleRadioTemplate}"
+                        TextColor="{StaticResource PrimaryText}"
+                        Value="NotoSerif"
+                        CheckedChanged="rbFont_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="A"
+                                FontFamily="NotoSerif"
+                                FontSize="Small" />
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveFont}"
+                                Value="NotoSerif">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleRadioTemplate}"
+                        TextColor="{StaticResource PrimaryText}"
+                        Value="ChelseaMarket"
+                        CheckedChanged="rbFont_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="A"
+                                FontFamily="ChelseaMarket"
+                                FontSize="Small" />
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveFont}"
+                                Value="ChelseaMarket">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleRadioTemplate}"
+                        TextColor="{StaticResource PrimaryText}"
+                        Value="UnifrakturMaguntia"
+                        CheckedChanged="rbFont_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="A"
+                                FontFamily="UnifrakturMaguntia"
+                                FontSize="Small" />
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveFont}"
+                                Value="UnifrakturMaguntia">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleRadioTemplate}"
+                        TextColor="{StaticResource PrimaryText}"
+                        Value="StyleScript"
+                        CheckedChanged="rbFont_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="A"
+                                FontFamily="StyleScript"
+                                FontSize="Small" />
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveFont}"
+                                Value="StyleScript">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
+                </StackLayout>
+
+                <StackLayout Orientation="Horizontal">
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleRadioTemplate}"
+                        TextColor="{StaticResource PrimaryText}"
+                        Value="Cookie"
+                        CheckedChanged="rbFont_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="A"
+                                FontFamily="Cookie"
+                                FontSize="Small" />
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveFont}"
+                                Value="Cookie">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleRadioTemplate}"
+                        TextColor="{StaticResource PrimaryText}"
+                        Value="Frosty"
+                        CheckedChanged="rbFont_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="A"
+                                FontFamily="Frosty"
+                                FontSize="Small" />
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveFont}"
+                                Value="Frosty">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleRadioTemplate}"
+                        TextColor="{StaticResource PrimaryText}"
+                        Value="KGKissMeSlowly"
+                        CheckedChanged="rbFont_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="A"
+                                FontFamily="KGKissMeSlowly"
+                                FontSize="Small" />
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveFont}"
+                                Value="KGKissMeSlowly">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleRadioTemplate}"
+                        TextColor="{StaticResource PrimaryText}"
+                        Value="KGMelonheadz"
+                        CheckedChanged="rbFont_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="A"
+                                FontFamily="KGMelonheadz"
+                                FontSize="Small" />
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveFont}"
+                                Value="KGMelonheadz">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
+                    <RadioButton
+                        ControlTemplate="{StaticResource ToggleRadioTemplate}"
+                        TextColor="{StaticResource PrimaryText}"
+                        Value="KGWhattheTeacherWants"
+                        CheckedChanged="rbFont_CheckedChanged">
+                        <RadioButton.Content>
+                            <Label
+                                Text="A"
+                                FontFamily="KGWhattheTeacherWants"
+                                FontSize="Small" />
+                        </RadioButton.Content>
+                        <RadioButton.Triggers>
+                            <DataTrigger
+                                TargetType="RadioButton"
+                                Binding="{Binding ActiveFont}"
+                                Value="KGWhattheTeacherWants">
+                                <Setter Property="IsChecked" Value="True" />
+                            </DataTrigger>
+                        </RadioButton.Triggers>
+                    </RadioButton>
+                </StackLayout>
             </StackLayout>
         </FlexLayout>
     </StackLayout>

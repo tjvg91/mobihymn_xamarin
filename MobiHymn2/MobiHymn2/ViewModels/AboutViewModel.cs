@@ -81,39 +81,46 @@ namespace MobiHymn2.ViewModels
             Revisions = new ObservableRangeCollection<Timeline>();
             Revisions.Add(new Timeline
             {
-                Header = "0.8.3",
+                Header = "0.8.2",
                 Details =
                 {
                     "Disable selection of lyrics for Android temporarily",
                     "New UI",
-                    "Disable MIDI playng temporarily.",
-                    "Feature to sync updates from cloud."
-                }
+                    "Disable MIDI playing temporarily",
+                    "Feature to sync updates from cloud",
+                    "New themes and fonts"
+                },
+                Height = 120
             });
             Revisions.Add(new Timeline
             {
                 Header = "0.8.0",
-                Details = {"Slider intro", "Splash Screen", "Can play MIDI"}
+                Details = {"Slider intro", "Splash Screen", "Can play MIDI"},
+                Height = 90
             });
             Revisions.Add(new Timeline
             {
                 Header = "0.7.6",
-                Details = { "Bug fixes", "New fonts" }
+                Details = { "Bug fixes", "New fonts" },
+                Height = 70
             });
             Revisions.Add(new Timeline
             {
                 Header = "0.7.4",
-                Details = { "New app icon", "Initial MIDI player" }
+                Details = { "New app icon", "Initial MIDI player" },
+                Height = 70
             });
             Revisions.Add(new Timeline
             {
                 Header = "0.7.2",
-                Details = { "Can select lyrics", "Can opt for app-provided font size", "Splash screen disabled" }
+                Details = { "Can select lyrics", "Can opt for app-provided font size", "Splash screen disabled" },
+                Height = 90
             });
             Revisions.Add(new Timeline
             {
                 Header = "0.7.0",
-                Details = { "Slider intro", "Splash Screen", "Can play MIDI" }
+                Details = { "Slider intro", "Splash Screen", "Can play MIDI" },
+                Height = 90
             });
 
             IntroSlides = new List<IntroSlide>();

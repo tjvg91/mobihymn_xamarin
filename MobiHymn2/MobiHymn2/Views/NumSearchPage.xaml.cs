@@ -228,7 +228,11 @@ namespace MobiHymn2.Views
                         isNewInput = true;
                         await Shell.Current.GoToAsync($"//{Routes.READ}");
                     }
-                    else Globals.ShowToastPopup(this, "not-found", "Hymn not found");
+                    else
+                    {
+                        Globals.ShowToastPopup(this, "not-found", "Hymn not found");
+                        isNewInput = true;
+                    }
                 }
             }
             

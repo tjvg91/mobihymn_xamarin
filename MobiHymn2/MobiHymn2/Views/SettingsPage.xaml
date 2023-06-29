@@ -48,14 +48,16 @@
                 OnColor="{StaticResource PrimaryLight}"
             />
         </FlexLayout>
-        <FlexLayout BackgroundColor="Transparent">
+        <FlexLayout BackgroundColor="Transparent" Margin="0,-10">
+            <FlexLayout.GestureRecognizers>
+                <TapGestureRecognizer Tapped="swResync_Clicked" />
+            </FlexLayout.GestureRecognizers>
             <Label Text="Resync Resources" Style="{StaticResource Key=Title}"/>
             <Button
                 x:Name="swResync"
                 HorizontalOptions="Center"
                 Style="{StaticResource Button-Clear}"
                 WidthRequest="20"
-                Clicked="swResync_Clicked"
             >
                 <Button.ImageSource>
                     <FontImageSource

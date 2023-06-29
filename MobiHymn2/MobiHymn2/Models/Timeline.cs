@@ -13,7 +13,11 @@ namespace MobiHymn2.Models
 		{
 			get; set;
 		}
-		public Timeline()
+        public double Height
+        {
+            get; set;
+        }
+        public Timeline()
 		{
 			Details = new ObservableRangeCollection<string>();
 		}

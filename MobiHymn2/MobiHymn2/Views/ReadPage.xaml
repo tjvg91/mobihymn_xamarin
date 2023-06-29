@@ -85,6 +85,7 @@
                             HorizontalTextAlignment="{Binding ActiveAlignment}"
                             TextColor="{Binding ActiveColorText}"
                             BackgroundColor="{Binding ActiveColor}"
+                            CharacterSpacing="{Binding LetterSpacing}"
                             LineHeight="1.2"
                             TextDecorations="Underline"
                             Margin="0,0,15,0"/>
@@ -95,6 +96,7 @@
                             HorizontalTextAlignment="{Binding ActiveAlignment}"
                             TextColor="{Binding ActiveColorText}"
                             BackgroundColor="{Binding ActiveColor}"
+                            CharacterSpacing="{Binding LetterSpacing}"
                             LineHeight="1.2"
                             Margin="0,0,15,0"
                             IsVisible="{OnPlatform Android=True, iOS=False}"
@@ -172,6 +174,10 @@
                     <DataTrigger TargetType="StackLayout" Binding="{Binding IsReadView}" Value="False">
                         <Setter Property="IsVisible" Value="False" />
                     </DataTrigger>
+                    <DataTrigger TargetType="StackLayout" Binding="{Binding ActiveColor}" Value="{StaticResource PrimaryText}">
+                        <Setter Property="BackgroundColor" Value="{StaticResource Gray}"/>
+
+                    </DataTrigger>
                 </StackLayout.Triggers>
                 <Button
                     x:Name="btnPlay"
@@ -202,7 +208,8 @@
                     WidthRequest="30"
                     Margin="0,0,10,0"
                     Clicked="btnMdiSettings_Clicked"
-                    Style="{StaticResource Button-Clear-Reverse}">
+                    Style="{StaticResource Button-Clear-Reverse}"
+                    IsVisible="False">
                     <Button.ImageSource>
                         <FontImageSource
                             x:Name="fisMorePlayer"

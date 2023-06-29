@@ -77,6 +77,9 @@ namespace MobiHymn2.ViewModels
                 {
                     IsBusy = true;
                     OnSearchFinished(null, EventArgs.Empty);
+                    globalInstance.SearchList.Add(text);
+                    if (globalInstance.SearchList.Count > 10)
+                        globalInstance.SearchList = globalInstance.SearchList.Skip(1).ToObservableRangeCollection();
                     bwSearcher.RunWorkerAsync(text);
                 }));
             }
@@ -108,12 +111,12 @@ namespace MobiHymn2.ViewModels
             {
 
                 var res = (from hymn in globalInstance.HymnList
-                           where new Regex(text, RegexOptions.IgnoreCase).IsMatch(hymn.Lyrics)
+                           where new Regex(text.StripPunctuation(), RegexOptions.IgnoreCase).IsMatch(hymn.Lyrics.StripPunctuation())
                            select new
                            {
                                Number = hymn.Number,
                                Lines = new Regex("<br>").Split(parsedLyrics(hymn.Lyrics))
-                                         .Where(line => new Regex(text, RegexOptions.IgnoreCase).IsMatch(line))
+                                         .Where(line => new Regex(text.StripPunctuation(), RegexOptions.IgnoreCase).IsMatch(line.StripPunctuation()))
                                          .Select(line => new ShortHymn
                                          {
                                              Number = hymn.Number,

@@ -24,12 +24,6 @@ namespace MobiHymn2.ViewModels
         private IPlayService playService;
         private string commandText = "Play";
 
-        private List<CollectionDisplay<string>> fontList = new List<CollectionDisplay<string>>();
-        public List<CollectionDisplay<string>> FontList
-        {
-            get => fontList;
-        }
-
         public event EventHandler OnBookmarked;
 
         public ReadViewModel()
@@ -45,40 +39,15 @@ namespace MobiHymn2.ViewModels
             ActiveAlignment = globalInstance.ActiveAlignment;
             HymnInputType = globalInstance.HymnInputType;
 
-            fontList.Add(new CollectionDisplay<string>
-            {
-                Name = "Roboto",
-                Value = "Roboto"
-            });
-            fontList.Add(new CollectionDisplay<string>
-            {
-                Name = "NotoSerif".ToSentenceCase(),
-                Value = "NotoSerif"
-            });
-            fontList.Add(new CollectionDisplay<string>
-            {
-                Name = "ChelseaMarket".ToSentenceCase(),
-                Value = "ChelseaMarket"
-            });
-            fontList.Add(new CollectionDisplay<string>
-            {
-                Name = "StyleScript".ToSentenceCase(),
-                Value = "StyleScript"
-            });
-            fontList.Add(new CollectionDisplay<string>
-            {
-                Name = "UnifrakturMaguntia".ToSentenceCase(),
-                Value = "UnifrakturMaguntia",
-            });
-
             globalInstance.ActiveReadThemeChanged += Globals_ActiveReadThemeChanged;
             globalInstance.ActiveHymnChanged += Globals_ActiveHymnChanged;
             globalInstance.ActiveAlignmentChanged += Globals_ActiveAlignmentChanged;
             globalInstance.ActiveFontSizeChanged += Globals_ActiveFontSizeChanged;
             globalInstance.ActiveFontChanged += Globals_ActiveFontChanged;
             globalInstance.HymnInputTypeChanged += GlobalInstance_HymnInputTypeChanged;
+            globalInstance.BookmarksChanged += GlobalInstance_BookmarksChanged;
 
-            fontList = fontList.OrderBy(x => x.Name).ToList();
+            LetterSpacing = globalInstance.FontList.Find(f => f.Name == activeFont).CharacterSpacing;
         }
 
         public ReadViewModel(IPlayService playService) : this()
@@ -86,6 +55,11 @@ namespace MobiHymn2.ViewModels
             this.playService = playService;
             var file = "h592.mid";
             this.playService.Init(file);
+        }
+
+        private void GlobalInstance_BookmarksChanged(object sender, EventArgs e)
+        {
+            BookmarkFont = globalInstance.IsBookmarked() ? "FAS" : "FAR";
         }
 
         private void GlobalInstance_HymnInputTypeChanged(object sender, EventArgs e)
@@ -96,6 +70,7 @@ namespace MobiHymn2.ViewModels
         private void Globals_ActiveFontChanged(object sender, EventArgs e)
         {
             ActiveFont = (string)sender;
+            LetterSpacing = globalInstance.FontList.Find(f => f.Name == ActiveFont).CharacterSpacing;
         }
 
         private void Globals_ActiveFontSizeChanged(object sender, EventArgs e)
@@ -223,6 +198,19 @@ namespace MobiHymn2.ViewModels
                 OnPropertyChanged();
             }
         }
+
+        private double letterSpacing;
+        public double LetterSpacing
+        {
+            get => letterSpacing;
+            set
+            {
+                letterSpacing = value;
+                SetProperty(ref letterSpacing, value, nameof(LetterSpacing));
+                OnPropertyChanged();
+            }
+        }
+
 
         private string activeFont;
         public string ActiveFont

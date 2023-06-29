@@ -1,12 +1,10 @@
 ﻿using System;
-using System.Collections.Generic;
 using Xamarin.CommunityToolkit.UI.Views;
 using Xamarin.Essentials;
 using Xamarin.Forms;
 
 using MobiHymn2.Utils;
 
-using Xamarin.CommunityToolkit.Extensions;
 using System.Threading.Tasks;
 
 namespace MobiHymn2.Views.Popups
@@ -21,7 +19,7 @@ namespace MobiHymn2.Views.Popups
 
             var mainDispalyInfo = DeviceDisplay.MainDisplayInfo;
             var width = (mainDispalyInfo.Width / mainDispalyInfo.Density) - (mainDispalyInfo.Width * 0.1);
-            var height = 190;
+            var height = 230;
             Size = new Size(width, height);
 
             model = (ViewModels.ReadViewModel)this.BindingContext;

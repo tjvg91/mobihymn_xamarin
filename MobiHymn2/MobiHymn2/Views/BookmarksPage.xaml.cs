@@ -9,6 +9,7 @@ using Acr.UserDialogs;
 
 using Xamarin.Forms;
 using Microsoft.AppCenter.Crashes;
+using Xamarin.Essentials;
 
 namespace MobiHymn2.Views
 {
@@ -38,7 +39,13 @@ namespace MobiHymn2.Views
                         if (confirmed)
                         {
                             globalInstance.RemoveBookmark(shortHymn);
-                            Globals.ShowToastPopup(this, "bookmark-deleted", $"Hymn #{shortHymn.Number} bookmark deleted.");
+                            Globals.ShowToastPopup(
+                                this,
+                                "bookmark-deleted",
+                                $"Hymn #{shortHymn.Number} bookmark deleted.",
+                                DeviceInfo.Platform == DevicePlatform.Android ? 100 : 0.75,
+                                DeviceInfo.Platform == DevicePlatform.Android ? new Rectangle(0.5, -0.2, 2, 2) : new Rectangle(0.8, 0.8, 1, 1)
+                            );
                         }
                     }
                 });

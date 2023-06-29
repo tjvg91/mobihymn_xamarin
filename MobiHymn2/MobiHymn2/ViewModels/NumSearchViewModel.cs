@@ -50,15 +50,22 @@ namespace MobiHymn2.ViewModels
 		{
             IsBusy = true;
             HymnInputType = globalInstance.HymnInputType;
-            HymnNum = "1";
+            HymnNum = globalInstance.ActiveHymn != null ? globalInstance.ActiveHymn.Number : "1";
 
             globalInstance.HymnInputTypeChanged += Globals_HymnInputTypeChanged;
             globalInstance.InitFinished += GlobalInstance_InitFinsihed;
+            globalInstance.ActiveHymnChanged += GlobalInstance_ActiveHymnChanged;
+        }
+
+        private void GlobalInstance_ActiveHymnChanged(object sender, EventArgs e)
+        {
+            HymnNum = ((Models.Hymn)sender).Number;
         }
 
         private void GlobalInstance_InitFinsihed(object sender, EventArgs e)
         {
             IsBusy = false;
+            HymnNum = globalInstance.ActiveHymn != null ? globalInstance.ActiveHymn.Number : "1";
         }
 
         private void Globals_HymnInputTypeChanged(object sender, EventArgs e)

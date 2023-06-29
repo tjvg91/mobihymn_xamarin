@@ -20,11 +20,14 @@ using Newtonsoft.Json.Linq;
 using Microsoft.AppCenter.Crashes;
 using MobiHymn2.Views.Popups;
 using Microsoft.AppCenter.Analytics;
+using Microsoft.AppCenter.Distribute;
 
 namespace MobiHymn2.Utils
 {
 	public class Globals
     {
+        [JsonIgnore]
+        public Color Primary = Color.FromHex("F5D200");
         [JsonIgnore]
         public Color PrimaryText = Color.FromHex("2D2D2D");
         [JsonIgnore]
@@ -32,16 +35,136 @@ namespace MobiHymn2.Utils
         [JsonIgnore]
         public Color Brown = Color.FromHex("8b6220");
         [JsonIgnore]
+        public Color White = Color.FromHex("ffffff");
+        [JsonIgnore]
+        public Color Sepia = Color.FromHex("faebd7");
+        [JsonIgnore]
+        public Color Green = Color.FromHex("009200");
+        [JsonIgnore]
+        public Color Orange = Color.FromHex("DF7D38");
+        [JsonIgnore]
+        public Color Blue = Color.FromHex("337DEF");
+        [JsonIgnore]
+        public Color Purple = Color.FromHex("7237C5");
+        [JsonIgnore]
+        public Color Pink = Color.FromHex("FF0073");
+        [JsonIgnore]
         public uint Duration = 500;
+
+        [JsonIgnore]
+        public List<ThemeSettings> ThemeList = new List<ThemeSettings>();
 
         private string settingsName = "settings.json";
 
         [JsonIgnore]
         public CancellationTokenSource CTS = new CancellationTokenSource();
 
+        [JsonIgnore]
+        public List<FontSettings> FontList = new List<FontSettings>();
+
         private Globals()
         {
             ActiveThemeText = PrimaryText;
+            ThemeList.Add(new ThemeSettings
+            {
+                Background = White,
+                Foreground = PrimaryText
+            });
+            ThemeList.Add(new ThemeSettings
+            {
+                Background = Sepia,
+                Foreground = PrimaryText
+            });
+            ThemeList.Add(new ThemeSettings
+            {
+                Background = Brown,
+                Foreground = White
+            });
+            ThemeList.Add(new ThemeSettings
+            {
+                Background = Gray,
+                Foreground = White
+            });
+            ThemeList.Add(new ThemeSettings
+            {
+                Background = PrimaryText,
+                Foreground = White
+            });
+            ThemeList.Add(new ThemeSettings
+            {
+                Background = Green,
+                Foreground = Primary,
+            });
+            ThemeList.Add(new ThemeSettings
+            {
+                Background = Orange,
+                Foreground = White
+            });
+            ThemeList.Add(new ThemeSettings
+            {
+                Background = Blue,
+                Foreground = Primary,
+            });
+            ThemeList.Add(new ThemeSettings
+            {
+                Background = Purple,
+                Foreground = Primary
+            });
+            ThemeList.Add(new ThemeSettings
+            {
+                Background = Pink,
+                Foreground = Primary
+            });
+
+            if (DeviceInfo.Platform == DevicePlatform.iOS)
+                FontList.Add(new FontSettings
+                {
+                    Name = "SFPro"
+                });
+            else
+                FontList.Add(new FontSettings
+                {
+                    Name = "Roboto"
+                });
+            FontList.Add(new FontSettings
+            {
+                Name = "NotoSerif"
+            });
+            FontList.Add(new FontSettings
+            {
+                Name = "ChelseaMarket"
+            });
+            FontList.Add(new FontSettings
+            {
+                Name = "UnifrakturMaguntia"
+            });
+            FontList.Add(new FontSettings
+            {
+                Name = "StyleScript"
+            });
+            FontList.Add(new FontSettings
+            {
+                Name = "Frosty",
+                CharacterSpacing = 1.5
+            });
+            FontList.Add(new FontSettings
+            {
+                Name = "KGKissMeSlowly",
+                CharacterSpacing = 1.25
+            });
+            FontList.Add(new FontSettings
+            {
+                Name = "KGMelonheadz",
+                CharacterSpacing = 1.5
+            });
+            FontList.Add(new FontSettings
+            {
+                Name = "KGWhattheTeacherWants"
+            });
+            FontList.Add(new FontSettings
+            {
+                Name = "Cookie"
+            });
         }
         #region Properties
         private static Globals instance = null;
@@ -75,6 +198,13 @@ namespace MobiHymn2.Utils
         {
             get { return bookmarkList; }
             set { bookmarkList = value; }
+        }
+
+        private ObservableRangeCollection<string> searchList = new ObservableRangeCollection<string>();
+        public ObservableRangeCollection<string> SearchList
+        {
+            get { return searchList; }
+            set { searchList = value; }
         }
 
         private InputType hymnInputType = InputType.Numpad;
@@ -161,11 +291,8 @@ namespace MobiHymn2.Utils
                     );
                     activeReadTheme = value;
 
-
-                    if (value == PrimaryText || value == Gray || value == Brown)
-                        ActiveThemeText = Color.White;
-                    else
-                        ActiveThemeText = PrimaryText;
+                    ActiveThemeText = ThemeList.Find(theme => theme.Background.Equals(value)).Foreground;
+;
                     OnActiveReadThemeChanged(value);
                 }
             }
@@ -327,7 +454,7 @@ namespace MobiHymn2.Utils
         #endregion
 
         #region Methods
-        public async Task<bool> DownloadHymns(bool sync = false)
+        public async Task<bool> DownloadReadHymns(bool sync = false)
         {
             LogAppCenter((sync ? "Resync" : "Download") + " Starting");
             HttpHelper httpHelper = new HttpHelper();
@@ -362,7 +489,7 @@ namespace MobiHymn2.Utils
             LogAppCenter("Init Started");
             try
             {
-                if(await DownloadHymns())
+                if(await DownloadReadHymns())
                 {
                     HymnList = (from x in HymnList
                                 orderby double.Parse(x.Number.Replace("f", ".4").Replace("s", ".2").Replace("t", ".3"))
@@ -504,6 +631,9 @@ namespace MobiHymn2.Utils
                                     TimeStamp = (DateTime)(x["TimeStamp"]),
                                     Line = (string)x["Line"]
                                 }).ToObservableRangeCollection();
+                                break;
+                            case nameof(SearchList):
+                                SearchList = ((JArray)entry.Value).Select(x => (string)x).ToObservableRangeCollection();
                                 break;
                             case nameof(ActiveFontSize):
                                 ActiveFontSize = double.Parse(entry.Value + "");

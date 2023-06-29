@@ -133,7 +133,6 @@ namespace MobiHymn2.Utils
         {
             var hymnJson = JsonConvert.SerializeObject(hymnList);
             IFolder rootFolder = PCLStorage.FileSystem.Current.LocalStorage;
-            IFolder mobihymnFolder = await rootFolder.CreateFolderAsync(folderName, CreationCollisionOption.OpenIfExists);
             IFile file = await rootFolder.CreateFileAsync($"{folderName}/{jsonFile}", CreationCollisionOption.ReplaceExisting);
             await file.WriteAllTextAsync(hymnJson);
             return true;
@@ -142,8 +141,6 @@ namespace MobiHymn2.Utils
 		public async Task<bool> HymnListFileExists()
 		{
             IFolder rootFolder = PCLStorage.FileSystem.Current.LocalStorage;
-            //IFile file = await rootFolder.GetFileAsync($"mobihymn/{jsonFile}");
-            //await file.DeleteAsync();
             var existingResult = await rootFolder.CheckExistsAsync($"mobihymn/{jsonFile}");
             return existingResult == ExistenceCheckResult.FileExists;
 		}

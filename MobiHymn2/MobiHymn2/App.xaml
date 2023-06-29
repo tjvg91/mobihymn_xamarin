@@ -19,9 +19,11 @@
             <Color x:Key="Black">#141414</Color>
             <Color x:Key="Brown">#8b6220</Color>
             <Color x:Key="Red">#ff2627</Color>
-            <Color x:Key="Green">#4AAD52</Color>
-            <Color x:Key="Orange">#F19123</Color>
-            <Color x:Key="Blue">#5DA9E9</Color>
+            <Color x:Key="Green">#009200</Color>
+            <Color x:Key="Orange">#DF7D38</Color>
+            <Color x:Key="Blue">#337def</Color>
+            <Color x:Key="Purple">#7237C5</Color>
+            <Color x:Key="Pink">#FF0073</Color>
 
             <Style TargetType="Button">
                 <Setter Property="VisualStateManager.VisualStateGroups">

@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-
+using Microsoft.AppCenter.Distribute;
 using MobiHymn2.Utils;
 using Xamarin.CommunityToolkit.Extensions;
 using Xamarin.Essentials;
@@ -54,8 +54,13 @@ namespace MobiHymn2.Views
 
         async void SyncHymns()
         {
-            if (await globalInstance.DownloadHymns(true))
+            if (await globalInstance.DownloadReadHymns(true))
                 globalInstance.OnInitFinished("sync");
+        }
+
+        void TapGestureRecognizer_Tapped(System.Object sender, System.EventArgs e)
+        {
+            Distribute.CheckForUpdate();
         }
     }
 }
