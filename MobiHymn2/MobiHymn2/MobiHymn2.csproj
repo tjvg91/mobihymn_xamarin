@@ -12,7 +12,7 @@
     <PackageReference Include="Xamarin.Forms.RangeSlider" Version="1.0.2" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="Refractored.MvvmHelpers" Version="1.6.2" />
-    <PackageReference Include="PCLStorage" Version="1.0.2" NoWarn="NU1701"/>
+    <PackageReference Include="PCLStorage" Version="1.0.2" NoWarn="NU1701" />
     <PackageReference Include="Acr.UserDialogs" Version="7.2.0.564" />
     <PackageReference Include="Xamarin.CommunityToolkit" Version="2.0.6" />
     <PackageReference Include="Xam.Plugin.SimpleAppIntro" Version="1.0.35" />

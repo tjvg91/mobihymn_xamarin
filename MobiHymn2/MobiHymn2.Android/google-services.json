@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "525477034225",
+    "firebase_url": "https://mobihymn.firebaseio.com",
+    "project_id": "mobihymn",
+    "storage_bucket": "mobihymn.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:525477034225:android:b53bf7f9b61c69ec",
+        "android_client_info": {
+          "package_name": "com.mobihymn"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "525477034225-6kjt4atrp816c7c9dbe5gs2fklka4fen.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDFiXrnqM4roctUU-iVHGWK8gHbEkYqsSQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "525477034225-6kjt4atrp816c7c9dbe5gs2fklka4fen.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "525477034225-tn5jo6sht2cqge4rqm80ntpntahk5r4n.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.mobihymn"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

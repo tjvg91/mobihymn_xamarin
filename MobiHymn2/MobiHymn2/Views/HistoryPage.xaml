@@ -24,7 +24,7 @@
                         <Label Text="{Binding DateTimeText}" FontSize="Micro" Style="{StaticResource Subtitle}"/>
                     </FlexLayout>
                     
-                    <Label Text="{Binding Line}" Style="{StaticResource Subtitle}"/>
+                    <Label Text="{Binding Line}" Style="{StaticResource Subtitle}" TextType="Html"/>
 
                     <StackLayout.GestureRecognizers>
                         <TapGestureRecognizer

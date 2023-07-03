@@ -21,6 +21,7 @@ namespace MobiHymn2
 
             MainPage = new AppShell();
             bool darkMode = Preferences.Get("darkMode", false);
+            if (Preferences.ContainsKey("ResyncVersion")) Preferences.Set("ResyncVersion", "0");
             Application.Current.UserAppTheme = darkMode ? OSAppTheme.Dark : OSAppTheme.Light;
         }
 

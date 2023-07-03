@@ -84,6 +84,12 @@
     <PackageReference Include="CardsView">
       <Version>2.8.1</Version>
     </PackageReference>
+    <PackageReference Include="Xamarin.AndroidX.Core">
+      <Version>1.10.1.1</Version>
+    </PackageReference>
+    <PackageReference Include="Xamarin.Firebase.Config">
+      <Version>121.4.0.1</Version>
+    </PackageReference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="MainActivity.cs" />
@@ -92,12 +98,14 @@
     <Compile Include="CustomLabelRenderer.cs" />
     <Compile Include="SplashActivity.cs" />
     <Compile Include="AudioPlayerForAndroid.cs" />
+    <Compile Include="MyRemoteConfigurationService.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Resources\AboutResources.txt" />
     <None Include="Assets\AboutAssets.txt" />
     <None Include="Properties\AndroidManifest.xml" />
     <None Include="welcome.json" />
+    <None Include="google-services.json" />
   </ItemGroup>
   <ItemGroup>
     <AndroidResource Include="Resources\values\styles.xml" />
@@ -248,6 +256,10 @@
       <Generator></Generator>
     </AndroidResource>
     <AndroidResource Include="Resources\values-land\ic_launcher_background.xml">
+      <SubType></SubType>
+      <Generator></Generator>
+    </AndroidResource>
+    <AndroidResource Include="Resources\xml\RemoteConfigDefaults.xml">
       <SubType></SubType>
       <Generator></Generator>
     </AndroidResource>

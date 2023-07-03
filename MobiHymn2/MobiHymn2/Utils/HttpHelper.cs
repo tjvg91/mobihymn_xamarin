@@ -78,6 +78,7 @@ namespace MobiHymn2.Utils
                         lyrics = Regex.Replace(lyrics, "<pre>[^A-Z]+", "<pre>");
                         lyrics = Regex.Replace(lyrics, "\\r<br\\/>", "<br/>");
                         lyrics = Regex.Replace(lyrics, "<br\\/><\\/pre>", "</pre>");
+                        lyrics = Regex.Replace(lyrics, "\\r", "<br/>");
 
                         if (string.IsNullOrEmpty(lyrics) || new Regex("Error:", RegexOptions.IgnoreCase).IsMatch(lyrics))
                         {

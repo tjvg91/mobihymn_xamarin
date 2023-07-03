@@ -82,7 +82,7 @@
                                 Command="{Binding Source={x:Reference root}, Path=BindingContext.SearchItemSelected}"
                                 CommandParameter="{Binding .}"/>
                         </StackLayout.GestureRecognizers>
-                        <Label Text="{Binding Line}" Style="{StaticResource Title}"/>
+                        <Label Text="{Binding Line}" Style="{StaticResource Title}" TextType="Html"/>
                         <Label
                             Text="{Binding NumberText}"
                             Style="{StaticResource Subtitle}"

@@ -16,5 +16,12 @@ namespace MobiHymn2.Utils
 		Success = 3,
 		Error = 4
 	}
+
+	public enum CRUD
+	{
+		Create = 0,
+		Update = 1,
+		Delete = 2,
+	}
 }
 

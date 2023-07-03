@@ -75,7 +75,8 @@ namespace MobiHymn2.iOS
 
             string versionName = releaseDetails.ShortVersion;
             string versionCodeOrBuildNumber = releaseDetails.Version;
-            string releaseNotes = releaseDetails.ReleaseNotes;
+            //string releaseNotes = releaseDetails.ReleaseNotes;
+            string releaseNotes = "New update available. Let's go!";
             Uri releaseNotesUrl = releaseDetails.ReleaseNotesUrl;
 
             // custom dialog

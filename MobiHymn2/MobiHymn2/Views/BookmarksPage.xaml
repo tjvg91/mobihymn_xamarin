@@ -38,7 +38,7 @@
                         <StackLayout
                             BackgroundColor="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}"
                             Padding="10" Margin="0">
-                            <Label Text="{Binding Line}" Style="{StaticResource Title}"/>
+                            <Label Text="{Binding Line}" Style="{StaticResource Title}" TextType="Html"/>
                             <Label
                                 Text="{Binding NumberText}"
                                 Style="{StaticResource Subtitle}"
