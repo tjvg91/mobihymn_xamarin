@@ -1,0 +1,252 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<Shell xmlns="http://xamarin.com/schemas/2014/forms" 
+       xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+       xmlns:xct="http://xamarin.com/schemas/2020/toolkit"
+       xmlns:local="clr-namespace:MobiHymn4.Views"
+       xmlns:fontawesome="clr-namespace:FontAwesome"
+       xmlns:utils="clr-namespace:MobiHymn4.Utils"
+       xmlns:logo="clr-namespace:LogoIcon"
+       xmlns:ios="clr-namespace:Xamarin.Forms.PlatformConfiguration.iOSSpecific;assembly=Xamarin.Forms.Core" xmlns:viewmodels="clr-namespace:MobiHymn4.ViewModels"
+       ios:Page.UseSafeArea="true"
+       BackgroundColor="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}"
+       FlyoutBackgroundColor="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}"
+       Title="MobiHymn4"
+       x:Name="root"
+       x:Class="MobiHymn4.AppShell">
+
+    <!--
+        The overall app visual hierarchy is defined here, along with navigation.
+    
+        https://docs.microsoft.com/xamarin/xamarin-forms/app-fundamentals/shell/
+    -->
+
+    <Shell.BindingContext>
+        <viewmodels:SettingsViewModel />
+    </Shell.BindingContext>
+
+    <Shell.ItemTemplate>
+        <DataTemplate>
+            <Grid ColumnDefinitions="30,*" Padding="15,20">
+                <VisualStateManager.VisualStateGroups>
+                    <VisualStateGroup x:Name="CommonStates">
+                        <VisualState x:Name="Normal">
+                            <VisualState.Setters>
+                                <Setter Property="BackgroundColor" Value="Transparent" />
+                                <Setter TargetName="FlyoutLabel" Property="Label.TextColor" Value="{AppThemeBinding Dark=White, Light={StaticResource PrimaryText},Default={StaticResource PrimaryText}}" />
+                                <Setter TargetName="FlyoutItemIcon" Property="FontImageSource.Color" Value="{AppThemeBinding Dark=White, Light={StaticResource PrimaryText},Default={StaticResource PrimaryText}}" />
+                            </VisualState.Setters>
+                        </VisualState>
+                        
+                        <VisualState x:Name="Selected">
+                            <VisualState.Setters>
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter TargetName="FlyoutLabel" Property="Label.TextColor" Value="{StaticResource PrimaryText}" />
+                                <Setter TargetName="FlyoutItemIcon" Property="FontImageSource.Color" Value="{StaticResource PrimaryText}" />
+                            </VisualState.Setters>
+                        </VisualState>
+                    </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+                <Image Grid.Column="0">
+                    <Image.Source>
+                        <FontImageSource
+                            x:Name="FlyoutItemIcon"
+                            FontFamily="FAS"
+                            Color="{AppThemeBinding Dark=White, Light={StaticResource PrimaryText},Default={StaticResource PrimaryText}}"
+                            Glyph="{Binding Icon}"
+                            Size="14"/>
+                    </Image.Source>
+                </Image>
+                <RelativeLayout Grid.Column="1" HeightRequest="18">
+                    <Image
+                        RelativeLayout.XConstraint="{ConstraintExpression Type=RelativeToParent, Property=Width, Constant=-20}"
+                        RelativeLayout.YConstraint="{ConstraintExpression Type=RelativeToParent, Property=Height, Factor=0.33}"
+                        IsVisible="False">
+                        <Image.Source>
+                            <FontImageSource
+                                FontFamily="FAS"
+                                Color="{AppThemeBinding Dark=White, Light={StaticResource PrimaryText},Default={StaticResource PrimaryText}}"
+                                Glyph="{x:Static fontawesome:FontAwesomeIcons.Circle}"
+                                Size="6"/>
+                        </Image.Source>
+                        
+                        <Image.Triggers>
+                            <MultiTrigger TargetType="Image">
+                                <MultiTrigger.Conditions>
+                                    <!--<BindingCondition Binding="{Binding Path=ShowSyncs, Source={x:Reference root}}" Value="True" />-->
+                                    <!--BindingCondition Binding="{Binding Title}" Value="Settings" />-->
+                                </MultiTrigger.Conditions>
+                                <Setter Property="IsVisible" Value="True" />
+                            </MultiTrigger>
+                        </Image.Triggers>
+                    </Image>
+                    <Label Text="{Binding Title}"  FontSize="14" x:Name="FlyoutLabel"/>
+                </RelativeLayout>
+                
+            </Grid>
+
+        </DataTemplate>
+
+    </Shell.ItemTemplate>
+
+    <Shell.Resources>
+        <ResourceDictionary>
+            <Style x:Key="BaseStyle" TargetType="Element">
+                <Setter Property="Shell.BackgroundColor" Value="{StaticResource Primary}" />
+                <Setter Property="Shell.ForegroundColor" Value="{StaticResource PrimaryText}" />
+                <Setter Property="Shell.TitleColor" Value="{StaticResource PrimaryText}" />
+                <Setter Property="Shell.DisabledColor" Value="#B4FFFFFF" />
+                <Setter Property="Shell.UnselectedColor" Value="#95FFFFFF" />
+                <Setter Property="Shell.TabBarBackgroundColor" Value="{StaticResource Primary}" />
+                <Setter Property="Shell.TabBarForegroundColor" Value="{StaticResource PrimaryText}"/>
+                <Setter Property="Shell.TabBarUnselectedColor" Value="#95FFFFFF"/>
+                <Setter Property="Shell.TabBarTitleColor" Value="{StaticResource PrimaryText}"/>
+            </Style>
+            <Style TargetType="TabBar" BasedOn="{StaticResource BaseStyle}" />
+            <Style TargetType="FlyoutItem" BasedOn="{StaticResource BaseStyle}"/>
+
+            <!--
+            Default Styles for all Flyout Items
+            https://docs.microsoft.com/xamarin/xamarin-forms/app-fundamentals/shell/flyout#flyoutitem-and-menuitem-style-classes
+            -->
+            <Style Class="FlyoutItemLabelStyle" TargetType="Label">
+                <Setter Property="TextColor" Value="{AppThemeBinding Dark=White, Light={StaticResource PrimaryText},Default={StaticResource PrimaryText}}"></Setter>
+            </Style>
+            <Style Class="FlyoutItemLayoutStyle" TargetType="Layout" ApplyToDerivedTypes="True">
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}" />
+                                    <Setter TargetName="FlyoutItemLabel" Property="Label.TextColor" Value="{AppThemeBinding Dark=White, Light={StaticResource PrimaryText},Default={StaticResource PrimaryText}}" />
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="Selected">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                    <Setter TargetName="FlyoutItemLabel" Property="Label.TextColor" Value="{StaticResource PrimaryText}" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
+            </Style>
+
+            <!--
+            Custom Style you can apply to any Flyout Item
+            -->
+            <Style Class="MenuItemLayoutStyle" TargetType="Layout" ApplyToDerivedTypes="True">
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal">
+                                <VisualState.Setters>
+                                    <Setter TargetName="FlyoutItemLabel" Property="Label.TextColor" Value="{StaticResource PrimaryText}" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
+    </Shell.Resources>
+
+    <Shell.FlyoutHeader>
+        <FlexLayout
+            JustifyContent="Start"
+            Margin="{OnPlatform Android='0,0,0,10',iOS='0,50,0,0'}"
+            Direction="Column"
+            BackgroundColor="Transparent">
+            <StackLayout Orientation="Horizontal" VerticalOptions="CenterAndExpand" HorizontalOptions="FillAndExpand">
+                <Label
+                    Text="{x:Static logo:IconFont.Logo}"
+                    FontFamily="LOGO"
+                    TextColor="{AppThemeBinding Dark={StaticResource Primary}, Light={StaticResource PrimaryText}}"
+                    Padding="5,10,0,10"
+                    FontSize="40"
+                />
+                <Label
+                    Text="obiHymn"
+                    TextColor="{AppThemeBinding Dark={StaticResource Primary}, Light={StaticResource PrimaryText}}"
+                    VerticalTextAlignment="Center"
+                    CharacterSpacing="3"
+                    Padding="{OnPlatform Android='-7,0,0,0', iOS='0,0,0,0'}"
+                    FontSize="14"
+                    FontAttributes="Bold"
+                />
+            </StackLayout>
+            <BoxView
+                HorizontalOptions="FillAndExpand"
+                VerticalOptions="Center"
+                HeightRequest="1"
+                BackgroundColor="{AppThemeBinding Dark={StaticResource PrimaryLight}, Light={StaticResource GrayLight}}"
+            />
+        </FlexLayout>
+
+    </Shell.FlyoutHeader>
+
+    <FlyoutItem Title="Read" Icon="{x:Static fontawesome:FontAwesomeIcons.BookOpenReader}">
+        <ShellContent Route="{x:Static utils:Routes.READ}" ContentTemplate="{DataTemplate local:ReadPage}"/>
+    </FlyoutItem>
+    <FlyoutItem Title="Search" Icon="{x:Static fontawesome:FontAwesomeIcons.Search}">
+        <ShellContent Route="{x:Static utils:Routes.SEARCH}" ContentTemplate="{DataTemplate local:SearchPage}"/>
+    </FlyoutItem>
+    <FlyoutItem Title="History" Icon="{x:Static fontawesome:FontAwesomeIcons.History}">
+        <ShellContent Route="{x:Static utils:Routes.HISTORY}" ContentTemplate="{DataTemplate local:HistoryPage}" />
+    </FlyoutItem>
+    <FlyoutItem Title="Bookmarks" Icon="{x:Static fontawesome:FontAwesomeIcons.Heart}">
+        <ShellContent Route="{x:Static utils:Routes.BOOKMARKS}" ContentTemplate="{DataTemplate local:BookmarksPage}" />
+    </FlyoutItem>
+    <FlyoutItem Title="About" Icon="{x:Static fontawesome:FontAwesomeIcons.CircleInfo}">
+        <ShellContent Route="{x:Static utils:Routes.ABOUT}" ContentTemplate="{DataTemplate local:AboutPage}" />
+    </FlyoutItem>
+    <FlyoutItem Title="Settings" Icon="{x:Static fontawesome:FontAwesomeIcons.Cogs}">
+        <ShellContent Route="{x:Static utils:Routes.SETTINGS}" ContentTemplate="{DataTemplate local:SettingsPage}" />
+    </FlyoutItem>
+
+    <!--
+        TabBar lets you define content that won't show up in a flyout menu. When this content is active
+        the flyout menu won't be available. This is useful for creating areas of the application where 
+        you don't want users to be able to navigate away from. If you would like to navigate to this 
+        content you can do so by calling 
+        await Shell.Current.GoToAsync("//LoginPage");
+    -->
+    <TabBar>
+        <ShellContent x:Name="NavHome" Route="{x:Static utils:Routes.HOME}" ContentTemplate="{DataTemplate local:NumSearchPage}"/>
+    </TabBar>
+
+    <!-- Optional Templates 
+    // These may be provided inline as below or as separate classes.
+
+    // This header appears at the top of the Flyout.
+    // https://docs.microsoft.com/xamarin/xamarin-forms/app-fundamentals/shell/flyout#flyout-header
+    <Shell.FlyoutHeaderTemplate>
+        <DataTemplate>
+            <Grid>ContentHere</Grid>
+        </DataTemplate>
+    </Shell.FlyoutHeaderTemplate>
+
+    // ItemTemplate is for ShellItems as displayed in a Flyout
+    // https://docs.microsoft.com/xamarin/xamarin-forms/app-fundamentals/shell/flyout#define-flyoutitem-appearance
+    <Shell.ItemTemplate>
+        <DataTemplate>
+            <ContentView>
+                Bindable Properties: Title, Icon
+            </ContentView>
+        </DataTemplate>
+    </Shell.ItemTemplate>
+
+    // MenuItemTemplate is for MenuItems as displayed in a Flyout
+    // https://docs.microsoft.com/xamarin/xamarin-forms/app-fundamentals/shell/flyout#define-menuitem-appearance
+    <Shell.MenuItemTemplate>
+        <DataTemplate>
+            <ContentView>
+                Bindable Properties: Text, Icon
+            </ContentView>
+        </DataTemplate>
+    </Shell.MenuItemTemplate>
+
+    -->
+
+</Shell>
+

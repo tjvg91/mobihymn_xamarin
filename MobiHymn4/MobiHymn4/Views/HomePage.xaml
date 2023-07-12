@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    xmlns="http://xamarin.com/schemas/2014/forms"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:Utils="clr-namespace:MobiHymn4.Utils"
+    x:Class="MobiHymn4.Views.HomePage">
+    <ListView>
+		<ListView.BindingContext>
+			<Utils:Globals/>
+		</ListView.BindingContext>
+    </ListView>
+
+</ContentPage>
+

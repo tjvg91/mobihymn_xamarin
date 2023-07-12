@@ -1,0 +1,527 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    xmlns="http://xamarin.com/schemas/2014/forms"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:fontawesome="clr-namespace:FontAwesome"
+    xmlns:utils="clr-namespace:MobiHymn4.Utils"
+    xmlns:ess="clr-namespace:Xamarin.Essentials;assembly=Xamarin.Essentials"
+    xmlns:ViewModels="clr-namespace:MobiHymn4.ViewModels"
+    Shell.TabBarIsVisible="False"
+    Shell.NavBarIsVisible="{Binding IsNotBusy}"
+    x:Class="MobiHymn4.Views.NumSearchPage"
+    x:Name="root"
+    Title="{Binding Title}">
+
+	<ContentPage.BindingContext>
+		<ViewModels:NumSearchViewModel/>
+	</ContentPage.BindingContext>
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem x:Name="tbSearch" Clicked="tbSearch_Clicked">
+            <ToolbarItem.IconImageSource>
+                <FontImageSource
+                    FontFamily="FAS"
+                    Color="{StaticResource Key=PrimaryText}"
+                    Size="Medium"
+                    Glyph="{Static Member=fontawesome:FontAwesomeIcons.Search}"/>
+            </ToolbarItem.IconImageSource>
+        </ToolbarItem>
+        <ToolbarItem x:Name="tbSettings" Clicked="tbSettings_Clicked">
+            <ToolbarItem.IconImageSource>
+                <FontImageSource
+                    FontFamily="FAS"
+                    Color="{StaticResource Key=PrimaryText}"
+                    Size="Medium"
+                    Glyph="{Static Member=fontawesome:FontAwesomeIcons.Cogs}"/>
+            </ToolbarItem.IconImageSource>
+        </ToolbarItem>
+    </ContentPage.ToolbarItems>
+
+    <StackLayout
+        VerticalOptions="FillAndExpand"
+        HorizontalOptions="FillAndExpand"
+        BackgroundColor="{AppThemeBinding Default=White, Dark={StaticResource PrimaryText}, Light=White}">
+        <FlexLayout
+            HorizontalOptions="CenterAndExpand"
+            VerticalOptions="CenterAndExpand"
+            AlignItems="Center"
+            JustifyContent="Center"
+            IsVisible="False">
+            <FlexLayout.Triggers>
+                <DataTrigger TargetType="{Type FlexLayout}" Binding="{Binding IsBusy}" Value="True">
+                    <Setter Property="IsVisible" Value="True" />
+                </DataTrigger>
+            </FlexLayout.Triggers>
+        </FlexLayout>
+        <FlexLayout Direction="Column" AlignItems="End" JustifyContent="Start" Margin="5" IsVisible="False">
+            <FlexLayout.Triggers>
+                <DataTrigger TargetType="{Type FlexLayout}" Binding="{Binding IsBusy}" Value="False">
+                    <Setter Property="IsVisible" Value="True" />
+                </DataTrigger>
+            </FlexLayout.Triggers>
+
+            <Button HeightRequest="30" WidthRequest="30" Background="Transparent" IsVisible="False" Clicked="Toggle_Clicked">
+                <Button.ImageSource>
+                    <FontImageSource
+                        FontFamily="FAS"
+                        Color="{AppThemeBinding Dark={StaticResource Key=White}, Light={StaticResource Key=PrimaryText}}"
+                        Size="Medium"
+                        Glyph="{Static Member=fontawesome:FontAwesomeIcons.GripVertical}" />
+                </Button.ImageSource>
+                <Button.Triggers>
+                    <DataTrigger TargetType="{Type VisualElement}" Binding="{Binding HymnInputType}" Value="{Static Member=utils:InputType.Numpad}">
+                        <Setter Property="IsVisible" Value="True" />
+                    </DataTrigger>
+                </Button.Triggers>
+            </Button>
+            <Button HeightRequest="30" WidthRequest="30" Background="Transparent" IsVisible="False" Clicked="Toggle_Clicked">
+                <Button.ImageSource>
+                    <FontImageSource
+                        FontFamily="FAS"
+                        Color="{AppThemeBinding Dark={StaticResource Key=White}, Light={StaticResource Key=PrimaryText}}"
+                        Size="Medium"
+                        Glyph="{Static Member=fontawesome:FontAwesomeIcons.Keyboard}" />
+                </Button.ImageSource>
+                <Button.Triggers>
+                    <DataTrigger TargetType="{Type VisualElement}" Binding="{Binding HymnInputType}" Value="{Static Member=utils:InputType.Grid}">
+                        <Setter Property="IsVisible" Value="True" />
+                    </DataTrigger>
+                </Button.Triggers>
+            </Button>
+        </FlexLayout>
+        
+        <Grid x:Name="grdNums" Margin="10" IsVisible="False">
+            <Grid.Triggers>
+                <MultiTrigger TargetType="{Type Grid}">
+                    <MultiTrigger.Conditions>
+                        <BindingCondition Binding="{Binding HymnInputType}" Value="{Static Member=utils:InputType.Grid}" />
+                        <BindingCondition Binding="{Binding IsNotBusy}" Value="True" />
+                    </MultiTrigger.Conditions>
+                    <Setter Property="IsVisible" Value="True" />
+                </MultiTrigger>
+            </Grid.Triggers>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <ScrollView Grid.Column="0">
+                <StackLayout Orientation="Vertical">
+                    <CollectionView ItemsSource="{Binding HundredsList}">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Vertical" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,10">
+                                    <Button Text="{Binding Text}" Clicked="Hundreds_Clicked" CommandParameter="{Binding Index}" VerticalOptions="Center" HeightRequest="60">
+                                        <Button.Triggers>
+                                            <DataTrigger TargetType="Button" Binding="{Binding Path=CommandParameter, Source={RelativeSource AncestorLevel=1, AncestorType={x:Type Button}}}" Value="{Binding ActiveHundreds, Source={Reference root}}">
+                                                <Setter Property="Style" Value="{AppThemeBinding Dark={StaticResource Button-Outline-Reverse}, Light={StaticResource Button-Outline}}" />
+                                            </DataTrigger>
+                                        </Button.Triggers>
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </StackLayout>
+            </ScrollView>
+
+            <ScrollView Grid.Column="1">
+                <StackLayout Orientation="Vertical">
+                    <CollectionView ItemsSource="{Binding TensList}">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,10">
+                                    <Button Text="{Binding Text}" Clicked="Tens_Clicked" CommandParameter="{Binding Index}" VerticalOptions="Center" HeightRequest="60">
+                                        <Button.Triggers>
+                                            <DataTrigger TargetType="Button" Binding="{Binding ActiveTens, Source={Reference root}}" Value="{Binding Index}">
+                                                <Setter Property="Style" Value="{AppThemeBinding Dark={StaticResource Button-Outline-Reverse}, Light={StaticResource Button-Outline}}" />
+                                            </DataTrigger>
+                                        </Button.Triggers>
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </StackLayout>
+            </ScrollView>
+
+            <ScrollView Grid.Column="2">
+                <StackLayout Orientation="Vertical">
+                    <CollectionView ItemsSource="{Binding OnesList}">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,10">
+                                    <Button Text="{Binding Text}" Clicked="Ones_Clicked" CommandParameter="{Binding Index}" VerticalOptions="Center" HeightRequest="60">
+                                        <Button.Triggers>
+                                            <DataTrigger TargetType="Button" Binding="{Binding ActiveOnes.Number, Source={Reference root}}" Value="{Binding Index.Number}">
+                                                <Setter Property="Style" Value="{AppThemeBinding Dark={StaticResource Button-Outline-Reverse}, Light={StaticResource Button-Outline}}" />
+                                            </DataTrigger>
+                                        </Button.Triggers>
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </StackLayout>
+            </ScrollView>
+        </Grid>
+        <StackLayout
+            VerticalOptions="FillAndExpand"
+            IsVisible="False"
+            BackgroundColor="{AppThemeBinding Default=White, Dark={StaticResource PrimaryText}, Light=White}">
+            <StackLayout.Triggers>
+                <MultiTrigger TargetType="{Type StackLayout}">
+                    <MultiTrigger.Conditions>
+                        <BindingCondition Binding="{Binding HymnInputType}" Value="{Static Member=utils:InputType.Numpad}" />
+                        <BindingCondition Binding="{Binding IsNotBusy}" Value="True" />
+                    </MultiTrigger.Conditions>
+                    <Setter Property="IsVisible" Value="True" />
+                </MultiTrigger>
+            </StackLayout.Triggers>
+            <Grid
+                ColumnSpacing="0"
+                RowSpacing="0">
+                <Grid.Triggers>
+                    <DataTrigger
+                        TargetType="{Type Grid}"
+                        Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                        Value="{Static Member=ess:DisplayOrientation.Portrait}">
+                            <Setter Property="RowDefinitions" Value="{OnIdiom Tablet='*,70,70,70,70,70,70', Default='*,70,70,70,70,70,20'}" />
+                            <Setter Property="ColumnDefinitions" Value="*,100,100,100,*" />
+                            <Setter Property="VerticalOptions" Value="FillAndExpand" />
+                    </DataTrigger>
+                    <DataTrigger
+                        TargetType="{Type Grid}"
+                        Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                        Value="{Static Member=ess:DisplayOrientation.Landscape}">
+                            <Setter Property="RowDefinitions" Value="*,70,70,70,70" />
+                            <Setter Property="ColumnDefinitions" Value="*,100,100,100,100,100,*" />
+                            <Setter Property="VerticalOptions" Value="FillAndExpand" />
+                    </DataTrigger>
+                </Grid.Triggers>
+
+                <Label
+                    x:Name="btnHymnNum"
+                    Text="{Binding HymnNum}"
+                    TextTransform="Lowercase"
+                    TextColor="{AppThemeBinding Dark={StaticResource Key=GrayLight}, Light={StaticResource Key=Gray}}"
+                    HorizontalTextAlignment="Center"
+                    VerticalTextAlignment="Center"
+                    Grid.Column="0"
+                    Grid.Row="0"
+                    Grid.ColumnSpan="5"
+                    FontSize="50"
+                >
+                    <Label.Triggers>
+                        <DataTrigger
+                            TargetType="{Type Label}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Portrait}">
+                            <Setter Property="Grid.ColumnSpan" Value="5" />
+                        </DataTrigger>
+                        <DataTrigger
+                            TargetType="{Type Label}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Landscape}">
+                            <Setter Property="Grid.ColumnSpan" Value="7" />
+                        </DataTrigger>
+                    </Label.Triggers>
+
+                </Label>
+
+                <Button Text="1" Grid.Row="1" BindingContext="1" Clicked="Key_Clicked" Style="{StaticResource Key=Numpad}">
+                    <Button.Triggers>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Portrait}">
+                            <Setter Property="Grid.Column" Value="1" />
+                        </DataTrigger>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Landscape}">
+                            <Setter Property="Grid.Column" Value="2" />
+                        </DataTrigger>
+                    </Button.Triggers>
+
+                </Button>
+                <Button Text="2" Grid.Column="2" Grid.Row="1" BindingContext="2" Clicked="Key_Clicked" Style="{StaticResource Key=Numpad}">
+                    <Button.Triggers>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Portrait}">
+                            <Setter Property="Grid.Column" Value="2" />
+                        </DataTrigger>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Landscape}">
+                            <Setter Property="Grid.Column" Value="3" />
+                        </DataTrigger>
+                    </Button.Triggers>
+
+                </Button>
+                <Button Text="3" Grid.Column="3" Grid.Row="1" BindingContext="3" Clicked="Key_Clicked" Style="{StaticResource Key=Numpad}">
+                    <Button.Triggers>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Portrait}">
+                            <Setter Property="Grid.Column" Value="3" />
+                        </DataTrigger>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Landscape}">
+                            <Setter Property="Grid.Column" Value="4" />
+                        </DataTrigger>
+                    </Button.Triggers>
+
+                </Button>
+                    
+                <Button Text="4" Grid.Column="1" Grid.Row="2" BindingContext="4" Clicked="Key_Clicked" Style="{StaticResource Key=Numpad}">
+                    <Button.Triggers>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Portrait}">
+                            <Setter Property="Grid.Column" Value="1" />
+                        </DataTrigger>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Landscape}">
+                            <Setter Property="Grid.Column" Value="2" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+                <Button Text="5" Grid.Column="2" Grid.Row="2" BindingContext="5" Clicked="Key_Clicked" Style="{StaticResource Key=Numpad}">
+                    <Button.Triggers>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Portrait}">
+                            <Setter Property="Grid.Column" Value="2" />
+                        </DataTrigger>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Landscape}">
+                            <Setter Property="Grid.Column" Value="3" />
+                        </DataTrigger>
+                    </Button.Triggers>
+
+                </Button>
+                <Button Text="6" Grid.Column="3" Grid.Row="2" BindingContext="6" Clicked="Key_Clicked" Style="{StaticResource Key=Numpad}">
+                    <Button.Triggers>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Portrait}">
+                            <Setter Property="Grid.Column" Value="3" />
+                        </DataTrigger>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Landscape}">
+                            <Setter Property="Grid.Column" Value="4" />
+                        </DataTrigger>
+                    </Button.Triggers>
+
+                </Button>
+                    
+                <Button Text="7" Grid.Column="1" Grid.Row="3" BindingContext="7" Clicked="Key_Clicked" Style="{StaticResource Key=Numpad}">
+                    <Button.Triggers>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Portrait}">
+                            <Setter Property="Grid.Column" Value="1" />
+                        </DataTrigger>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Landscape}">
+                            <Setter Property="Grid.Column" Value="2" />
+                        </DataTrigger>
+                    </Button.Triggers>
+
+                </Button>
+                <Button Text="8" Grid.Column="2" Grid.Row="3" BindingContext="8" Clicked="Key_Clicked" Style="{StaticResource Key=Numpad}">
+                    <Button.Triggers>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Portrait}">
+                            <Setter Property="Grid.Column" Value="2" />
+                        </DataTrigger>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Landscape}">
+                            <Setter Property="Grid.Column" Value="3" />
+                        </DataTrigger>
+                    </Button.Triggers>
+
+                </Button>
+                <Button Text="9" Grid.Column="3" Grid.Row="3" BindingContext="9" Clicked="Key_Clicked" Style="{StaticResource Key=Numpad}">
+                    <Button.Triggers>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Portrait}">
+                            <Setter Property="Grid.Column" Value="3" />
+                        </DataTrigger>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Landscape}">
+                            <Setter Property="Grid.Column" Value="4" />
+                        </DataTrigger>
+                    </Button.Triggers>
+
+                </Button>
+
+                
+                <Button Text="s" BindingContext="s" TextTransform="Lowercase" Clicked="Key_Clicked" Style="{StaticResource Key=Numpad}">
+                    <Button.Triggers>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Portrait}">
+                            <Setter Property="Grid.Column" Value="1" />
+                            <Setter Property="Grid.Row" Value="4" />
+                        </DataTrigger>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Landscape}">
+                            <Setter Property="Grid.Column" Value="1" />
+                            <Setter Property="Grid.Row" Value="1" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+                <Button Text="t" BindingContext="t" TextTransform="Lowercase" Clicked="Key_Clicked" Style="{StaticResource Key=Numpad}">
+                    <Button.Triggers>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Portrait}">
+                            <Setter Property="Grid.Column" Value="2" />
+                            <Setter Property="Grid.Row" Value="4" />
+                        </DataTrigger>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Landscape}">
+                            <Setter Property="Grid.Column" Value="1" />
+                            <Setter Property="Grid.Row" Value="2" />
+                        </DataTrigger>
+                    </Button.Triggers>
+
+                </Button>
+                <Button Text="f" BindingContext="f" TextTransform="Lowercase" Clicked="Key_Clicked" Style="{StaticResource Key=Numpad}">
+                    <Button.Triggers>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Portrait}">
+                            <Setter Property="Grid.Column" Value="3" />
+                            <Setter Property="Grid.Row" Value="4" />
+                        </DataTrigger>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Landscape}">
+                            <Setter Property="Grid.Column" Value="1" />
+                            <Setter Property="Grid.Row" Value="3" />
+                        </DataTrigger>
+                    </Button.Triggers>
+
+                </Button>
+                    
+                <Button BindingContext="b" Clicked="Key_Clicked" Style="{StaticResource Key=Numpad}">
+                    <Button.ImageSource>
+                        <FontImageSource
+                            FontFamily="FAS"
+                            Color="{AppThemeBinding Dark={StaticResource Key=PrimaryText}, Light={StaticResource Key=Primary}}"
+                            Size="19"
+                            Glyph="{Static Member=fontawesome:FontAwesomeIcons.Backspace}"
+                        />
+                    </Button.ImageSource>
+                    <Button.Triggers>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Portrait}">
+                            <Setter Property="Grid.Column" Value="1" />
+                            <Setter Property="Grid.Row" Value="5" />
+                        </DataTrigger>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Landscape}">
+                            <Setter Property="Grid.Column" Value="5" />
+                            <Setter Property="Grid.Row" Value="1" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+                    
+                <Button Text="0" BindingContext="0" Clicked="Key_Clicked" Style="{StaticResource Key=Numpad}">
+                    <Button.Triggers>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Portrait}">
+                            <Setter Property="Grid.Column" Value="2" />
+                            <Setter Property="Grid.Row" Value="5" />
+                        </DataTrigger>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Landscape}">
+                            <Setter Property="Grid.Column" Value="5" />
+                            <Setter Property="Grid.Row" Value="2" />
+                        </DataTrigger>
+                    </Button.Triggers>
+
+                </Button>
+
+                <Button BindingContext="e" Clicked="Key_Clicked" Style="{StaticResource Key=Numpad}">
+                    <Button.ImageSource>
+                        <FontImageSource
+                            FontFamily="FAS"
+                            Color="{AppThemeBinding Dark={StaticResource Key=PrimaryText}, Light={StaticResource Key=Primary}}"
+                            Size="19"
+                            Glyph="{Static Member=fontawesome:FontAwesomeIcons.Check}"
+                        />
+                    </Button.ImageSource>
+                    <Button.Triggers>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Portrait}">
+                            <Setter Property="Grid.Column" Value="3" />
+                            <Setter Property="Grid.Row" Value="5" />
+                        </DataTrigger>
+                        <DataTrigger
+                            TargetType="{Type Button}"
+                            Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
+                            Value="{Static Member=ess:DisplayOrientation.Landscape}">
+                            <Setter Property="Grid.Column" Value="5" />
+                            <Setter Property="Grid.Row" Value="3" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+            </Grid>
+
+        </StackLayout>
+    </StackLayout>
+</ContentPage>
+

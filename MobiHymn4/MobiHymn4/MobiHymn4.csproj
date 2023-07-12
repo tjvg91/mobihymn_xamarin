@@ -1,0 +1,110 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
+    <ProduceReferenceAssemblyInOutDir>true</ProduceReferenceAssemblyInOutDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <LangVersion>9.0</LangVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <LangVersion>9.0</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Xamarin.Forms" Version="5.0.0.2578" />  
+    <PackageReference Include="Xamarin.Essentials" Version="1.7.7" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Refractored.MvvmHelpers" Version="1.6.2" />
+    <PackageReference Include="PCLStorage" Version="1.0.2" />
+    <PackageReference Include="Xamanimation" Version="1.3.0" />
+    <PackageReference Include="Xamarin.CommunityToolkit" Version="2.0.6" />
+    <PackageReference Include="Melanchall.DryWetMidi" Version="7.0.0" />
+    <PackageReference Include="Xamarin.FFImageLoading" Version="2.4.11.982" />
+    <PackageReference Include="Xamarin.FFImageLoading.Forms" Version="2.4.11.982" />
+    <PackageReference Include="CardsView" Version="2.8.1" />
+    <PackageReference Include="Plugin.AudioRecorder" Version="1.1.0" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.11.49" />
+    <PackageReference Include="Com.Airbnb.Xamarin.Forms.Lottie" Version="4.1.0" />
+    <PackageReference Include="Polly" Version="7.2.4" />
+    <PackageReference Include="Polly.Extensions.Http" Version="3.0.0" />
+    <PackageReference Include="FirebaseDatabase.net" Version="4.2.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Remove="Resources\Fonts\ChelseaMarket-Regular.ttf" />
+    <None Remove="Resources\Fonts\faRegular.ttf" />
+    <None Remove="Resources\Fonts\NotoSerif-BoldItalic.ttf" />
+    <None Remove="Resources\Fonts\NotoSerif-Regular.ttf" />
+    <None Remove="Resources\Fonts\faBrands.ttf" />
+    <None Remove="Resources\Fonts\DancingScript.ttf" />
+    <None Remove="Resources\Fonts\logo.ttf" />
+    <None Remove="Resources\Fonts\UnifrakturMaguntia-Regular.ttf" />
+    <None Remove="Resources\Fonts\SFPro.ttf" />
+    <None Remove="Resources\Fonts\KGWhattheTeacherWants.ttf" />
+    <None Remove="Resources\Fonts\ionicons.ttf" />
+    <None Remove="Resources\Fonts\Frosty.ttf" />
+    <None Remove="Resources\Fonts\KGMelonheadz.ttf" />
+    <None Remove="Resources\Fonts\KGKissMeSlowly.ttf" />
+    <None Remove="Resources\Fonts\NotoSerif-Italic.ttf" />
+    <None Remove="Resources\Fonts\NotoSerif-Bold.ttf" />
+    <None Remove="Resources\Fonts\Cookie-Regular.ttf" />
+    <None Remove="Resources\Fonts\faSolid.ttf" />
+    <None Remove="Resources\Fonts\StyleScript-Regular.ttf" />
+    <None Remove="Resources\GIF\heart.gif" />
+    <None Remove="Resources\GIF\history-light.gif" />
+    <None Remove="Resources\GIF\done.gif" />
+    <None Remove="Resources\GIF\error.gif" />
+    <None Remove="Resources\GIF\search-dark.gif" />
+    <None Remove="Resources\GIF\not-found.gif" />
+    <None Remove="Resources\GIF\bookmark-saved.gif" />
+    <None Remove="Resources\GIF\save-music.gif" />
+    <None Remove="Resources\GIF\no-internet-light.gif" />
+    <None Remove="Resources\GIF\welcome.gif" />
+    <None Remove="Resources\GIF\read-play.gif" />
+    <None Remove="Resources\GIF\download.gif" />
+    <None Remove="Resources\GIF\bookmark-deleted.gif" />
+    <None Remove="Resources\GIF\no-internet-dark.gif" />
+    <None Remove="Resources\GIF\history-dark.gif" />
+    <None Remove="Resources\GIF\search-light.gif" />
+    <None Remove="Resources\GIF\settingup.gif" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\Fonts\ChelseaMarket-Regular.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\faRegular.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\NotoSerif-BoldItalic.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\NotoSerif-Regular.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\faBrands.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\DancingScript.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\logo.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\UnifrakturMaguntia-Regular.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\SFPro.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\KGWhattheTeacherWants.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\ionicons.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\Frosty.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\KGMelonheadz.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\KGKissMeSlowly.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\NotoSerif-Italic.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\NotoSerif-Bold.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\Cookie-Regular.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\faSolid.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\StyleScript-Regular.ttf" />
+    <EmbeddedResource Include="Resources\GIF\heart.gif" />
+    <EmbeddedResource Include="Resources\GIF\history-light.gif" />
+    <EmbeddedResource Include="Resources\GIF\done.gif" />
+    <EmbeddedResource Include="Resources\GIF\error.gif" />
+    <EmbeddedResource Include="Resources\GIF\search-dark.gif" />
+    <EmbeddedResource Include="Resources\GIF\not-found.gif" />
+    <EmbeddedResource Include="Resources\GIF\bookmark-saved.gif" />
+    <EmbeddedResource Include="Resources\GIF\save-music.gif" />
+    <EmbeddedResource Include="Resources\GIF\no-internet-light.gif" />
+    <EmbeddedResource Include="Resources\GIF\welcome.gif" />
+    <EmbeddedResource Include="Resources\GIF\read-play.gif" />
+    <EmbeddedResource Include="Resources\GIF\download.gif" />
+    <EmbeddedResource Include="Resources\GIF\bookmark-deleted.gif" />
+    <EmbeddedResource Include="Resources\GIF\no-internet-dark.gif" />
+    <EmbeddedResource Include="Resources\GIF\history-dark.gif" />
+    <EmbeddedResource Include="Resources\GIF\search-light.gif" />
+    <EmbeddedResource Include="Resources\GIF\settingup.gif" />
+  </ItemGroup>
+</Project>
