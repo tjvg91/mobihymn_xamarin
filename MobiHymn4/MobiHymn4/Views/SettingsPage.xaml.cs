@@ -87,7 +87,7 @@ namespace MobiHymn4.Views
                     {
                         IsLightDismissEnabled = false
                     };
-                    downloadPopup.Todo = ForceSyncHymns;
+                    downloadPopup.Todo = SyncHymns;
                     //downloadPopup.Dismissed += DownloadPopup_Dismissed;
 
                     SyncHymns();

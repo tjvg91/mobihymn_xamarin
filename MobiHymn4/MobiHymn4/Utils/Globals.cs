@@ -512,6 +512,7 @@ namespace MobiHymn4.Utils
 
         public async Task<bool> ResyncHymns()
         {
+            Globals.LogAppCenter("Syncing Hymn Changes...");
             HttpHelper httpHelper = new HttpHelper();
             OnDownloadStarted("");
             Progress<string> downloadProgress = new Progress<string>((report) =>
@@ -519,6 +520,7 @@ namespace MobiHymn4.Utils
                 OnDownloadProgressed(report);
             });
             HymnList = await httpHelper.SyncChanges(downloadProgress, CTS.Token, ResyncDetails, HymnList);
+            Globals.LogAppCenter("Hymn Changes Synced");
             return true;
         }
 

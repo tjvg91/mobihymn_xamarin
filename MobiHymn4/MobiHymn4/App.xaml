@@ -284,6 +284,15 @@
                 <Setter Property="FontSize" Value="Small"/>
             </Style>
 
+            <Style TargetType="Label" x:Key="Subsubtitle">
+                <Setter Property="TextColor"
+                        Value="{AppThemeBinding Dark={StaticResource Gray}, Light={StaticResource GrayLight},Default={StaticResource Gray}}"
+                />
+                <Setter Property="FontFamily"
+                        Value="{OnPlatform Android=Roboto, iOS=SFPro}" />
+                <Setter Property="FontSize" Value="Small"/>
+            </Style>
+
             <Style TargetType="Slider">
                 <Setter Property="HorizontalOptions" Value="FillAndExpand" />
                 <Setter Property="MinimumTrackColor" Value="{StaticResource Primary}" />

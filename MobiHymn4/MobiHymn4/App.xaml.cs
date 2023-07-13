@@ -21,7 +21,7 @@ namespace MobiHymn4
 
             MainPage = new AppShell();
 
-            bool darkMode = Preferences.Get("darkMode", false);
+            bool darkMode = Preferences.Get(PreferencesVar.DARK_MODE, false);
             Current.UserAppTheme = darkMode ? OSAppTheme.Dark : OSAppTheme.Light;
 
             fbHelper = DependencyService.Get<IFirebaseHelper>();
@@ -33,6 +33,9 @@ namespace MobiHymn4
         {
             try
             {
+                var isNew = Preferences.Get("isNew", true);
+                if (!isNew) globalInstance.Init();
+
                 DeviceDisplay.KeepScreenOn = globalInstance.KeepAwake;
                 if (DeviceInfo.Platform == DevicePlatform.iOS)
                 {
@@ -67,7 +70,9 @@ namespace MobiHymn4
             globalInstance.IsFetchingSyncDetails = true;
             await fbHelper.LoginWithEmailPassword("tim.gandionco@gmail.com", "TLmSIsnw231");
 
-            globalInstance.ResyncDetails.AddRange(await fbInstance.RetrieveSyncChangesFrom(int.Parse(Preferences.Get("ResyncVersion", "0"))));
+            globalInstance.ResyncDetails.AddRange(
+                await fbInstance.RetrieveSyncChangesFrom(int.Parse(Preferences.Get(PreferencesVar.RESYNC_VERSION, "0")))
+            );
             globalInstance.IsFetchingSyncDetails = false;
         }
     }

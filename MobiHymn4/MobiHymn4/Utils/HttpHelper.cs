@@ -197,7 +197,7 @@ namespace MobiHymn4.Utils
                                 }
                                 else if (origList[number] != null && !origHymn.Lyrics.Equals(newHymn.Lyrics))
                                     updatedList[number] = newHymn;
-                                progress.Report($"{Enum.GetName(resyncDetail.Mode.GetType(), resyncDetail.Mode)}d {newHymn.Title}");
+                                progress.Report($"{Enum.GetName(resyncDetail.Mode.GetType(), resyncDetail.Mode)}d #{newHymn.Number} ({resyncDetail.Type})");
                             }
                             catch (Exception ex)
                             {
@@ -304,7 +304,7 @@ namespace MobiHymn4.Utils
                 {
                     var newHymn = newList.Find(hymn => hymn.Number == number);
                     newHymn.MidiFileName = $"h{number}.mid";
-                    progress.Report($"{Enum.GetName(mode.GetType(), mode)}d MIDI for {number}");
+                    progress.Report($"{Enum.GetName(mode.GetType(), mode)}d MIDI for #{number}");
                 }
             });
 
@@ -317,7 +317,7 @@ namespace MobiHymn4.Utils
                     var newHymn = new Hymn(hymn);
                     newHymn.MidiFileName = $"h{hymn.Number}.mid";
                     newList.Find(hymn => hymn.Number == newHymn.Number) = new Hymn(newHymn);
-                    progress.Report($"{Enum.GetName(mode.GetType(), mode)}d MIDI for {newHymn.Title}");
+                    progress.Report($"{Enum.GetName(mode.GetType(), mode)}d MIDI for #{newHymn.Title}");
                 }
             });
 #endif
@@ -345,10 +345,6 @@ namespace MobiHymn4.Utils
                 };
                 requestMessage.Content = new StringContent("", System.Text.Encoding.UTF8, "application/octet-stream");
 
-                //if (requestMessage.Headers.Contains(dropboxArgs))
-                //    requestMessage.Headers.Remove(dropboxArgs);
-                //requestMessage.Headers.Add(dropboxArgs, JsonConvert.SerializeObject(jsonParam));
-
                 var content = await httpClient2.SendAsync(requestMessage);
                 if ((int)content.StatusCode >= 400)
                 {
@@ -359,7 +355,6 @@ namespace MobiHymn4.Utils
                 {
                     var fileStream = await content.Content.ReadAsStreamAsync();
                     ret = await SaveMidi(fileStream, $"h{number}.mid");
-                    //ret = true;
                 }
             }
             catch (Exception ex)
@@ -390,7 +385,7 @@ namespace MobiHymn4.Utils
 
         private async void UpdateResyncVersion()
         {
-            Preferences.Set("ResyncVersion", (await new FirebaseHelper().RetrieveActiveSyncVersion()).ToString());
+            Preferences.Set(PreferencesVar.RESYNC_VERSION, (await new FirebaseHelper().RetrieveActiveSyncVersion()).ToString());
             Globals.Instance.ResyncDetails.Clear();
         }
     }

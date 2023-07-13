@@ -55,28 +55,9 @@ namespace MobiHymn4.Views.Popups
 
         void Button_Clicked(System.Object sender, System.EventArgs e)
         {
-            //Dismiss(null);
             IsVisible = false;
 
             Task.Delay(250);
-            /*var fontTypePopup = new FontTypePopup
-            {
-                HeightRequest = 40,
-                IsLightDismissEnabled = false
-            };
-            fontTypePopup.Dismissed += FontTypePopup_Dismissed;
-
-            Navigation.ShowPopup(fontTypePopup);*/
-        }
-
-        private void FontTypePopup_Dismissed(object sender, PopupDismissedEventArgs e)
-        {
-            IsVisible = true;
-            /*Navigation.ShowPopup(new SettingsPopup
-            {
-                IsLightDismissEnabled = true,
-                HeightRequest = 60
-            });*/
         }
     }
 }

@@ -6,6 +6,7 @@ using Xamarin.Essentials;
 using Xamarin.Forms;
 using MobiHymn4.Utils;
 using MobiHymn4.ViewModels;
+using System.Threading;
 
 namespace MobiHymn4.Views.Popups
 {	
@@ -45,8 +46,8 @@ namespace MobiHymn4.Views.Popups
 
         private async void GlobalInstance_InitFinished(object sender, EventArgs e)
         {
-            await Task.Delay(2000);
-            Dismiss(DownloadStatus.Success);
+            await new TaskFactory().StartNew(() => { Thread.Sleep(2000); });
+            MainThread.BeginInvokeOnMainThread(() => { Dismiss(null); });
         }
     }
 }

@@ -1,0 +1,77 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<xct:Popup
+    xmlns="http://xamarin.com/schemas/2014/forms"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:xct="http://xamarin.com/schemas/2020/toolkit"
+    xmlns:ViewModels="clr-namespace:MobiHymn4.ViewModels"
+    xmlns:elements="clr-namespace:MobiHymn4.Elements"
+    x:Class="MobiHymn4.Views.Popups.SyncPopup">
+
+    <xct:Popup.BindingContext>
+		<ViewModels:SettingsViewModel/>
+	</xct:Popup.BindingContext>
+
+    <StackLayout Padding="10,20,10,10" VerticalOptions="FillAndExpand">
+        <Label FontSize="Medium" Text="Sync Changes?" Style="{StaticResource Title}" HorizontalTextAlignment="Start" Margin="0,0,0,10"/>
+        <!--<BoxView HorizontalOptions="FillAndExpand" HeightRequest="1" 
+                 BackgroundColor="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"/>-->
+        <StackLayout Padding="1"
+                     BackgroundColor="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                     VerticalOptions="FillAndExpand">
+            <ScrollView VerticalOptions="FillAndExpand"
+                        Background="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryText}}">
+                <StackLayout Padding="0,5">
+                    <elements:TimelineItem Item="{Binding ResyncCreateList}" IsVisible="False" Padding="100,0,0,10">
+                        <elements:TimelineItem.Triggers>
+                            <DataTrigger TargetType="elements:TimelineItem" Binding="{Binding ShowCreate}" Value="True">
+                                <Setter Property="IsVisible" Value="True" />
+                            </DataTrigger>
+                        </elements:TimelineItem.Triggers>
+                    </elements:TimelineItem>
+                    <elements:TimelineItem Item="{Binding ResyncUpdateList}" IsVisible="False" Margin="100,0,0,10">
+                        <elements:TimelineItem.Triggers>
+                            <DataTrigger TargetType="elements:TimelineItem" Binding="{Binding ShowUpdate}" Value="True">
+                                <Setter Property="IsVisible" Value="True" />
+                            </DataTrigger>
+                        </elements:TimelineItem.Triggers>
+                    </elements:TimelineItem>
+                    <elements:TimelineItem Item="{Binding ResyncDeleteList}" IsVisible="False" Margin="100,0,0,5">
+                        <elements:TimelineItem.Triggers>
+                            <DataTrigger TargetType="elements:TimelineItem" Binding="{Binding ShowDelete}" Value="True">
+                                <Setter Property="IsVisible" Value="True" />
+                            </DataTrigger>
+                        </elements:TimelineItem.Triggers>
+                    </elements:TimelineItem>
+                </StackLayout>
+            </ScrollView>
+
+        </StackLayout>
+        
+        <!--<Label
+            FontSize="Micro"
+            Text="(You can find sync changes in settings)"
+            Style="{StaticResource Subtitle}"
+            FontAttributes="Italic"
+            HorizontalTextAlignment="Center"/>
+        <BoxView HorizontalOptions="FillAndExpand" HeightRequest="1"
+                 BackgroundColor="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"/>-->
+        <FlexLayout JustifyContent="End" Margin="0,10,0,0">
+            <Button
+                x:Name="btnLater"
+                Text="Later in Settings"
+                Padding="10,5"
+                Clicked="btnLater_Clicked"
+                FontSize="Micro"
+                Style="{StaticResource Button-Clear-Reverse}"
+                />
+            <Button
+                x:Name="btnResync"
+                Text="Let's Go!"
+                Padding="10,5"
+                FontSize="Micro"
+                Clicked="btnResync_Clicked"
+                Style="{StaticResource Button-Clear}"/>
+        </FlexLayout>
+    </StackLayout>
+</xct:Popup>
+

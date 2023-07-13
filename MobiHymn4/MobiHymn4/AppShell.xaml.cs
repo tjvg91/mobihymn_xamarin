@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using MobiHymn4.Utils;
 using MobiHymn4.ViewModels;
 using MobiHymn4.Views;
+using MobiHymn4.Views.Popups;
+using Xamarin.CommunityToolkit.Extensions;
 using Xamarin.Essentials;
 using Xamarin.Forms;
 
@@ -26,8 +28,44 @@ namespace MobiHymn4
 
             CurrentItem = NavHome;
 
-            var isNew = Preferences.Get("isNew", true);
-            if (!isNew) globalInstance.Init();
+            globalInstance.ResyncDetails.CollectionChanged += ResyncDetails_CollectionChanged;
+        }
+
+        private void ResyncDetails_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            if(globalInstance.ResyncDetails.Count > 0)
+            {
+                SyncPopup syncPopup = new SyncPopup
+                {
+                    IsLightDismissEnabled = true
+                };
+                syncPopup.Dismissed += SyncPopup_Dismissed;
+                Navigation.ShowPopup(syncPopup);
+            }
+        }
+
+        private void SyncPopup_Dismissed(object sender, Xamarin.CommunityToolkit.UI.Views.PopupDismissedEventArgs e)
+        {
+            if (e.Result != null)
+            {
+                DownloadPopup downloadPopup = new()
+                {
+                    IsLightDismissEnabled = false,
+                    Todo = SyncHymns
+                };
+                //downloadPopup.Dismissed += DownloadPopup_Dismissed;
+
+                SyncHymns();
+                Navigation.ShowPopup(downloadPopup);
+            }
+        }
+
+        async void SyncHymns()
+        {
+            if (await globalInstance.ResyncHymns())
+            {
+                globalInstance.OnInitFinished("sync");
+            }
         }
     }
 }

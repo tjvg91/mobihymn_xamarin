@@ -60,6 +60,7 @@
                     <Image
                         RelativeLayout.XConstraint="{ConstraintExpression Type=RelativeToParent, Property=Width, Constant=-20}"
                         RelativeLayout.YConstraint="{ConstraintExpression Type=RelativeToParent, Property=Height, Factor=0.33}"
+                        x:Name="FlyoutSyncIndicator"
                         IsVisible="False">
                         <Image.Source>
                             <FontImageSource
@@ -200,7 +201,7 @@
     <FlyoutItem Title="About" Icon="{x:Static fontawesome:FontAwesomeIcons.CircleInfo}">
         <ShellContent Route="{x:Static utils:Routes.ABOUT}" ContentTemplate="{DataTemplate local:AboutPage}" />
     </FlyoutItem>
-    <FlyoutItem Title="Settings" Icon="{x:Static fontawesome:FontAwesomeIcons.Cogs}">
+    <FlyoutItem Title="Settings" Icon="{x:Static fontawesome:FontAwesomeIcons.Cogs}" x:Name="NavSettings">
         <ShellContent Route="{x:Static utils:Routes.SETTINGS}" ContentTemplate="{DataTemplate local:SettingsPage}" />
     </FlyoutItem>
 

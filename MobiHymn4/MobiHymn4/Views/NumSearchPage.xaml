@@ -22,7 +22,7 @@
                 <FontImageSource
                     FontFamily="FAS"
                     Color="{StaticResource Key=PrimaryText}"
-                    Size="Medium"
+                    Size="Medium"   
                     Glyph="{Static Member=fontawesome:FontAwesomeIcons.Search}"/>
             </ToolbarItem.IconImageSource>
         </ToolbarItem>
