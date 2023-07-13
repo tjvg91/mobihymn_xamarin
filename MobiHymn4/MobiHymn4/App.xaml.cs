@@ -11,7 +11,8 @@ namespace MobiHymn4
     public partial class App : Application
     {
         private Globals globalInstance = Globals.Instance;
-        IFirebaseHelper helper;
+        IFirebaseHelper fbHelper;
+        IAppVersionBuild appVBHelper;
         FirebaseHelper fbInstance;
 
         public App()
@@ -20,17 +21,12 @@ namespace MobiHymn4
 
             MainPage = new AppShell();
 
-            try
-            {
-                bool darkMode = Preferences.Get("darkMode", false);
-                Current.UserAppTheme = darkMode ? OSAppTheme.Dark : OSAppTheme.Light;
-                helper = DependencyService.Get<IFirebaseHelper>();
-                fbInstance = new FirebaseHelper();
-            }
-            catch (Exception ex)
-            {
-                Console.Write(ex.Message);
-            }
+            bool darkMode = Preferences.Get("darkMode", false);
+            Current.UserAppTheme = darkMode ? OSAppTheme.Dark : OSAppTheme.Light;
+
+            fbHelper = DependencyService.Get<IFirebaseHelper>();
+            appVBHelper = DependencyService.Get<IAppVersionBuild>();
+            fbInstance = new FirebaseHelper();
         }
 
         protected override async void OnStart()
@@ -69,7 +65,7 @@ namespace MobiHymn4
         public async void InitFirebase()
         {
             globalInstance.IsFetchingSyncDetails = true;
-            await helper.LoginWithEmailPassword("tim.gandionco@gmail.com", "TLmSIsnw231");
+            await fbHelper.LoginWithEmailPassword("tim.gandionco@gmail.com", "TLmSIsnw231");
 
             globalInstance.ResyncDetails.AddRange(await fbInstance.RetrieveSyncChangesFrom(int.Parse(Preferences.Get("ResyncVersion", "0"))));
             globalInstance.IsFetchingSyncDetails = false;

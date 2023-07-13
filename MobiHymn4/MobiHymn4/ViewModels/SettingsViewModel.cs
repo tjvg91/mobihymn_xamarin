@@ -202,13 +202,19 @@ namespace MobiHymn4.ViewModels
             ResyncList = globalInstance.ResyncDetails.ToObservableRangeCollection();
 
             var createDetails = ResyncList.Where(detail => detail.Mode == CRUD.Create)
-                        .Select(detail => detail.Number == "*" ? "All" : $"{detail.Number.ToTitle()} ({Enum.GetName(detail.Type.GetType(), detail.Type)})")
+                        .Select(detail => detail.Number == "*" ?
+                        $"All {Enum.GetName(detail.Type.GetType(), detail.Type)} files" :
+                        $"{detail.Number.ToTitle()} ({Enum.GetName(detail.Type.GetType(), detail.Type)})")
                         .ToObservableRangeCollection();
             var updateDetails = ResyncList.Where(detail => detail.Mode == CRUD.Update)
-                        .Select(detail => detail.Number == "*" ? "All" : $"{detail.Number.ToTitle()} ({Enum.GetName(detail.Type.GetType(), detail.Type)})")
+                        .Select(detail => detail.Number == "*" ?
+                        $"All {Enum.GetName(detail.Type.GetType(), detail.Type)} files" :
+                        $"{detail.Number.ToTitle()} ({Enum.GetName(detail.Type.GetType(), detail.Type)})")
                         .ToObservableRangeCollection();
             var deleteDetails = ResyncList.Where(detail => detail.Mode == CRUD.Delete)
-                        .Select(detail => detail.Number == "*" ? "All" : $"{detail.Number.ToTitle()} ({Enum.GetName(detail.Type.GetType(), detail.Type)})")
+                        .Select(detail => detail.Number == "*" ?
+                        $"All {Enum.GetName(detail.Type.GetType(), detail.Type)} files" :
+                        $"{detail.Number.ToTitle()} ({Enum.GetName(detail.Type.GetType(), detail.Type)})")
                         .ToObservableRangeCollection();
 
             var fontSize = 20;

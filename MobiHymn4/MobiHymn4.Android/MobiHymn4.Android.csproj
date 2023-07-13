@@ -102,6 +102,7 @@
     <Compile Include="SplashActivity.cs" />
     <Compile Include="AppCenterService.cs" />
     <Compile Include="FIrebaseHelper.cs" />
+    <Compile Include="AppVersionBuild.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Resources\AboutResources.txt" />
