@@ -11,7 +11,8 @@
 		<ViewModels:SettingsViewModel/>
 	</xct:Popup.BindingContext>
 
-    <StackLayout Padding="10,20,10,10" VerticalOptions="FillAndExpand">
+    <StackLayout Padding="10,20,10,10" VerticalOptions="FillAndExpand"
+                 Background="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryText}}">
         <Label FontSize="Medium" Text="Sync Changes?" Style="{StaticResource Title}" HorizontalTextAlignment="Start" Margin="0,0,0,10"/>
         <!--<BoxView HorizontalOptions="FillAndExpand" HeightRequest="1" 
                  BackgroundColor="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"/>-->
@@ -21,21 +22,30 @@
             <ScrollView VerticalOptions="FillAndExpand"
                         Background="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryText}}">
                 <StackLayout Padding="0,5">
-                    <elements:TimelineItem Item="{Binding ResyncCreateList}" IsVisible="False" Padding="100,0,0,10">
+                    <elements:TimelineItem
+                        Item="{Binding ResyncCreateList}"
+                        IsVisible="False"
+                        Padding="{OnPlatform Android='100,0,0,10', iOS='125,0,0,0'}">
                         <elements:TimelineItem.Triggers>
                             <DataTrigger TargetType="elements:TimelineItem" Binding="{Binding ShowCreate}" Value="True">
                                 <Setter Property="IsVisible" Value="True" />
                             </DataTrigger>
                         </elements:TimelineItem.Triggers>
                     </elements:TimelineItem>
-                    <elements:TimelineItem Item="{Binding ResyncUpdateList}" IsVisible="False" Margin="100,0,0,10">
+                    <elements:TimelineItem
+                        Item="{Binding ResyncUpdateList}"
+                        IsVisible="False"
+                        Padding="{OnPlatform Android='100,0,0,10', iOS='125,0,0,0'}">
                         <elements:TimelineItem.Triggers>
                             <DataTrigger TargetType="elements:TimelineItem" Binding="{Binding ShowUpdate}" Value="True">
                                 <Setter Property="IsVisible" Value="True" />
                             </DataTrigger>
                         </elements:TimelineItem.Triggers>
                     </elements:TimelineItem>
-                    <elements:TimelineItem Item="{Binding ResyncDeleteList}" IsVisible="False" Margin="100,0,0,5">
+                    <elements:TimelineItem
+                        Item="{Binding ResyncDeleteList}"
+                        IsVisible="False"
+                        Margin="{OnPlatform Android='100,0,0,10', iOS='125,0,0,0'}">
                         <elements:TimelineItem.Triggers>
                             <DataTrigger TargetType="elements:TimelineItem" Binding="{Binding ShowDelete}" Value="True">
                                 <Setter Property="IsVisible" Value="True" />

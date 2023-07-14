@@ -1,10 +1,14 @@
 ﻿using System;
-using Xamarin.Forms;
-using Xamarin.Essentials;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Diagnostics;
+using System.Collections.Generic;
 using MobiHymn4.Services;
 using MobiHymn4.Utils;
-using System.Threading.Tasks;
 using MobiHymn4.Models;
+using Plugin.FirebasePushNotification;
+using Xamarin.Forms;
+using Xamarin.Essentials;
 
 namespace MobiHymn4
 {
@@ -15,7 +19,9 @@ namespace MobiHymn4
         IAppVersionBuild appVBHelper;
         FirebaseHelper fbInstance;
 
-        public App()
+        bool fromFirebaseNotif = false;
+
+        public App(bool hasNotification = false, IDictionary<string, object> notificationData = null)
         {
             InitializeComponent();
 
@@ -27,16 +33,50 @@ namespace MobiHymn4
             fbHelper = DependencyService.Get<IFirebaseHelper>();
             appVBHelper = DependencyService.Get<IAppVersionBuild>();
             fbInstance = new FirebaseHelper();
+
+            fromFirebaseNotif = hasNotification;
+
+            CrossFirebasePushNotification.Current.OnTokenRefresh += Current_OnTokenRefresh;
+            CrossFirebasePushNotification.Current.OnNotificationOpened += Current_OnNotificationOpened;
+            CrossFirebasePushNotification.Current.OnNotificationReceived += Current_OnNotificationReceived;
+        }
+
+        private void Current_OnNotificationReceived(object source, FirebasePushNotificationDataEventArgs e)
+        {
+            Debug.WriteLine("Notification Received");
+            if ((string)e.Data["type"] == "sync")
+            {
+                InitFirebase();
+            }
+            else if ((string)e.Data["type"] == "release" && DeviceInfo.Platform == DevicePlatform.iOS)
+            {
+                App.Current.MainPage.DisplayAlert("Release available!", "New release is available. Check your email to install!", "OK");
+            }
+        }
+
+        private void Current_OnNotificationOpened(object source, FirebasePushNotificationResponseEventArgs e)
+        {
+            Debug.WriteLine("Notification Opened");
+            if ((string)e.Data["type"] == "sync")
+            {
+                InitFirebase();
+            }
+        }
+
+        private void Current_OnTokenRefresh(object source, FirebasePushNotificationTokenEventArgs e)
+        {
+            Debug.WriteLine($"Refresh token {e.Token}");
         }
 
         protected override async void OnStart()
         {
             try
             {
-                var isNew = Preferences.Get("isNew", true);
+                var isNew = Preferences.Get(PreferencesVar.IS_NEW, true);
                 if (!isNew) globalInstance.Init();
 
                 DeviceDisplay.KeepScreenOn = globalInstance.KeepAwake;
+                Preferences.Set(PreferencesVar.RESYNC_VERSION, "0");
                 if (DeviceInfo.Platform == DevicePlatform.iOS)
                 {
                     await Task.Delay(2000);
@@ -45,7 +85,8 @@ namespace MobiHymn4
                 else
                     await DependencyService.Get<IAppCenterService>().InitiateAsync();
 
-                InitFirebase();
+                if(!fromFirebaseNotif)
+                    InitFirebase();
 
             }
             catch (Exception ex)
@@ -70,9 +111,11 @@ namespace MobiHymn4
             globalInstance.IsFetchingSyncDetails = true;
             await fbHelper.LoginWithEmailPassword("tim.gandionco@gmail.com", "TLmSIsnw231");
 
+            var deviceVersion = int.Parse(Preferences.Get(PreferencesVar.RESYNC_VERSION, "0"));
             globalInstance.ResyncDetails.AddRange(
-                await fbInstance.RetrieveSyncChangesFrom(int.Parse(Preferences.Get(PreferencesVar.RESYNC_VERSION, "0")))
+                await fbInstance.RetrieveSyncChangesFrom(deviceVersion)
             );
+            
             globalInstance.IsFetchingSyncDetails = false;
         }
     }

@@ -5,6 +5,8 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using MobiHymn4.Models;
+using MobiHymn4.Views.Popups;
+using MobiHymn4.Services;
 
 using Xamarin.Forms;
 using Xamarin.Essentials;
@@ -14,8 +16,6 @@ using MvvmHelpers;
 using Newtonsoft.Json;
 using PCLStorage;
 using Newtonsoft.Json.Linq;
-using MobiHymn4.Views.Popups;
-using MobiHymn4.Services;
 
 namespace MobiHymn4.Utils
 {
@@ -49,7 +49,9 @@ namespace MobiHymn4.Utils
         [JsonIgnore]
         public List<ThemeSettings> ThemeList = new List<ThemeSettings>();
 
+        private string folderRootName = "mobihymn";
         private string settingsName = "settings.json";
+        private string folderMidiName = "midi";
 
         [JsonIgnore]
         public CancellationTokenSource CTS = new CancellationTokenSource();
@@ -616,7 +618,7 @@ namespace MobiHymn4.Utils
             {
                 var settings = JsonConvert.SerializeObject(Globals.Instance);
                 IFolder rootFolder = PCLStorage.FileSystem.Current.LocalStorage;
-                IFolder folder = await rootFolder.CreateFolderAsync("mobihymn", CreationCollisionOption.OpenIfExists);
+                IFolder folder = await rootFolder.CreateFolderAsync(folderRootName, CreationCollisionOption.OpenIfExists);
                 IFile file = await folder.CreateFileAsync(settingsName, CreationCollisionOption.ReplaceExisting);
                 await file.WriteAllTextAsync(settings);
                 LogAppCenter("Settings saved", "Settings", settings);
@@ -634,9 +636,9 @@ namespace MobiHymn4.Utils
             {
 
                 IFolder rootFolder = PCLStorage.FileSystem.Current.LocalStorage;
-                if (await rootFolder.CheckExistsAsync($"mobihymn/{settingsName}") == ExistenceCheckResult.FileExists)
+                if (await rootFolder.CheckExistsAsync($"{folderRootName}/{settingsName}") == ExistenceCheckResult.FileExists)
                 {
-                    IFolder folder = await rootFolder.GetFolderAsync("mobihymn");
+                    IFolder folder = await rootFolder.GetFolderAsync(folderRootName);
                     IFile file = await folder.GetFileAsync(settingsName);
                     var settings = await file.ReadAllTextAsync();
                     var json = JsonConvert.DeserializeObject<Dictionary<string, object>>(settings);
@@ -713,7 +715,14 @@ namespace MobiHymn4.Utils
                 TrackError(ex);
                 return false;
             }
-            
+        }
+
+        public async Task<string> GetMidiFile(string number)
+        {
+            IFolder rootFolder = PCLStorage.FileSystem.Current.LocalStorage;
+            if (await rootFolder.CheckExistsAsync($"{folderRootName}/{folderMidiName}") == ExistenceCheckResult.FileExists)
+                return $"{folderRootName}/{folderMidiName}/h{number}.mid";
+            return "";
         }
         #endregion
 

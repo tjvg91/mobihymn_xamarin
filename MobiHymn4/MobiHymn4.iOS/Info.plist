@@ -55,5 +55,7 @@
 	<array>
 		<string>com.xamarin.Gallery.openDetail</string>
 	</array>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
 </dict>
 </plist>

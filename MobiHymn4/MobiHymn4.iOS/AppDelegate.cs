@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 
 using Foundation;
+using ObjCRuntime;
 using PanCardView.iOS;
+using Plugin.FirebasePushNotification;
 using UIKit;
 
 namespace MobiHymn4.iOS
@@ -28,6 +30,8 @@ namespace MobiHymn4.iOS
             FFImageLoading.Forms.Platform.CachedImageRenderer.Init();
             CardsViewRenderer.Preserve();
 
+            Firebase.Core.App.Configure();
+            FirebasePushNotificationManager.Initialize(options, true);
 
             LoadApplication(new App());
 
@@ -55,6 +59,29 @@ namespace MobiHymn4.iOS
             //};
 
             return base.FinishedLaunching(app, options);
+        }
+
+        public override void RegisteredForRemoteNotifications(UIApplication application, NSData deviceToken)
+        {
+            //base.RegisteredForRemoteNotifications(application, deviceToken);
+            FirebasePushNotificationManager.DidRegisterRemoteNotifications(deviceToken);
+        }
+
+        public override void FailedToRegisterForRemoteNotifications(UIApplication application, NSError error)
+        {
+            //base.FailedToRegisterForRemoteNotifications(application, error);
+            FirebasePushNotificationManager.RemoteNotificationRegistrationFailed(error);
+        }
+
+        public override void DidReceiveRemoteNotification(UIApplication application, NSDictionary userInfo, Action<UIBackgroundFetchResult> completionHandler)
+        {
+            //base.DidReceiveRemoteNotification(application, userInfo, completionHandler);
+
+            FirebasePushNotificationManager.DidReceiveMessage(userInfo);
+            // Do your magic to handle the notification data
+            System.Console.WriteLine(userInfo);
+
+            completionHandler(UIBackgroundFetchResult.NewData);
         }
     }
 }

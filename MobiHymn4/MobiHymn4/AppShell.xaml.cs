@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using MobiHymn4.Utils;
 using MobiHymn4.ViewModels;
 using MobiHymn4.Views;
@@ -44,7 +45,7 @@ namespace MobiHymn4
             }
         }
 
-        private void SyncPopup_Dismissed(object sender, Xamarin.CommunityToolkit.UI.Views.PopupDismissedEventArgs e)
+        private async void SyncPopup_Dismissed(object sender, Xamarin.CommunityToolkit.UI.Views.PopupDismissedEventArgs e)
         {
             if (e.Result != null)
             {
@@ -55,8 +56,9 @@ namespace MobiHymn4
                 };
                 //downloadPopup.Dismissed += DownloadPopup_Dismissed;
 
-                SyncHymns();
+                await Task.Delay(250);
                 Navigation.ShowPopup(downloadPopup);
+                SyncHymns();
             }
         }
 

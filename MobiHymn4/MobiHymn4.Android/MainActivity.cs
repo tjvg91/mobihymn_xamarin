@@ -12,12 +12,16 @@ using Microsoft.AppCenter.Distribute;
 using Microsoft.AppCenter;
 using Microsoft.AppCenter.Analytics;
 using Microsoft.AppCenter.Crashes;
+using Plugin.FirebasePushNotification;
+using System.Collections.Generic;
 
 namespace MobiHymn4.Droid
 {
     [Activity(Label = "MobiHymn", Icon = "@mipmap/ic_launcher", Theme = "@style/MainTheme", ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize)]
     public class MainActivity : global::Xamarin.Forms.Platform.Android.FormsAppCompatActivity
     {
+        private bool IsNotification = false;
+        private IDictionary<string, object> NotificationData;
         protected override void OnCreate(Bundle savedInstanceState)
         {
             AppCompatDelegate.DefaultNightMode = AppCompatDelegate.ModeNightNo;
@@ -34,7 +38,19 @@ namespace MobiHymn4.Droid
             AppCenter.LogLevel = LogLevel.Verbose;
             AppCenter.Start("0b73296a-5659-4024-8c87-52893d062e8a", typeof(Analytics), typeof(Crashes), typeof(Distribute));
 
-            LoadApplication(new App());
+            if (!IsNotification)
+                LoadApplication(new App());
+
+            FirebasePushNotificationManager.ProcessIntent(this, Intent);
+
+            CrossFirebasePushNotification.Current.OnNotificationOpened += (s, p) =>
+            {
+                System.Diagnostics.Debug.WriteLine("NOTIFICATION Opened", p.Data);
+                Analytics.TrackEvent("Notification opened");
+                NotificationData = p.Data;
+                IsNotification = true;
+                LoadApplication(new App(IsNotification, NotificationData));
+            };
             Window.SetStatusBarColor(Android.Graphics.Color.ParseColor("#F5D200"));
         }
         public override void OnRequestPermissionsResult(int requestCode, string[] permissions, [GeneratedEnum] Android.Content.PM.Permission[] grantResults)

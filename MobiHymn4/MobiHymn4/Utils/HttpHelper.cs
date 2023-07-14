@@ -92,7 +92,7 @@ namespace MobiHymn4.Utils
 
                         try
                         {
-                            newHymn = processLyrics(ref lyrics, number);
+                            newHymn = ProcessLyrics(ref lyrics, number);
                         }
                         catch(Exception)
                         {
@@ -183,7 +183,7 @@ namespace MobiHymn4.Utils
 
                                 var lyrics = await httpClient.GetStringAsync($"{Globals.HYMN_URL}{resyncDetail.Number}");
 
-                                var newHymn = processLyrics(ref lyrics, number);
+                                var newHymn = ProcessLyrics(ref lyrics, number);
 
                                 var origHymn = origList[number];
 
@@ -212,7 +212,7 @@ namespace MobiHymn4.Utils
             return updatedList;
         }
 
-        private Hymn processLyrics(ref string lyrics, string number)
+        private Hymn ProcessLyrics(ref string lyrics, string number)
         {
             lyrics = lyrics.Replace(Environment.NewLine, "<br/>");
             lyrics = Regex.Replace(lyrics, "TAGS>.+<pre>", "TAGS><pre>");
@@ -316,7 +316,8 @@ namespace MobiHymn4.Utils
                 {
                     var newHymn = new Hymn(hymn);
                     newHymn.MidiFileName = $"h{hymn.Number}.mid";
-                    newList.Find(hymn => hymn.Number == newHymn.Number) = new Hymn(newHymn);
+                    var curHymn = newList.Find(hymn => hymn.Number == newHymn.Number);
+                    curHymn = new Hymn(newHymn);
                     progress.Report($"{Enum.GetName(mode.GetType(), mode)}d MIDI for #{newHymn.Title}");
                 }
             });
@@ -339,7 +340,7 @@ namespace MobiHymn4.Utils
                     RequestUri = new Uri("https://content.dropboxapi.com/2/files/download"),
                     Headers =
                     {
-                        { HttpRequestHeader.Authorization.ToString(), "Bearer sl.BiEhCA_3XuZeYtWh6icc_CZwSHjg36lKdUr24xcneXULafxF-7-AUYl9aC2LWSWy20DuCLHXlYI-lBvA9-a24A1JHVXIjRrFJegV7z_xoAUwsDp5stkF2UBTJAijsws_vG4C6zHMA0E" },
+                        { HttpRequestHeader.Authorization.ToString(), "Bearer sl.BiIur71QW4A-A9dorpm0ys8UONu93HKRMQ_JBCSRllNWsdoy0tlK78jje2ms-wAYgs_xIkokm3QItuCE5cZisaRDYcpzc_xsKB0kcA_dyg2zVwo36HwpolTJEbcVXCIWH_TFPIM" },
                         { dropboxArgs, JsonConvert.SerializeObject(jsonParam) }
                     }
                 };
@@ -365,6 +366,7 @@ namespace MobiHymn4.Utils
             }
             return ret;
         }
+
 
         public static bool IsConnected()
         {

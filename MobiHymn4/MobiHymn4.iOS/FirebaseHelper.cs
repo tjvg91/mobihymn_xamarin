@@ -15,8 +15,8 @@ namespace MobiHymn4.iOS
         {
             try
             {
-                Firebase.Core.App.Configure();
                 var user = await Auth.DefaultInstance.SignInWithPasswordAsync(email, password);
+                //User = user.User;
                 token = await user.User.GetIdTokenAsync();
             }
             catch (Exception)

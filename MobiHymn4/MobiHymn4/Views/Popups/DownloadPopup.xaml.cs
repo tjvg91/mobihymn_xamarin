@@ -46,8 +46,8 @@ namespace MobiHymn4.Views.Popups
 
         private async void GlobalInstance_InitFinished(object sender, EventArgs e)
         {
-            await new TaskFactory().StartNew(() => { Thread.Sleep(2000); });
-            MainThread.BeginInvokeOnMainThread(() => { Dismiss(null); });
+            await Task.Delay(2000);
+            Dismiss(null);
         }
     }
 }
