@@ -7,7 +7,8 @@ namespace MobiHymn4.Models
         public string Number { get; set; }
         public string NumberText { get => "Hymn #" + Number; }
 		public DateTime TimeStamp { get; set; }
-		public string DateTimeText
+        public string BookmarkGroup { get; set; }
+        public string DateTimeText
 		{
 			get
 			{
@@ -24,6 +25,8 @@ namespace MobiHymn4.Models
         public ShortHymn()
 		{
 			TimeStamp = DateTime.UtcNow;
+			BookmarkGroup = "General";
+			
 		}
 	}
 }

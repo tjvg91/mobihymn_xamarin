@@ -16,6 +16,7 @@ using MvvmHelpers;
 using Newtonsoft.Json;
 using PCLStorage;
 using Newtonsoft.Json.Linq;
+using System.IO;
 
 namespace MobiHymn4.Utils
 {
@@ -176,6 +177,8 @@ namespace MobiHymn4.Utils
             {
                 Name = "Cookie"
             });
+
+            BookmarkList.CollectionChanged += BookmarkList_CollectionChanged;
         }
 
         #region Properties
@@ -424,9 +427,9 @@ namespace MobiHymn4.Utils
         {
             if (HymnInputTypeChanged != null) HymnInputTypeChanged(value, EventArgs.Empty);
         }
-        private void OnBookmarksChanged(ObservableRangeCollection<ShortHymn> value)
+        private void OnBookmarksChanged(ObservableRangeCollection<ShortHymn> value, EventArgs eventArgs = null)
         {
-            if (BookmarksChanged != null) BookmarksChanged(value, EventArgs.Empty);
+            if (BookmarksChanged != null) BookmarksChanged(value, eventArgs == null ? EventArgs.Empty : eventArgs);
         }
         private void OnHistoryChanged(ObservableRangeCollection<ShortHymn> value)
         {
@@ -479,6 +482,11 @@ namespace MobiHymn4.Utils
         public void OnIsFetchingSyncDetailsChanged(bool value)
         {
             if (IsFetchingSyncDetailsChanged != null) IsFetchingSyncDetailsChanged(value, EventArgs.Empty);
+        }
+
+        private void BookmarkList_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            OnBookmarksChanged(sender as ObservableRangeCollection<ShortHymn>, e);
         }
         #endregion
 
@@ -559,7 +567,7 @@ namespace MobiHymn4.Utils
             return (from x in BookmarkList where x.Number == ActiveHymn.Number select x).Any();
         }
 
-        public void AddBookmark()
+        public void AddBookmark(string groupName = "General")
         {
             if (!IsBookmarked())
             {
@@ -568,6 +576,7 @@ namespace MobiHymn4.Utils
                 {
                     Number = ActiveHymn.Number,
                     Line = ActiveHymn.FirstLine,
+                    BookmarkGroup = groupName
                 };
                 BookmarkList.Add(val);
                 LogAppCenter("Bookmark Added", "Bookmark", JObject.FromObject(val).ToString(Formatting.None));
@@ -678,7 +687,8 @@ namespace MobiHymn4.Utils
                                 {
                                     Number = (string)x["Number"],
                                     TimeStamp = (DateTime)(x["TimeStamp"]),
-                                    Line = (string)x["Line"]
+                                    Line = (string)x["Line"],
+                                    BookmarkGroup = (string)x["BookmarkGroup"]
                                 }).ToObservableRangeCollection();
                                 break;
                             case nameof(SearchList):
@@ -716,13 +726,9 @@ namespace MobiHymn4.Utils
                 return false;
             }
         }
-
-        public async Task<string> GetMidiFile(string number)
+        public void ForceBookmarkChangedEvent()
         {
-            IFolder rootFolder = PCLStorage.FileSystem.Current.LocalStorage;
-            if (await rootFolder.CheckExistsAsync($"{folderRootName}/{folderMidiName}") == ExistenceCheckResult.FileExists)
-                return $"{folderRootName}/{folderMidiName}/h{number}.mid";
-            return "";
+            OnBookmarksChanged(BookmarkList);
         }
         #endregion
 

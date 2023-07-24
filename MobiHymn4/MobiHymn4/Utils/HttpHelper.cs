@@ -17,6 +17,7 @@ using System.Net;
 using Newtonsoft.Json.Linq;
 using System.IO;
 using System.Diagnostics;
+using System.Collections.Generic;
 
 namespace MobiHymn4.Utils
 {
@@ -69,8 +70,9 @@ namespace MobiHymn4.Utils
                     Globals.LogAppCenter((forceSync ? "Resyncing" : "Downloading") + " Cancelled");
                     return hymnList;
                 }
-                    
-                var forRes = Parallel.For(0, tunes.Length, async (j, state) =>
+
+
+                await tunes.ForEachAsync(4, async (tune, j) =>
                 {
                     try
                     {
@@ -79,11 +81,9 @@ namespace MobiHymn4.Utils
                             progress?.Report(message);
                             hymnList = new HymnList();
                             isDone = true;
-                            state.Stop();
                             return;
                         }
 
-                        var tune = tunes[j];
                         var number = $"{i}{tune}";
 
                         //var lyrics = await policy.ExecuteAsync(() => httpClient.GetStringAsync($"{parentUrl}{number}"));
@@ -94,13 +94,12 @@ namespace MobiHymn4.Utils
                         {
                             newHymn = ProcessLyrics(ref lyrics, number);
                         }
-                        catch(Exception)
+                        catch (Exception)
                         {
                             if (string.IsNullOrEmpty(lyrics) || new Regex("Error:", RegexOptions.IgnoreCase).IsMatch(lyrics))
                             {
                                 if (j == 0)
                                     isDone = true;
-                                state.Stop();
                                 return;
                             }
                         }
@@ -111,7 +110,7 @@ namespace MobiHymn4.Utils
                         hymnList.Add(newHymn);
 
                         //MIDI
-                        if(!excludeMidi) await DownloadMIDI(number);
+                        if (!excludeMidi) await DownloadMIDI(number, cts);
 
                         string reportText = forceSync ? "Syncing" : "Downloaded";
                         progress?.Report($"{reportText} hymn #{number}...");
@@ -119,15 +118,11 @@ namespace MobiHymn4.Utils
                     }
                     catch (Exception ex)
                     {
-                        state.Stop();
                         return;
                     }
                 });
-                if(forRes.IsCompleted)
-                {
-                    i++;
-                    await Task.Delay(100);
-                }
+                i++;
+                await Task.Delay(100);
             }
 
             if (!forceSync || (forceSync && syncables.Count > 0))
@@ -154,7 +149,7 @@ namespace MobiHymn4.Utils
                             if (resyncDetail.Type == ResyncType.Lyrics)
                                 updatedList = await DownloadHymns(progress, cts, updatedList, false, true);
                             else
-                                updatedList = DownloadAllMIDIs(updatedList, resyncDetail.Mode, progress, cts);
+                                updatedList = await DownloadAllMIDIs(updatedList, resyncDetail.Mode, progress, cts);
                         }
                         goto default;
                     case CRUD.Create:
@@ -163,8 +158,8 @@ namespace MobiHymn4.Utils
                             try
                             {
                                 if (resyncDetail.Number == "*")
-                                    updatedList = DownloadAllMIDIs(updatedList, resyncDetail.Mode, progress, cts);
-                                else if (await DownloadMIDI(resyncDetail.Number))
+                                    updatedList = await DownloadAllMIDIs(updatedList, resyncDetail.Mode, progress, cts);
+                                else if (await DownloadMIDI(resyncDetail.Number, cts))
                                     updatedList.Find(hymn => hymn.Number == resyncDetail.Number).MidiFileName = $"h{resyncDetail.Number}.mid";
                             }
                             catch (Exception ex)
@@ -254,18 +249,11 @@ namespace MobiHymn4.Utils
             IFolder folder;
             IFolder folderMidi;
 
-            if (await rootFolder.CheckExistsAsync($"{folderName}") == ExistenceCheckResult.FolderExists)
-                folder = await rootFolder.GetFolderAsync($"{folderName}");
-            else
-                folder = await rootFolder.CreateFolderAsync($"{folderName}", CreationCollisionOption.ReplaceExisting);
-
-            if (await folder.CheckExistsAsync($"{folderMidiName}") == ExistenceCheckResult.FolderExists)
-                folderMidi = await folder.GetFolderAsync($"{folderMidiName}");
-            else
-                folderMidi = await folder.CreateFolderAsync($"{folderMidiName}", CreationCollisionOption.ReplaceExisting);
+            folder = await rootFolder.CreateFolderAsync($"{folderName}", CreationCollisionOption.OpenIfExists);
+            folderMidi = await folder.CreateFolderAsync($"{folderMidiName}", CreationCollisionOption.OpenIfExists);
             await folderMidi.CreateFileAsync($"{fileName}", CreationCollisionOption.ReplaceExisting);
 
-            using (var fileStream = new FileStream($"{rootFolder.Path}/{folderName}/{folderMidiName}/{fileName}", FileMode.Create, System.IO.FileAccess.Write))
+            using (var fileStream = new FileStream($"{rootFolder.Path}/{folderName}/{folderMidiName}/{fileName}", FileMode.OpenOrCreate, System.IO.FileAccess.Write))
                 stream.CopyTo(fileStream);
 
             return true;
@@ -294,38 +282,47 @@ namespace MobiHymn4.Utils
 
         }
 
-        public HymnList DownloadAllMIDIs(HymnList hymnList, CRUD mode, IProgress<string> progress, CancellationToken cts)
+        public async Task<HymnList> DownloadAllMIDIs(HymnList hymnList, CRUD mode, IProgress<string> progress, CancellationToken cts)
         {
             var newList = new HymnList(hymnList);
-#if DEBUG   
-            Parallel.ForEach(new []{ "2", "77s", "888" }, async (number) =>
+            var dop = 3;
+#if DEBUG
+            await (new[] { "2", "77s", "888" }).ForEachAsync(dop, async (number, _) =>
             {
-                if (await DownloadMIDI(number))
+                try
                 {
-                    var newHymn = newList.Find(hymn => hymn.Number == number);
-                    newHymn.MidiFileName = $"h{number}.mid";
-                    progress.Report($"{Enum.GetName(mode.GetType(), mode)}d MIDI for #{number}");
+                    if (await DownloadMIDI(number, cts))
+                    {
+                        newList[number].MidiFileName = $"h{number}.mid";
+                        progress.Report($"{Enum.GetName(mode.GetType(), mode)}d MIDI for #{number}");
+                    }
+                }
+                catch (Exception ex)
+                {
+
                 }
             });
-
 #else
-
-            Parallel.ForEach(hymnList, async (hymn) =>
+            await hymnList.ForEachAsync(dop, async (hymn, _) =>
             {
-                if(await DownloadMIDI(hymn.Number))
+                try
                 {
-                    var newHymn = new Hymn(hymn);
-                    newHymn.MidiFileName = $"h{hymn.Number}.mid";
-                    var curHymn = newList.Find(hymn => hymn.Number == newHymn.Number);
-                    curHymn = new Hymn(newHymn);
-                    progress.Report($"{Enum.GetName(mode.GetType(), mode)}d MIDI for #{newHymn.Title}");
+                    if (await DownloadMIDI(hymn.Number, cts))
+                    {
+                        newList[hymn.Number].MidiFileName = $"h{hymn.Number}.mid";
+                        progress.Report($"{Enum.GetName(mode.GetType(), mode)}d MIDI for #{hymn.Number}");
+                    }
+                }
+                catch (Exception ex)
+                {
+
                 }
             });
 #endif
             return newList;
         }
 
-        public async Task<bool> DownloadMIDI(string number)
+        public async Task<bool> DownloadMIDI(string number, CancellationToken cts)
         {
             bool ret;
             string dropboxArgs = "Dropbox-API-Arg";
@@ -340,16 +337,16 @@ namespace MobiHymn4.Utils
                     RequestUri = new Uri("https://content.dropboxapi.com/2/files/download"),
                     Headers =
                     {
-                        { HttpRequestHeader.Authorization.ToString(), "Bearer sl.BiIur71QW4A-A9dorpm0ys8UONu93HKRMQ_JBCSRllNWsdoy0tlK78jje2ms-wAYgs_xIkokm3QItuCE5cZisaRDYcpzc_xsKB0kcA_dyg2zVwo36HwpolTJEbcVXCIWH_TFPIM" },
+                        { HttpRequestHeader.Authorization.ToString(), "Bearer sl.BiIP5yX3dESIh30SAYU-C29MbwTbE_KQks_DRkxs2BP1QvdMIgjX8DQDRwL9ijNUgMPTZcVc6N8_AG1BGdH6pw-AtfIoxwDd3sHByN0m0kMjtVfS2XCHL179Hb-5H3c-V2qywdE" },
                         { dropboxArgs, JsonConvert.SerializeObject(jsonParam) }
                     }
                 };
                 requestMessage.Content = new StringContent("", System.Text.Encoding.UTF8, "application/octet-stream");
 
-                var content = await httpClient2.SendAsync(requestMessage);
+                var content = await httpClient2.SendAsync(requestMessage, HttpCompletionOption.ResponseContentRead, cts);
                 if ((int)content.StatusCode >= 400)
                 {
-                    Debug.WriteLine(content.Content.ReadAsStringAsync());
+                    Debug.WriteLine(await content.Content.ReadAsStringAsync());
                     ret = false;
                 }
                 else
@@ -387,8 +384,16 @@ namespace MobiHymn4.Utils
 
         private async void UpdateResyncVersion()
         {
-            Preferences.Set(PreferencesVar.RESYNC_VERSION, (await new FirebaseHelper().RetrieveActiveSyncVersion()).ToString());
-            Globals.Instance.ResyncDetails.Clear();
+            try
+            {
+                var newVersion = await FirebaseHelper.Instance.RetrieveActiveSyncVersion();
+                Preferences.Set(PreferencesVar.RESYNC_VERSION, newVersion.ToString());
+                Globals.Instance.ResyncDetails.Clear();
+            }
+            catch (Exception ex)
+            {
+
+            }
         }
     }
 }

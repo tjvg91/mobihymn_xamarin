@@ -32,7 +32,7 @@ namespace MobiHymn4
 
             fbHelper = DependencyService.Get<IFirebaseHelper>();
             appVBHelper = DependencyService.Get<IAppVersionBuild>();
-            fbInstance = new FirebaseHelper();
+            fbInstance = FirebaseHelper.Instance;
 
             fromFirebaseNotif = hasNotification;
 
@@ -76,7 +76,7 @@ namespace MobiHymn4
                 if (!isNew) globalInstance.Init();
 
                 DeviceDisplay.KeepScreenOn = globalInstance.KeepAwake;
-                Preferences.Set(PreferencesVar.RESYNC_VERSION, "0");
+                //Preferences.Set(PreferencesVar.RESYNC_VERSION, "0");
                 if (DeviceInfo.Platform == DevicePlatform.iOS)
                 {
                     await Task.Delay(2000);

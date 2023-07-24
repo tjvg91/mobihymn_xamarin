@@ -3,7 +3,6 @@
     xmlns="http://xamarin.com/schemas/2014/forms"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:ViewModels="clr-namespace:MobiHymn4.ViewModels"
-    xmlns:lottie="clr-namespace:Lottie.Forms;assembly=Lottie.Forms"
     xmlns:elements="clr-namespace:MobiHymn4.Elements"
     x:Class="MobiHymn4.Views.HistoryPage"
     x:Name="root"
@@ -18,7 +17,7 @@
             ChildAdded="MyListView_ChildAdded">
         <CollectionView.ItemTemplate>
             <DataTemplate>
-                <StackLayout Padding="{OnPlatform Android=10, iOS='10,10,10,0'}">
+                <StackLayout Padding="10">
                     <FlexLayout JustifyContent="SpaceBetween">
                         <Label Text="{Binding NumberText}" Style="{StaticResource Title}"/>
                         <Label Text="{Binding DateTimeText}" FontSize="Micro" Style="{StaticResource Subtitle}"/>
@@ -47,27 +46,13 @@
                         WidthRequest="200"
                         HeightRequest="200"
                         IsClippedToBounds="True"
-                        RelativeLayout.XConstraint="0"
-                    >
+                        RelativeLayout.XConstraint="0">
                         <elements:AnimatingView
                             Size="{OnPlatform Android=200, iOS=0.8}"
                             Source="{AppThemeBinding Light=history-light, Dark=history-dark}"
                             AbsoluteLayout.LayoutBounds="0.5, 0.2, 1, 1"
                             AbsoluteLayout.LayoutFlags="All"
                         />
-                        <!--<lottie:AnimationView
-                            x:Name="historyLottie"
-                            Animation="{AppThemeBinding Light=history-light.json, Dark=history-dark.json}"
-                            RepeatMode="Restart"
-                            AnimationSource="AssetOrBundle"
-                            WidthRequest="10"
-                            HeightRequest="10"
-                            AutoPlay="True"
-                            Speed="1"
-                            OnPlayAnimation="historyLottie_OnPlayAnimation"
-                            AbsoluteLayout.LayoutBounds="0.5, 0.5, 1, 1"
-                            AbsoluteLayout.LayoutFlags="All"
-                        />-->
                     </AbsoluteLayout>
                     <StackLayout>
                         <Label

@@ -4,12 +4,21 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:MobiHymn4.ViewModels"
     xmlns:fontawesome="clr-namespace:FontAwesome"
-    xmlns:utils="clr-namespace:MobiHymn4.Utils" xmlns:elements="clr-namespace:MobiHymn4.Elements"
+    xmlns:utils="clr-namespace:MobiHymn4.Utils"
+    xmlns:simplebottomdrawer="clr-namespace:Xam.Plugin.SimpleBottomDrawer;assembly=Xam.Plugin.SimpleBottomDrawer"
     x:Class="MobiHymn4.Views.ReadPage"
     x:Name="root"
     Shell.TabBarIsVisible="False"
     Shell.NavBarIsVisible="{Binding IsReadView}"
     BackgroundColor="{StaticResource PrimaryText}">
+
+    <ContentPage.Resources>
+        <Style TargetType="BoxView">
+            <Setter Property="HeightRequest" Value="1" />
+            <Setter Property="HorizontalOptions" Value="FillAndExpand"/>
+            <Setter Property="Background" Value="{AppThemeBinding Dark={StaticResource Gray}, Light={StaticResource GrayLight}}" />
+        </Style>
+    </ContentPage.Resources>
 
     <ContentPage.BindingContext>
         <vm:ReadViewModel />
@@ -70,7 +79,12 @@
 
     <ContentPage.Content>
         <StackLayout BackgroundColor="Transparent">
-            <AbsoluteLayout x:Name="readerStack" BackgroundColor="{Binding ActiveColor}" VerticalOptions="FillAndExpand">
+            <AbsoluteLayout
+                x:Name="readerStack"
+                BackgroundColor="{Binding ActiveColor}"
+                VerticalOptions="FillAndExpand"
+                AbsoluteLayout.LayoutFlags="All"
+                AbsoluteLayout.LayoutBounds="0,0,1,1">
                 <ScrollView AbsoluteLayout.LayoutFlags="All" AbsoluteLayout.LayoutBounds="0,0,1,1">
                     <StackLayout HorizontalOptions="Fill" Padding="5">
                         <StackLayout.GestureRecognizers>
@@ -121,7 +135,7 @@
                     IsVisible="False"
                     CornerRadius="{OnPlatform Android=40, iOS=30}"
                     AbsoluteLayout.LayoutFlags="PositionProportional"  
-                    AbsoluteLayout.LayoutBounds=".95,.97,60,60">
+                    AbsoluteLayout.LayoutBounds="{OnPlatform Android='.95,.96,60,60', iOS='.95,.96,60,60'}">
                     <Button.ImageSource>
                         <FontImageSource
                             FontFamily="FAS"
@@ -132,7 +146,7 @@
                     <Button.Triggers>
                         <MultiTrigger TargetType="Button">
                             <MultiTrigger.Conditions>
-                                <BindingCondition  Binding="{Binding HymnInputType}" Value="{x:Static utils:InputType.Grid}" />
+                                <BindingCondition Binding="{Binding HymnInputType}" Value="{x:Static utils:InputType.Grid}" />
                                 <BindingCondition Binding="{Binding IsReadView}" Value="True" />
                             </MultiTrigger.Conditions>
                             <Setter Property="IsVisible" Value="True" />
@@ -145,7 +159,7 @@
                     Clicked="btnHome_Clicked"
                     IsVisible="False"
                     AbsoluteLayout.LayoutFlags="PositionProportional"  
-                    AbsoluteLayout.LayoutBounds=".95,.97,60,60" >
+                    AbsoluteLayout.LayoutBounds="{OnPlatform Android='.95,.96,60,60', iOS='.95,.96,60,60'}" >
                     <Button.ImageSource>
                         <FontImageSource
                             FontFamily="FAS"
@@ -163,13 +177,99 @@
                         </MultiTrigger>
                     </Button.Triggers>
                 </Button>
+                <simplebottomdrawer:BottomDrawer
+                    Margin="40"
+                    Padding="20"
+                    ExpandedPercentage="90"
+                    IsExpanded="True"
+                    IsVisible="{Binding IsBookmarkGroupsShown}"
+                    HeightRequest="{Binding DrawerHeight}"
+                    HorizontalOptions="Center"
+                    LockStates="{Binding LockStates}"
+                    AbsoluteLayout.LayoutFlags="PositionProportional"
+                    AbsoluteLayout.LayoutBounds="0.5,0.45,-1,0.5"
+                    Background="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryText}}">
+                    <StackLayout>
+                        <Label
+                            Style="{StaticResource Title}"
+                            Text="Save to"
+                            HorizontalTextAlignment="Center"
+                            FontAttributes="Bold"
+                            Margin="0,0,0,20"/>
+                        <BoxView />
+                        <ScrollView>
+                            <CollectionView ItemsSource="{Binding GroupKeys}">
+                                <CollectionView.ItemTemplate>
+                                    <DataTemplate>
+                                        <FlexLayout Direction="Row">
+                                            <FlexLayout.GestureRecognizers>
+                                                <TapGestureRecognizer Tapped="TapGestureRecognizer_Tapped_1" CommandParameter="{Binding Name}" />
+                                            </FlexLayout.GestureRecognizers>
+                                            <Frame
+                                                Background="{AppThemeBinding Dark={StaticResource GrayLight}, Light={StaticResource Gray}}"
+                                                Padding="10"
+                                                HeightRequest="{OnPlatform iOS=30, Android=40}"
+                                                Margin="{OnPlatform iOS='-1,3,7,0', Android='0,3,7,0'}"
+                                                BorderColor="{AppThemeBinding Dark={StaticResource GrayLight}, Light={StaticResource Gray}}"
+                                                HasShadow="False"
+                                                CornerRadius="{OnPlatform iOS=15, Android=20}">
+                                                <Image WidthRequest="{OnPlatform iOS=10, Android=20}">
+                                                    <Image.Source>
+                                                        <FontImageSource
+                                                            Color="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryText}}"
+                                                            FontFamily="FAS"
+                                                            Glyph="{x:Static fontawesome:FontAwesomeIcons.Heart}"
+                                                            Size="Medium"/>
+                                                    </Image.Source>
+                                                </Image>
+                                            </Frame>
+                                            <StackLayout Orientation="Vertical">
+                                                <Label Text="{Binding Name}"
+                                                       Style="{StaticResource Title}"
+                                                       TextType="Html"
+                                                       HorizontalTextAlignment="Start"/>
+                                                <Label Text="{Binding CountString}"
+                                                       Style="{StaticResource Subtitle}"
+                                                       TextType="Html"
+                                                       HorizontalTextAlignment="Start"
+                                                       Margin="0,-5,0,0"/>
+                                            </StackLayout>
+                                        </FlexLayout>
+                                    </DataTemplate>
+                                </CollectionView.ItemTemplate>
+                            </CollectionView>
+                        </ScrollView>
+                        <BoxView />
+                        
+                        <FlexLayout JustifyContent="SpaceEvenly" HeightRequest="100" Margin="0,10,0,0" Direction="Column">
+                            <Button
+                                x:Name="btnAddNewGroup"
+                                Padding="10"
+                                Margin="0,0,0,10"
+                                Text="Create new group"
+                                Clicked="btnAddNewGroup_Clicked"/>
+                            <Button
+                                x:Name="btnGrpCancel"
+                                HeightRequest="40"
+                                Style="{StaticResource Button-Cancel}"
+                                Text="Cancel"
+                                FlexLayout.Grow="1"
+                                Clicked="btnGrpCancel_Clicked"
+                                />
+                        </FlexLayout>
+                    </StackLayout>
+                    
+                </simplebottomdrawer:BottomDrawer>
             </AbsoluteLayout>
             <StackLayout
                 Orientation="Horizontal"
+                HorizontalOptions="FillAndExpand"
                 VerticalOptions="Center"
                 BackgroundColor="{StaticResource PrimaryText}"
                 IsVisible="True"
-                Padding="{OnPlatform Android=0, iOS='0,0,0,0'}"
+                Padding="{OnPlatform Android='0', iOS='0,5,5,0'}"
+                AbsoluteLayout.LayoutFlags="All"
+                AbsoluteLayout.LayoutBounds="{OnPlatform Android='1,1,1,0.07', iOS='1,1,1,0.05'}"
                 x:Name="stckPlayer">
                 <StackLayout.Triggers>
                     <DataTrigger TargetType="StackLayout" Binding="{Binding IsReadView}" Value="False">
@@ -222,6 +322,15 @@
                     </Button.ImageSource>
                 </Button>
             </StackLayout>
+            
+            <BoxView
+                AbsoluteLayout.LayoutFlags="All"
+                AbsoluteLayout.LayoutBounds="{OnPlatform Android='0,0,1,1', iOS='0,0,1,1.5'}"
+                Background="Black"
+                Opacity="0.5"
+                IsVisible="False"
+                HorizontalOptions="FillAndExpand"
+                VerticalOptions="FillAndExpand"/>
         </StackLayout>
     </ContentPage.Content>
 </ContentPage>

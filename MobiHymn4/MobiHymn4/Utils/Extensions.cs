@@ -8,6 +8,8 @@ using MvvmHelpers;
 using Newtonsoft.Json.Linq;
 using Xamarin.Forms;
 using MobiHymn4.Models;
+using System.Threading.Tasks;
+using System.Threading;
 
 namespace MobiHymn4.Utils
 {
@@ -49,7 +51,7 @@ namespace MobiHymn4.Utils
             var hasRGBA = (from x in keys
                            where new Regex("[rgba]", RegexOptions.IgnoreCase).IsMatch(x)
                            select x).Any();
-            if(hasRGBA)
+            if (hasRGBA)
             {
                 return Color.FromRgba(
                     double.Parse(jObject["R"] + ""),
@@ -72,6 +74,29 @@ namespace MobiHymn4.Utils
             var tune = new Regex("[fst]$").Match(number).Value;
             return tune == "f" ? number.Replace("f", " (4th tune)") :
                     tune == "s" ? number.Replace("s", " (2nd tune)") : number.Replace("t", " (3rd tune)");
+        }
+
+        public static async Task ForEachAsync<T>(this IEnumerable<T> list, int dop, Func<T, int, Task> body)
+        {
+            using var semaphore = new SemaphoreSlim(initialCount: dop, maxCount: dop);
+            var tasks = list.Select(async (item, index) =>
+            {
+                await semaphore.WaitAsync();
+                try
+                {
+                    await body(item, index);
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+            await Task.WhenAll(tasks);
+        }
+
+        public static string Capitalize(this string str)
+        {
+            return char.ToUpper(str[0]) + str.Substring(1);
         }
     }
 }

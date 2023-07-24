@@ -15,7 +15,17 @@ namespace MobiHymn4.Models
 		private const string ACTIVE_SYNC_VERSION_KEY = "ActiveSyncVersion";
 
         private FirebaseClient fc;
-		
+
+        private static FirebaseHelper instance = null;
+        public static FirebaseHelper Instance
+        {
+            get
+            {
+                instance ??= new FirebaseHelper();
+                return instance;
+            }
+        }
+
         public FirebaseHelper()
 		{
 			fc = new FirebaseClient(FirebaseClient, new FirebaseOptions

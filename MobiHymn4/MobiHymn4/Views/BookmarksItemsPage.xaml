@@ -1,0 +1,204 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    xmlns="http://xamarin.com/schemas/2014/forms"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:ViewModels="clr-namespace:MobiHymn4.ViewModels"
+    xmlns:fontawesome="clr-namespace:FontAwesome"
+    xmlns:elems="clr-namespace:MobiHymn4.Elements"
+    x:Class="MobiHymn4.Views.BookmarksItemsPage"
+    xmlns:simplebottomdrawer="clr-namespace:Xam.Plugin.SimpleBottomDrawer;assembly=Xam.Plugin.SimpleBottomDrawer"
+    x:Name="root"
+    Title="{Binding Title}">
+    <ContentPage.BindingContext>
+		<ViewModels:BookmarksViewModel/>
+	</ContentPage.BindingContext>
+    <ContentPage.Resources>
+        <Style TargetType="BoxView">
+            <Setter Property="HeightRequest" Value="1" />
+            <Setter Property="HorizontalOptions" Value="FillAndExpand"/>
+            <Setter Property="Background" Value="{AppThemeBinding Dark={StaticResource Gray}, Light={StaticResource GrayLight}}" />
+        </Style>
+    </ContentPage.Resources>
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem x:Name="tbHome" Clicked="tbHome_Clicked">
+            <ToolbarItem.IconImageSource>
+                <FontImageSource
+                    FontFamily="FAS"
+                    Color="{StaticResource PrimaryText}"
+                    Size="Medium"
+                    Glyph="{x:Static fontawesome:FontAwesomeIcons.BookOpenReader}"/>
+            </ToolbarItem.IconImageSource>
+        </ToolbarItem>
+    </ContentPage.ToolbarItems>
+
+    <AbsoluteLayout>
+        
+        <CollectionView x:Name="MyListView"
+                ItemsSource="{Binding BookmarksPerKey}"
+                ChildAdded="MyListView_ChildAdded">
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <SwipeView SwipeStarted="SwipeView_SwipeStarted" BindingContext="{Binding .}">
+                        <SwipeView.RightItems>
+                            <SwipeItems>
+                                <SwipeItem
+                                    BackgroundColor="{StaticResource Red}"
+                                    CommandParameter="{Binding .}"
+                                    Invoked="SwipeItem_Invoked">
+                                    <SwipeItem.IconImageSource>
+                                        <FontImageSource
+                                            FontFamily="FAR"
+                                            Size="{OnPlatform iOS=Medium, Android=11}"
+                                            Glyph="{x:Static fontawesome:FontAwesomeIcons.TrashCan}"/>
+                                    </SwipeItem.IconImageSource>
+                                </SwipeItem>
+                                <SwipeItem
+                                    Invoked="SwipeItem_Invoked_1"
+                                    CommandParameter="{Binding .}"
+                                    BackgroundColor="{StaticResource Primary}">
+                                    <SwipeItem.IconImageSource>
+                                        <FontImageSource
+                                            FontFamily="FAS"
+                                            Size="{OnPlatform iOS=Medium, Android=11}"
+                                            Glyph="{x:Static fontawesome:FontAwesomeIcons.LayerGroup}"/>
+                                    </SwipeItem.IconImageSource>
+                                </SwipeItem>
+                            </SwipeItems>
+                        </SwipeView.RightItems>
+                        <StackLayout
+                            BackgroundColor="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}"
+                            Padding="20,15" Margin="0"
+                            Orientation="Vertical">
+                            <Label Text="{Binding Line}" Style="{StaticResource Title}" TextType="Html"/>
+                            <Label
+                                Text="{Binding NumberText}"
+                                Style="{StaticResource Subtitle}"
+                                Margin="{OnPlatform iOS='0,0,0,0'}"
+                            />
+                            <StackLayout.GestureRecognizers>
+                                <TapGestureRecognizer
+                                    Command="{Binding Source={x:Reference root}, Path=BindingContext.BookmarkSelected}"
+                                    CommandParameter="{Binding .}" />
+                            </StackLayout.GestureRecognizers>
+                        </StackLayout>
+                    </SwipeView>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+            <CollectionView.EmptyView>
+                <FlexLayout
+                    JustifyContent="Center"
+                    AlignItems="Center"
+                    HorizontalOptions="FillAndExpand"
+                    VerticalOptions="FillAndExpand"
+                    Padding="0,0,0,60"
+                >
+                    <StackLayout HorizontalOptions="Center">
+                        <AbsoluteLayout
+                            WidthRequest="250"
+                            HeightRequest="250"
+                            IsClippedToBounds="True"
+                            RelativeLayout.XConstraint="0"
+                        >
+                            <elems:AnimatingView
+                                Source="heart"
+                                Size="{OnPlatform iOS=2.5, Android=600}"
+                                HorizontalOptions="FillAndExpand"
+                                VerticalOptions="FillAndExpand"
+                                AbsoluteLayout.LayoutBounds="{OnPlatform Android='0.5, 0.7, 2, 2', iOS='0.8, 2, 1, 1'}"
+                                AbsoluteLayout.LayoutFlags="All" CascadeInputTransparent="True"/>
+                        </AbsoluteLayout>
+                        <StackLayout>
+                            <Label
+                                HorizontalTextAlignment="Center"
+                                TextColor="{StaticResource Primary}"
+                                Text="Your loved hymns will show here."
+                            />
+                        </StackLayout>
+                    </StackLayout>
+                </FlexLayout>
+            </CollectionView.EmptyView>
+        </CollectionView>
+        <simplebottomdrawer:BottomDrawer
+            Margin="40"
+            Padding="20"
+            ExpandedPercentage="10"
+            IsExpanded="True"
+            IsVisible="{Binding IsBookmarkGroupsShown}"
+            HeightRequest="{Binding DrawerHeight}"
+            HorizontalOptions="Center"
+            AbsoluteLayout.LayoutFlags="PositionProportional"
+            AbsoluteLayout.LayoutBounds="0.5,0.5,-1,0.5"
+            Background="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryText}}">
+            <StackLayout>
+                <Label
+                    Text="Move to"
+                    Style="{StaticResource Title}"
+                    HorizontalTextAlignment="Center"
+                    FontAttributes="Bold" Margin="0,0,0,20"/>
+                <BoxView />
+                <CollectionView
+                    ItemsSource="{Binding GroupKeysExceptCurrent}"
+                    HeightRequest="{Binding CollectionHeight}"
+                    IsVisible="{Binding HasCollection}">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate>
+                            <FlexLayout Direction="Row">
+                                <FlexLayout.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="TapGestureRecognizer_Tapped" CommandParameter="{Binding Name}" />
+                                </FlexLayout.GestureRecognizers>
+                                <Frame
+                                    Background="{AppThemeBinding Dark={StaticResource GrayLight}, Light={StaticResource Gray}}"
+                                    Padding="10"
+                                    HeightRequest="{OnPlatform iOS=30, Android=40}"
+                                    Margin="{OnPlatform iOS='-1,3,7,0', Android='0,3,7,0'}"
+                                    BorderColor="{AppThemeBinding Dark={StaticResource GrayLight}, Light={StaticResource Gray}}"
+                                    HasShadow="False"
+                                    CornerRadius="{OnPlatform iOS=15, Android=20}">
+                                    <Image WidthRequest="{OnPlatform iOS=10, Android=20}">
+                                        <Image.Source>
+                                            <FontImageSource
+                                                Color="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryText}}"
+                                                FontFamily="FAS"
+                                                Glyph="{x:Static fontawesome:FontAwesomeIcons.Heart}"
+                                                Size="Medium"/>
+                                        </Image.Source>
+                                    </Image>
+                                </Frame>
+                                <StackLayout Orientation="Vertical">
+                                    <Label Text="{Binding Name}"
+                                            Style="{StaticResource Title}"
+                                            TextType="Html"
+                                            HorizontalTextAlignment="Start"/>
+                                    <Label Text="{Binding CountString}"
+                                            Style="{StaticResource Subtitle}"
+                                            TextType="Html"
+                                            HorizontalTextAlignment="Start"
+                                            Margin="0,-5,0,0"/>
+                                </StackLayout>
+                            </FlexLayout>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+                <BoxView IsVisible="{Binding HasCollection}"/>
+                <FlexLayout JustifyContent="SpaceEvenly" HeightRequest="100" Margin="0,10,0,0" Direction="Column">
+                    <Button
+                        x:Name="btnAddNewGroup"
+                        Padding="10"
+                        Margin="0,0,0,10"
+                        Text="Create new group"
+                        Clicked="btnAddNewGroup_Clicked" />
+                    <Button 
+                        x:Name="btnGrpCancel"
+                        Style="{StaticResource Button-Cancel}"
+                        Text="Cancel"
+                        FlexLayout.Grow="1"
+                        Clicked="btnGrpCancel_Clicked"
+                        />
+                </FlexLayout>
+            </StackLayout>
+                    
+        </simplebottomdrawer:BottomDrawer>
+    </AbsoluteLayout>
+</ContentPage>
+

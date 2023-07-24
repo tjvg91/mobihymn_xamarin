@@ -14,6 +14,8 @@ using MobiHymn4.Views;
 using System.Windows.Input;
 using MobiHymn4.Models;
 using Plugin.AudioRecorder;
+using LiteDB;
+using Xamarin.Essentials;
 
 namespace MobiHymn4.ViewModels
 {
@@ -24,6 +26,7 @@ namespace MobiHymn4.ViewModels
         private string commandText = "Play";
 
         public event EventHandler OnBookmarked;
+        public event EventHandler OnHymnChanged;
 
         public ReadViewModel()
         {
@@ -47,18 +50,27 @@ namespace MobiHymn4.ViewModels
             globalInstance.BookmarksChanged += GlobalInstance_BookmarksChanged;
 
             LetterSpacing = globalInstance.FontList.Find(f => f.Name == activeFont).CharacterSpacing;
+
+            GroupKeys = ModifyBookmarks(globalInstance.BookmarkList).Select((grp, count) => new GroupDisplay
+            {
+                Name = grp.Key,
+                Count = grp.Count()
+            }).ToObservableRangeCollection();
+
+            DrawerHeight = GetDrawerHeight();
         }
 
-        public ReadViewModel(IPlayService playService) : this()
-        {
-            this.playService = playService;
-            var file = "h592.mid";
-            this.playService.Init(file);
-        }
-
+        #region Events
         private void GlobalInstance_BookmarksChanged(object sender, EventArgs e)
         {
             BookmarkFont = globalInstance.IsBookmarked() ? "FAS" : "FAR";
+
+            GroupKeys = ModifyBookmarks(globalInstance.BookmarkList).Select((grp, count) => new GroupDisplay
+            {
+                Name = grp.Key,
+                Count = grp.Count()
+            }).ToObservableRangeCollection();
+            DrawerHeight = GetDrawerHeight();
         }
 
         private void GlobalInstance_HymnInputTypeChanged(object sender, EventArgs e)
@@ -88,8 +100,35 @@ namespace MobiHymn4.ViewModels
             Title = "Hymn #" + activeHymn.Title;
             Lyrics = activeHymn.Lyrics;
             BookmarkFont = globalInstance.IsBookmarked() ? "FAS" : "FAR";
+
+            if (OnHymnChanged != null) OnHymnChanged(activeHymn, EventArgs.Empty);
         }
 
+
+        private void Globals_ActiveReadThemeChanged(object sender, EventArgs e)
+        {
+            ActiveColor = (Color)sender;
+            ActiveColorText = globalInstance.ActiveThemeText;
+        }
+        #endregion
+
+        #region Methods
+        private ObservableRangeCollection<IGrouping<string, ShortHymn>> ModifyBookmarks(ObservableRangeCollection<ShortHymn> shortHymns)
+        {
+            return shortHymns.OrderBy(shortHymn => shortHymn.Line)
+                .GroupBy((shortHymn) => shortHymn.BookmarkGroup)
+                .OrderBy(group => group.Key).ToObservableRangeCollection();
+        }
+
+        double GetDrawerHeight()
+        {
+            var offset = DeviceInfo.Platform == DevicePlatform.Android ? 10 : 0;
+            var multiplier = DeviceInfo.Platform == DevicePlatform.Android ? 55 : 50;
+            return Math.Min(370 + offset, (GroupKeys.Count + 2) * multiplier + offset + 50 + 20);
+        }
+        #endregion
+
+        #region Properties
         private ICommand _playPauseCommand;
         public ICommand PlayPauseCommand
         {
@@ -274,11 +313,49 @@ namespace MobiHymn4.ViewModels
             }
         }
 
-        private void Globals_ActiveReadThemeChanged(object sender, EventArgs e)
+        private double[] lockStates = new double[] { 0, .50, 0.75 };
+        public double[] LockStates
         {
-            ActiveColor = (Color)sender;
-            ActiveColorText = globalInstance.ActiveThemeText;
+            get => lockStates;
+            set => SetProperty(ref lockStates, value, nameof(LockStates));
         }
+
+        private bool isBookmarkGroupsShown = false;
+        public bool IsBookmarkGroupsShown
+        {
+            get => isBookmarkGroupsShown;
+            set
+            {
+                isBookmarkGroupsShown = value;
+                SetProperty(ref isBookmarkGroupsShown, value, nameof(IsBookmarkGroupsShown));
+                OnPropertyChanged();
+            }
+        }
+
+        private ObservableRangeCollection<GroupDisplay> groupKeys;
+        public ObservableRangeCollection<GroupDisplay> GroupKeys
+        {
+            get => groupKeys;
+            private set
+            {
+                groupKeys = value;
+                SetProperty(ref groupKeys, groupKeys, nameof(GroupKeys));
+                OnPropertyChanged();
+            }
+        }
+
+        private double drawerHeight;
+        public double DrawerHeight
+        {
+            get => drawerHeight;
+            set
+            {
+                drawerHeight = value;
+                SetProperty(ref drawerHeight, drawerHeight, nameof(DrawerHeight));
+                OnPropertyChanged();
+            }
+        }
+        #endregion
     }
 }
 

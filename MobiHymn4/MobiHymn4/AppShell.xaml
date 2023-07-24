@@ -1,7 +1,6 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
 <Shell xmlns="http://xamarin.com/schemas/2014/forms" 
        xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-       xmlns:xct="http://xamarin.com/schemas/2020/toolkit"
        xmlns:local="clr-namespace:MobiHymn4.Views"
        xmlns:fontawesome="clr-namespace:FontAwesome"
        xmlns:utils="clr-namespace:MobiHymn4.Utils"
@@ -196,7 +195,10 @@
         <ShellContent Route="{x:Static utils:Routes.HISTORY}" ContentTemplate="{DataTemplate local:HistoryPage}" />
     </FlyoutItem>
     <FlyoutItem Title="Bookmarks" Icon="{x:Static fontawesome:FontAwesomeIcons.Heart}">
-        <ShellContent Route="{x:Static utils:Routes.BOOKMARKS}" ContentTemplate="{DataTemplate local:BookmarksPage}" />
+        <ShellContent Route="{x:Static utils:Routes.BOOKMARKS_GROUP}" ContentTemplate="{DataTemplate local:BookmarksGroupPage}" />
+    </FlyoutItem>
+    <FlyoutItem Title="Bookmark Items" Icon="{x:Static fontawesome:FontAwesomeIcons.Heart}" FlyoutItemIsVisible="False">
+        <ShellContent Route="{x:Static utils:Routes.BOOKMARKS_LIST}" ContentTemplate="{DataTemplate local:BookmarksItemsPage}" />
     </FlyoutItem>
     <FlyoutItem Title="About" Icon="{x:Static fontawesome:FontAwesomeIcons.CircleInfo}">
         <ShellContent Route="{x:Static utils:Routes.ABOUT}" ContentTemplate="{DataTemplate local:AboutPage}" />

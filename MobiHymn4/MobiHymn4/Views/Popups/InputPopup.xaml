@@ -1,0 +1,37 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<xct:Popup
+    xmlns="http://xamarin.com/schemas/2014/forms"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"    
+    xmlns:xct="http://xamarin.com/schemas/2020/toolkit" xmlns:viewmodels="clr-namespace:MobiHymn4.ViewModels"
+    x:Name="this"
+    x:Class="MobiHymn4.Views.Popups.InputPopup">
+    <xct:Popup.BindingContext>
+        <viewmodels:InputPopupModel />
+    </xct:Popup.BindingContext>
+    <StackLayout VerticalOptions="FillAndExpand" Padding="15">
+        <Label Text="{Binding Title}" HorizontalTextAlignment="Center" FontSize="Small"/>
+        <Entry
+            x:Name="entInput"
+            HorizontalOptions="FillAndExpand"
+            FontSize="Small"
+            Placeholder="Input Group Name"
+            Margin="10,10,10,0"/>
+        <Label Text="{Binding ErrorString}" FontSize="Micro" TextColor="{StaticResource Red}" Margin="12,-1,12,5"/>
+        <FlexLayout Margin="10,0">
+            <Button
+                x:Name="btnCancel"
+                FlexLayout.Grow="1"
+                Text="Cancel"
+                Style="{OnPlatform iOS={StaticResource Button-Cancel}, Android={StaticResource Button-Clear-Cancel}}"
+                Clicked="btnCancel_Clicked"/>
+            <Button
+                x:Name="btnOK"
+                FlexLayout.Grow="1"
+                Style="{OnPlatform iOS={StaticResource Button-Reverse}, Android={StaticResource Button-Clear-Reverse}}"
+                Text="{Binding ActionString}"
+                Clicked="btnOK_Clicked"
+                Margin="10,0,0,0"/>
+         </FlexLayout>
+    </StackLayout>
+</xct:Popup>
+

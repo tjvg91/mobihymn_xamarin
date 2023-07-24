@@ -25,7 +25,7 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <MtouchArch>x86_64</MtouchArch>
-    <MtouchLink>SdkOnly</MtouchLink>
+    <MtouchLink>None</MtouchLink>
     <MtouchDebug>true</MtouchDebug>
     <CodesignProvision>VS: com.tjapps.mobihymn Development</CodesignProvision>
     <CodesignKey>Apple Development: Created via API (F4PV6SL6U8)</CodesignKey>
@@ -78,6 +78,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="FirebaseHelper.cs" />
     <Compile Include="AppVersionBuild.cs" />
+    <Compile Include="MidiHelper.cs" />
   </ItemGroup>
   <ItemGroup>
     <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Contents.json">
@@ -181,6 +182,9 @@
     </PackageReference>
     <PackageReference Include="Xamarin.Firebase.iOS.Installations">
       <Version>8.10.0.3</Version>
+    </PackageReference>
+    <PackageReference Include="Xam.Plugin.SimpleBottomDrawer">
+      <Version>1.0.11</Version>
     </PackageReference>
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath)\Xamarin\iOS\Xamarin.iOS.CSharp.targets" />

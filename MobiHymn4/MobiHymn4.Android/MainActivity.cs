@@ -27,7 +27,7 @@ namespace MobiHymn4.Droid
             AppCompatDelegate.DefaultNightMode = AppCompatDelegate.ModeNightNo;
             base.OnCreate(savedInstanceState);
 
-            Xamarin.Forms.Forms.SetFlags("SwipeView_Experimental");
+            Xamarin.Forms.Forms.SetFlags(new string[] { "SwipeView_Experimental", "Expander_Experimental" });
 
             Xamarin.Essentials.Platform.Init(this, savedInstanceState);
             global::Xamarin.Forms.Forms.Init(this, savedInstanceState);

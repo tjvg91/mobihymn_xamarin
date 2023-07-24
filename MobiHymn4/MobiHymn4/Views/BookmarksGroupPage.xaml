@@ -1,0 +1,97 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    xmlns="http://xamarin.com/schemas/2014/forms"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:xct="http://xamarin.com/schemas/2020/toolkit"
+    xmlns:ViewModels="clr-namespace:MobiHymn4.ViewModels"
+    xmlns:fontawesome="clr-namespace:FontAwesome"
+    xmlns:elems="clr-namespace:MobiHymn4.Elements"
+    x:Class="MobiHymn4.Views.BookmarksGroupPage"
+    x:Name="root"
+    Title="{Binding Title}"
+    Padding="0">
+	<ContentPage.BindingContext>
+		<ViewModels:BookmarksViewModel/>
+	</ContentPage.BindingContext>
+
+    <ContentPage.Resources>
+        <Style TargetType="FlexLayout">
+            <Setter Property="VisualStateManager.VisualStateGroups">
+                <VisualStateGroupList>
+                    <VisualStateGroup x:Name="CommmonStatees">
+                        <VisualState x:Name="Selected">
+                            <VisualState.Setters>
+                                <Setter Property="BackgroundColor" Value="{StaticResource PrimaryLight}" />
+                            </VisualState.Setters>
+                        </VisualState>
+                    </VisualStateGroup>
+                </VisualStateGroupList>
+            </Setter>
+        </Style>
+    </ContentPage.Resources>
+
+    <CollectionView
+            ItemsSource="{Binding GroupKeys}">
+        <CollectionView.ItemTemplate>
+            <DataTemplate>
+                <FlexLayout
+                    BackgroundColor="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}"
+                    HorizontalOptions="FillAndExpand"
+                    JustifyContent="SpaceBetween"
+                    AlignItems="Center"
+                    Padding="20,15"
+                    Margin="0">
+                    <StackLayout Orientation="Vertical" HorizontalOptions="FillAndExpand">
+                        <Label Text="{Binding Name}" Style="{StaticResource Title}" TextType="Html" HorizontalTextAlignment="Start"/>
+                        <Label Text="{Binding CountString}" Style="{StaticResource Subtitle}" TextType="Html" HorizontalTextAlignment="Start" Margin="0,-2.5,0,0"/>
+                    </StackLayout>
+                        <Label
+                            Text="{Static fontawesome:FontAwesomeIcons.ChevronRight}"
+                            TextColor="{AppThemeBinding Dark={StaticResource White}, Light={StaticResource PrimaryText}}"
+                            FontFamily="FAS"
+                            FontSize="Large"/>
+                    
+                    <FlexLayout.GestureRecognizers>
+                        <TapGestureRecognizer
+                            Command="{Binding Source={x:Reference root}, Path=BindingContext.BookmarkGroupSelected}"
+                            CommandParameter="{Binding Name}" />
+                    </FlexLayout.GestureRecognizers>
+                </FlexLayout>
+            </DataTemplate>
+        </CollectionView.ItemTemplate>
+        <CollectionView.EmptyView>
+            <FlexLayout
+                JustifyContent="Center"
+                AlignItems="Center"
+                HorizontalOptions="FillAndExpand"
+                VerticalOptions="FillAndExpand"
+                Padding="0,0,0,60"
+            >
+                <StackLayout HorizontalOptions="Center">
+                    <AbsoluteLayout
+                        WidthRequest="250"
+                        HeightRequest="250"
+                        IsClippedToBounds="True"
+                        RelativeLayout.XConstraint="0"
+                    >
+                        <elems:AnimatingView
+                            Source="heart"
+                            Size="{OnPlatform iOS=2.5, Android=600}"
+                            HorizontalOptions="FillAndExpand"
+                            VerticalOptions="FillAndExpand"
+                            AbsoluteLayout.LayoutBounds="{OnPlatform Android='0.5, 0.7, 2, 2', iOS='0.8, 2, 1, 1'}"
+                            AbsoluteLayout.LayoutFlags="All" CascadeInputTransparent="True"/>
+                    </AbsoluteLayout>
+                    <StackLayout>
+                        <Label
+                            HorizontalTextAlignment="Center"
+                            TextColor="{StaticResource Primary}"
+                            Text="Your loved hymns will show here."
+                        />
+                    </StackLayout>
+                </StackLayout>
+            </FlexLayout>
+        </CollectionView.EmptyView>
+    </CollectionView>
+</ContentPage>
+
