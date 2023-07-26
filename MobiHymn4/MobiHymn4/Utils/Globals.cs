@@ -125,7 +125,7 @@ namespace MobiHymn4.Utils
             ThemeList.Add(new ThemeSettings
             {
                 Background = Pink,
-                Foreground = Primary
+                Foreground = White
             });
 
             if (DeviceInfo.Platform == DevicePlatform.iOS)

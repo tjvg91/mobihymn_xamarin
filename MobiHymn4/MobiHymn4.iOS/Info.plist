@@ -41,6 +41,21 @@
 	<dict/>
 	<key>UIMainStoryboardFile</key>
 	<string>LaunchScreen</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Fonts/ChelseaMarket-Regular.ttf</string>
+		<string>Fonts/Cookie-Regular.ttf</string>
+		<string>Fonts/DancingScript.ttf</string>
+		<string>Fonts/Frosty.ttf</string>
+		<string>Fonts/KGKissMeSlowly.ttf</string>
+		<string>Fonts/Frosty.ttf</string>
+		<string>Fonts/KGKissMeSlowly.ttf</string>
+		<string>Fonts/KGMelonheadz.ttf</string>
+		<string>Fonts/KGWhattheTeacherWants.ttf</string>
+		<string>Fonts/NotoSerif-Regular.ttf</string>
+		<string>Fonts/UnifrakturMaguntia-Regular.ttf</string>
+		<string>Fonts/StyleScript-Regular.ttf</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

@@ -21,12 +21,25 @@ namespace MobiHymn4.ViewModels
 			set
 			{
 				historyList = value;
+                HistoryGroupList = ModifyHistory(value);
 				SetProperty(ref historyList, value, nameof(HistoryList));
 				OnPropertyChanged();
 			}
 		}
 
-		public HistoryViewModel()
+        private ObservableRangeCollection<IGrouping<string, ShortHymn>> historyGroupList;
+        public ObservableRangeCollection<IGrouping<string, ShortHymn>> HistoryGroupList
+        {
+            get => historyGroupList;
+            private set
+            {
+                historyGroupList = value;
+                SetProperty(ref historyGroupList, value, nameof(HistoryGroupList));
+                OnPropertyChanged();
+            }
+        }
+
+        public HistoryViewModel()
 		{
             HistoryList = globalInstance.HistoryList;
 			Title = "History";
@@ -53,6 +66,13 @@ namespace MobiHymn4.ViewModels
                     await Shell.Current.GoToAsync($"//{Routes.READ}");
                 }));
             }
+        }
+
+        private ObservableRangeCollection<IGrouping<string, ShortHymn>> ModifyHistory(ObservableRangeCollection<ShortHymn> shortHymns)
+        {
+            return shortHymns.OrderByDescending(shortHymn => shortHymn.TimeStamp)
+                .GroupBy((shortHymn) => shortHymn.HistoryGroup)
+                .ToObservableRangeCollection();
         }
     }
 }

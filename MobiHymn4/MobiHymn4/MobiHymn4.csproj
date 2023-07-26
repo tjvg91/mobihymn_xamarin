@@ -70,6 +70,7 @@
     <None Remove="Resources\GIF\history-dark.gif" />
     <None Remove="Resources\GIF\search-light.gif" />
     <None Remove="Resources\GIF\settingup.gif" />
+    <None Remove="Resources\Fonts\VaudDisplay-Ultra.ttf" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Resources\Fonts\ChelseaMarket-Regular.ttf" />
@@ -108,5 +109,6 @@
     <EmbeddedResource Include="Resources\GIF\history-dark.gif" />
     <EmbeddedResource Include="Resources\GIF\search-light.gif" />
     <EmbeddedResource Include="Resources\GIF\settingup.gif" />
+    <EmbeddedResource Include="Resources\Fonts\VaudDisplay-Ultra.ttf" />
   </ItemGroup>
 </Project>

@@ -11,7 +11,7 @@ using Xamarin.Forms.Xaml;
 [assembly: ExportFont("NotoSerif-Regular.ttf", Alias = "NotoSerif")]
 [assembly: ExportFont("ChelseaMarket-Regular.ttf", Alias = "ChelseaMarket")]
 [assembly: ExportFont("StyleScript-Regular.ttf", Alias = "StyleScript")]
-[assembly: ExportFont("UnifrakturMaguntia-Re gular.ttf", Alias = "UnifrakturMaguntia")]
+[assembly: ExportFont("UnifrakturMaguntia-Regular.ttf", Alias = "UnifrakturMaguntia")]
 [assembly: ExportFont("SFPro.ttf", Alias = "SFPro")]
 
 [assembly: ExportFont("Frosty.ttf", Alias = "Frosty")]
@@ -19,5 +19,8 @@ using Xamarin.Forms.Xaml;
 [assembly: ExportFont("KGKissMeSlowly.ttf", Alias = "KGKissMeSlowly")]
 [assembly: ExportFont("KGMelonheadz.ttf", Alias = "KGMelonheadz")]
 [assembly: ExportFont("KGWhattheTeacherWants.ttf", Alias = "KGWhattheTeacherWants")]
+
+[assembly: ExportFont("edit-no-edit.ttf", Alias = "EditNoEdit")]
+[assembly: ExportFont("VaudDisplay-Ultra.ttf", Alias = "VaudDisplay")]
 
 [assembly: ExportFont("logo.ttf", Alias = "LOGO")]

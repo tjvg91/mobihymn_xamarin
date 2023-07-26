@@ -9,6 +9,7 @@ using Android.Text;
 using Android.Views;
 using Android.Widget;
 using AndroidX.Core.Content;
+using AndroidX.Core.Text;
 using MobiHymn4.Droid;
 using MobiHymn4.Elements;
 using Xamarin.Forms;
@@ -17,31 +18,31 @@ using Xamarin.Forms.Platform.Android;
 [assembly: ExportRenderer(typeof(SelectableLabel), typeof(SelectableLabelRenderer))]
 namespace MobiHymn4.Droid
 {
-    public class SelectableLabelRenderer : ViewRenderer<SelectableLabel, TextView>
+    public class SelectableLabelRenderer : LabelRenderer, IGestureRecognizer
     {
-        TextView textView;
-
         public SelectableLabelRenderer(Context context) : base(context)
         {
-
+            
         }
 
-        private GravityFlags UpdateTextAlignment(Xamarin.Forms.TextAlignment alignment)
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        private Android.Views.TextAlignment UpdateTextAlignment(Xamarin.Forms.TextAlignment alignment)
         {
             switch (alignment)
             {
                 case Xamarin.Forms.TextAlignment.Center:
-                    return GravityFlags.CenterHorizontal;
+                    return Android.Views.TextAlignment.Center;
                 case Xamarin.Forms.TextAlignment.End:
-                    return GravityFlags.Right;
+                    return Android.Views.TextAlignment.TextEnd;
                 case Xamarin.Forms.TextAlignment.Start:
-                    return GravityFlags.Left;
+                    return Android.Views.TextAlignment.TextStart;
                 default:
-                    return GravityFlags.Left;
+                    return Android.Views.TextAlignment.TextStart;
             }
         }
 
-        private void UpdateFont(SelectableLabel label)
+        private void UpdateFont(Label label)
         {
             Android.Graphics.Typeface t = new Regex("Roboto").IsMatch(label.FontFamily) ? null :
                 Android.Graphics.Typeface.CreateFromAsset(Context.Assets, $"Fonts/{label.FontFamily}.ttf");
@@ -49,16 +50,16 @@ namespace MobiHymn4.Droid
             switch (label.FontAttributes)
             {
                 case FontAttributes.None:
-                    textView.SetTypeface(t, Android.Graphics.TypefaceStyle.Normal);
+                    Control.SetTypeface(t, Android.Graphics.TypefaceStyle.Normal);
                     break;
                 case FontAttributes.Bold:
-                    textView.SetTypeface(t, Android.Graphics.TypefaceStyle.Bold);
+                    Control.SetTypeface(t, Android.Graphics.TypefaceStyle.Bold);
                     break;
                 case FontAttributes.Italic:
-                    textView.SetTypeface(t, Android.Graphics.TypefaceStyle.Italic);
+                    Control.SetTypeface(t, Android.Graphics.TypefaceStyle.Italic);
                     break;
                 default:
-                    textView.SetTypeface(t, Android.Graphics.TypefaceStyle.Normal);
+                    Control.SetTypeface(t, Android.Graphics.TypefaceStyle.Normal);
                     break;
             }
         }
@@ -67,71 +68,81 @@ namespace MobiHymn4.Droid
         {
             base.OnElementPropertyChanged(sender, e);
 
-            if (textView != null)
+            if (Control != null)
             {
                 var label = (SelectableLabel)sender;
                 switch (e.PropertyName)
                 {
                     case "Text":
-                        textView.Text = label.Text;
+                        Control.Text = label.Text;
                         break;
                     case "TextColor":
-                        textView.SetTextColor(label.TextColor.ToAndroid());
+                        Control.SetTextColor(label.TextColor.ToAndroid());
                         break;
                     case "BackgroundColor":
-                        textView.Background = new ColorDrawable(label.BackgroundColor.ToAndroid());
+                        Control.Background = new ColorDrawable(label.BackgroundColor.ToAndroid());
                         break;
                     case "HorizontalTextAlignment":
-                        textView.Gravity = UpdateTextAlignment(label.HorizontalTextAlignment);
+                        Control.TextAlignment = UpdateTextAlignment(label.HorizontalTextAlignment);
                         break;
                     case "FontAttribute":
                     case "FontFamily":
                         UpdateFont(label);
                         break;
                     case "FontSize":
-                        textView.TextSize = (float)label.FontSize;
+                        Control.TextSize = (float)label.FontSize;
                         break;
+                    case "CharacterSpacing":
+                        Control.LetterSpacing = (float)label.CharacterSpacing;
+                        break;
+                    case "LineHeight":
+                        Control.SetLineSpacing((float)label.LineHeight, 1f);
+                        break;
+                }
+
+                if (new Regex("TextColor|Font").IsMatch(e.PropertyName))
+                {
+                    Control.SetText(
+                        HtmlCompat.FromHtml(
+                            Control.Text.ToString(), HtmlCompat.FromHtmlModeLegacy),
+                        TextView.BufferType.Spannable);
                 }
             }
         }
 
-        protected override void OnElementChanged(ElementChangedEventArgs<SelectableLabel> e)
+        protected override void OnElementChanged(ElementChangedEventArgs<Label> e)
         {
             base.OnElementChanged(e);
 
-            var label = Element;
+            var label = e.NewElement;
             if (label == null)
                 return;
 
-            if (Control == null)
-            {
-                textView = new TextView(this.Context);
-            }
+            //Control.Enabled = true;
+            //Control.Focusable = true;
+            //Control.LongClickable = true;
+            //Control.Clickable = true;
 
-            textView.Enabled = true;
-            textView.Focusable = true;
-            textView.LongClickable = true;
-            textView.Clickable = true;
-            textView.SetTextIsSelectable(true);
-            textView.SetHighlightColor(Color.FromHex("F5D200").ToAndroid());
+            Control.SetTextIsSelectable(true);
+            Control.SetHighlightColor(Color.FromHex("F5D200").ToAndroid());
 
-            textView.Background = new ColorDrawable(label.BackgroundColor.ToAndroid());
+            Control.Background = new ColorDrawable(label.BackgroundColor.ToAndroid());
 
             // Initial properties Set
-            textView.Text = label.Text;
-            textView.SetTextColor(label.TextColor.ToAndroid());
-            textView.Gravity = UpdateTextAlignment(label.HorizontalTextAlignment);
-            textView.TextSize = (float)label.FontSize;
+            Control.Text = label.Text;
+            Control.SetTextColor(label.TextColor.ToAndroid());
+            Control.TextAlignment = UpdateTextAlignment(label.HorizontalTextAlignment);
+            Control.TextSize = (float)label.FontSize;
+            Control.LetterSpacing = (float)label.CharacterSpacing;
 
-            //textView.SetText(
-            //    HtmlCompat.FromHtml(
-            //        textView.Text.ToString(), HtmlCompat.FromHtmlModeLegacy),
-            //    TextView.BufferType.Spannable);
+            Control.SetText(
+                HtmlCompat.FromHtml(
+                    Control.Text.ToString(), HtmlCompat.FromHtmlModeLegacy),
+                TextView.BufferType.Spannable);
 
             UpdateFont(label);
 
-
-            SetNativeControl(textView);
+            SetNativeControl(Control);
         }
     }
 }

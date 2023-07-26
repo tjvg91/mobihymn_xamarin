@@ -7,17 +7,28 @@
     x:Class="MobiHymn4.Views.HistoryPage"
     x:Name="root"
     Title="{Binding Title}"
-    Padding="0, 10, 0, 0">
+    Padding="{OnPlatform Android='0', iOS='0,10,0,0'}">
 	<ContentPage.BindingContext>
 		<ViewModels:HistoryViewModel/>
 	</ContentPage.BindingContext>
     <CollectionView x:Name="MyListView"
-            ItemsSource="{Binding HistoryList}"
-            Visual="Material"
-            ChildAdded="MyListView_ChildAdded">
+            ItemsSource="{Binding HistoryGroupList}"
+            IsGrouped="True"
+        ChildAdded="MyListView_ChildAdded">
+        <CollectionView.GroupHeaderTemplate>
+            <DataTemplate>
+                <StackLayout Padding="5"
+                           BackgroundColor="{AppThemeBinding Dark={StaticResource Gray}, Light={StaticResource GrayLight}}">
+                    <Label Text="{Binding Key}"
+                           TextColor="{AppThemeBinding Dark={StaticResource White}, Light={StaticResource PrimaryText}}"
+                           FontSize="Medium"
+                           FontAttributes="Bold" />
+                </StackLayout>
+            </DataTemplate>
+        </CollectionView.GroupHeaderTemplate>
         <CollectionView.ItemTemplate>
             <DataTemplate>
-                <StackLayout Padding="10">
+                <StackLayout Padding="15,10">
                     <FlexLayout JustifyContent="SpaceBetween">
                         <Label Text="{Binding NumberText}" Style="{StaticResource Title}"/>
                         <Label Text="{Binding DateTimeText}" FontSize="Micro" Style="{StaticResource Subtitle}"/>

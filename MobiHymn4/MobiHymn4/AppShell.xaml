@@ -153,34 +153,57 @@
 
     <Shell.FlyoutHeader>
         <FlexLayout
-            JustifyContent="Start"
-            Margin="{OnPlatform Android='0,0,0,10',iOS='0,50,0,0'}"
+            JustifyContent="Center"
+            AlignItems="Center"
+            Margin="{OnPlatform Android='0,0,0,20',iOS='0,50,0,0'}"
             Direction="Column"
-            BackgroundColor="Transparent">
-            <StackLayout Orientation="Horizontal" VerticalOptions="CenterAndExpand" HorizontalOptions="FillAndExpand">
-                <Label
-                    Text="{x:Static logo:IconFont.Logo}"
-                    FontFamily="LOGO"
-                    TextColor="{AppThemeBinding Dark={StaticResource Primary}, Light={StaticResource PrimaryText}}"
-                    Padding="5,10,0,10"
-                    FontSize="40"
-                />
-                <Label
-                    Text="obiHymn"
-                    TextColor="{AppThemeBinding Dark={StaticResource Primary}, Light={StaticResource PrimaryText}}"
-                    VerticalTextAlignment="Center"
-                    CharacterSpacing="3"
-                    Padding="{OnPlatform Android='-7,0,0,0', iOS='0,0,0,0'}"
-                    FontSize="14"
-                    FontAttributes="Bold"
-                />
+            BackgroundColor="Transparent"
+            HorizontalOptions="FillAndExpand">
+            <StackLayout Orientation="Vertical" VerticalOptions="FillAndExpand">
+                <AbsoluteLayout
+                    IsClippedToBounds="True"
+                    WidthRequest="90"
+                    HeightRequest="90"
+                    Margin="-5,30,0,0">
+                    <Frame
+                        CornerRadius="15"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Fill"
+                        Background="{StaticResource PrimaryText}"
+                        AbsoluteLayout.LayoutFlags="All"
+                        AbsoluteLayout.LayoutBounds="0,0,1,1">
+                        <Label
+                            Text="{AppThemeBinding Light={x:Static logo:IconFont.Logo}, Dark={x:Static logo:IconFont.Logo}}"
+                            FontFamily="LOGO"
+                            TextColor="{AppThemeBinding Dark={StaticResource Primary}, Light={StaticResource Primary}}"
+                            FontSize="90"
+                            HorizontalTextAlignment="Center"
+                            Padding="-18,-18"
+                        />
+                    </Frame>
+                </AbsoluteLayout>
+
+                <StackLayout Orientation="Horizontal">
+                    <Label
+                        Text="Mobi"
+                        TextColor="{AppThemeBinding Dark={StaticResource White}, Light={StaticResource PrimaryText}}"
+                        CharacterSpacing="1"
+                        FontFamily="VaudDisplay"
+                        FontSize="20"
+                        FontAttributes="Bold"
+                    />
+                    <Label
+                        Text="Hymn"
+                        TextColor="{StaticResource Primary}"
+                        CharacterSpacing="1"
+                        FontFamily="VaudDisplay"
+                        FontSize="20"
+                        FontAttributes="Bold"
+                        Padding="-5,0,0,0"
+                    />
+                </StackLayout>
+                
             </StackLayout>
-            <BoxView
-                HorizontalOptions="FillAndExpand"
-                VerticalOptions="Center"
-                HeightRequest="1"
-                BackgroundColor="{AppThemeBinding Dark={StaticResource PrimaryLight}, Light={StaticResource GrayLight}}"
-            />
         </FlexLayout>
 
     </Shell.FlyoutHeader>

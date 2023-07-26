@@ -6,6 +6,7 @@
     xmlns:fontawesome="clr-namespace:FontAwesome"
     xmlns:utils="clr-namespace:MobiHymn4.Utils"
     xmlns:simplebottomdrawer="clr-namespace:Xam.Plugin.SimpleBottomDrawer;assembly=Xam.Plugin.SimpleBottomDrawer"
+    xmlns:elements="clr-namespace:MobiHymn4.Elements"
     x:Class="MobiHymn4.Views.ReadPage"
     x:Name="root"
     Shell.TabBarIsVisible="False"
@@ -86,12 +87,7 @@
                 AbsoluteLayout.LayoutFlags="All"
                 AbsoluteLayout.LayoutBounds="0,0,1,1">
                 <ScrollView AbsoluteLayout.LayoutFlags="All" AbsoluteLayout.LayoutBounds="0,0,1,1">
-                    <StackLayout HorizontalOptions="Fill" Padding="5">
-                        <StackLayout.GestureRecognizers>
-                            <PinchGestureRecognizer PinchUpdated="PinchGestureRecognizer_PinchUpdated" />
-                            <TapGestureRecognizer Tapped="TapGestureRecognizer_Tapped" />
-                        </StackLayout.GestureRecognizers>
-
+                    <StackLayout HorizontalOptions="FillAndExpand" Padding="5">
                         <Label
                             Text="{Binding Title}"
                             FontFamily="{Binding ActiveFont}"
@@ -103,6 +99,7 @@
                             LineHeight="1.2"
                             TextDecorations="Underline"
                             Margin="0,0,15,0"/>
+                        
                         <Label
                             Text="{Binding Lyrics}"
                             FontFamily="{Binding ActiveFont}"
@@ -112,22 +109,126 @@
                             BackgroundColor="{Binding ActiveColor}"
                             CharacterSpacing="{Binding LetterSpacing}"
                             LineHeight="1.2"
-                            Margin="0,0,15,0"
-                            TextType="Html"/>
-                        <!--
-                            IsVisible="{OnPlatform Android=True, iOS=False}"-->
-                        <!--<elements:SelectableLabel
+                            TextType="Html"
+                            IsVisible="False">
+                            <Label.Triggers>
+                                <DataTrigger TargetType="Label" Binding="{Binding IsSelectable}" Value="False">
+                                    <Setter Property="IsVisible" Value="{OnPlatform Android=True, iOS=False}" />
+                                </DataTrigger>
+                                <DataTrigger TargetType="Label" Binding="{Binding IsSelectable}" Value="True">
+                                    <Setter Property="IsVisible" Value="False" />
+                                </DataTrigger>
+                            </Label.Triggers>
+                        </Label>
+                        
+                        <elements:SelectableLabel
                             Text="{Binding Lyrics}"
                             FontFamily="{Binding ActiveFont}"
                             FontSize="{Binding ActiveFontSize}"
                             HorizontalTextAlignment="{Binding ActiveAlignment}"
                             TextColor="{Binding ActiveColorText}"
-                            BackgroundColor="{Binding ActiveColor}"
-                            Margin="0,0,15,0"
-                            IsVisible="{OnPlatform Android=False, iOS=True}">
-                        </elements:SelectableLabel>-->
+                            BackgroundColor="Transparent"
+                            HorizontalOptions="FillAndExpand"
+                            IsTabStop="False"
+                            LineHeight="1.2"
+                            Margin="0,0,0,0">
+                            <elements:SelectableLabel.Triggers>
+                                <DataTrigger TargetType="Label" Binding="{Binding IsSelectable}" Value="False">
+                                    <Setter Property="IsVisible" Value="{OnPlatform Android=False, iOS=True}" />
+                                </DataTrigger>
+                                <DataTrigger TargetType="Label" Binding="{Binding IsSelectable}" Value="True">
+                                    <Setter Property="IsVisible" Value="True" />
+                                </DataTrigger>
+                            </elements:SelectableLabel.Triggers>
+
+                        </elements:SelectableLabel>
+                        <StackLayout.GestureRecognizers>
+                            <PinchGestureRecognizer PinchUpdated="PinchGestureRecognizer_PinchUpdated" />
+                            <TapGestureRecognizer Tapped="TapGestureRecognizer_Tapped" />
+                        </StackLayout.GestureRecognizers>
                     </StackLayout>
                 </ScrollView>
+
+                <Button
+                    x:Name="btnSelectable"
+                    Style="{StaticResource Button-Clear}"
+                    Opacity="0.3"
+                    IsVisible="False"
+                    WidthRequest="{Binding ActiveFontSize}"
+                    HeightRequest="{Binding ActiveFontSize}"
+                    AbsoluteLayout.LayoutFlags="PositionProportional"  
+                    AbsoluteLayout.LayoutBounds="1,0,40,40"
+                    Clicked="btnSelectable_Clicked">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding ActiveAlignment}" Value="End">
+                            <Setter Property="AbsoluteLayout.LayoutBounds" Value="0,0,40,40" />
+                        </DataTrigger>
+                        <MultiTrigger TargetType="Button">
+                            <MultiTrigger.Conditions>
+                                <BindingCondition Binding="{Binding IsSelectable}" Value="True" />
+                                <BindingCondition Binding="{Binding IsReadView}" Value="True" />
+                            </MultiTrigger.Conditions>
+                            <Setter Property="IsVisible" Value="{OnPlatform Android=True, Default=False}" />
+                        </MultiTrigger>
+                    </Button.Triggers>
+                    <Button.ImageSource>
+                        <FontImageSource
+                            FontFamily="FAS"
+                            Color="{Binding ActiveColorText}"
+                            Size="{Binding ActiveFontSize}"
+                            Glyph="{x:Static fontawesome:FontAwesomeIcons.ICursor}"/>
+                    </Button.ImageSource>
+                </Button>
+                <RelativeLayout
+                    Opacity="0.3"
+                    IsVisible="False"
+                    WidthRequest="{Binding ActiveFontSize}"
+                    HeightRequest="{Binding ActiveFontSize}"
+                    AbsoluteLayout.LayoutFlags="PositionProportional"
+                    AbsoluteLayout.LayoutBounds="1,0,40,40">
+                    <RelativeLayout.Triggers>
+                        <DataTrigger TargetType="RelativeLayout" Binding="{Binding ActiveAlignment}" Value="End">
+                            <Setter Property="AbsoluteLayout.LayoutBounds" Value="0,0,40,40" />
+                        </DataTrigger>
+                        <MultiTrigger TargetType="RelativeLayout">
+                            <MultiTrigger.Conditions>
+                                <BindingCondition Binding="{Binding IsSelectable}" Value="False" />
+                                <BindingCondition Binding="{Binding IsReadView}" Value="True" />
+                            </MultiTrigger.Conditions>
+                            <Setter Property="IsVisible" Value="{OnPlatform Android=True, Default=False}" />
+                        </MultiTrigger>
+                    </RelativeLayout.Triggers>
+                    <Button
+                        x:Name="btnNotSelectable"
+                        Style="{StaticResource Button-Clear}"
+                        Clicked="btnNotSelectable_Clicked">
+                        <Button.ImageSource>
+                            <FontImageSource
+                                FontFamily="FAS"
+                                Color="{Binding ActiveColorText}"
+                                Size="{Binding ActiveFontSize}"
+                                Glyph="{x:Static fontawesome:FontAwesomeIcons.ICursor}"/>
+                        </Button.ImageSource>
+                    </Button>
+                    <BoxView
+                        RelativeLayout.WidthConstraint="{ConstraintExpression  
+                                                        Type=RelativeToParent,  
+                                                        Property=Width,  
+                                                        Factor=0.7}"
+                        RelativeLayout.YConstraint="{ConstraintExpression  
+                                                        Type=RelativeToParent,
+                                                        Property=Height,  
+                                                        Factor=0.45}"  
+                        RelativeLayout.XConstraint="{ConstraintExpression  
+                                                        Type=RelativeToParent, 
+                                                        Property=Width,  
+                                                        Factor=0.15}"
+                        HorizontalOptions="FillAndExpand"
+                        HeightRequest="2"
+                        Background="white"
+                        Rotation="45"/>
+                </RelativeLayout>
+                
                 <Button
                     Style="{StaticResource Button-FAB}"
                     x:Name="tbHome1"

@@ -29,7 +29,27 @@
                    IsEnabled="{Binding IsNotBusy}"
                    SearchCommand="{Binding SearchHymns}" 
                    SearchCommandParameter="{Binding Text, Source={x:Reference searchBar}}"
-                   Keyboard="Text"/>
+                   Keyboard="Text"
+                   Margin="0,0,0,0"/>
+        <StackLayout
+            Padding="10,5"
+            IsVisible="False">
+            <StackLayout.Triggers>
+                <MultiTrigger TargetType="{Type StackLayout}">
+                    <MultiTrigger.Conditions>
+                        <BindingCondition Binding="{Binding IsSearched}" Value="True" />
+                        <BindingCondition Binding="{Binding IsBusy}" Value="False" />
+                    </MultiTrigger.Conditions>
+                    <Setter Property="IsVisible" Value="True" />
+                </MultiTrigger>
+            </StackLayout.Triggers>
+            <Label
+                HorizontalTextAlignment="Center"
+                TextDecorations="Underline"
+                FontAttributes="Italic"
+                Text="{Binding ItemCountString}"
+                Style="{StaticResource Subtitle}"/>
+        </StackLayout>
         <FlexLayout
             x:Name="layoutSearching"
             AlignItems="Center"

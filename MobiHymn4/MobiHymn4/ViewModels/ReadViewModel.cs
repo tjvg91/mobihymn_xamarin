@@ -301,14 +301,14 @@ namespace MobiHymn4.ViewModels
             }
         }
 
-        private bool isEditable = false;
-        public bool IsEditable
+        private bool isSelectable = false;
+        public bool IsSelectable
         {
-            get => isEditable;
+            get => isSelectable;
             set
             {
-                isEditable = value;
-                SetProperty(ref isEditable, value, nameof(IsEditable));
+                isSelectable = value;
+                SetProperty(ref isSelectable, value, nameof(IsSelectable));
                 OnPropertyChanged();
             }
         }

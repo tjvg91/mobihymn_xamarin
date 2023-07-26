@@ -205,7 +205,7 @@ namespace MobiHymn4.Views
 
         void ToggleEditor(System.Object sender, System.EventArgs e)
         {
-            model.IsEditable = !model.IsEditable;
+            model.IsSelectable = !model.IsSelectable;
         }
 
         void btnGrpCancel_Clicked(System.Object sender, System.EventArgs e)
@@ -228,6 +228,16 @@ namespace MobiHymn4.Views
         void btnAddNewGroup_Clicked(System.Object sender, System.EventArgs e)
         {
             InitPopup();
+        }
+
+        void btnSelectable_Clicked(System.Object sender, System.EventArgs e)
+        {
+            model.IsSelectable = !model.IsSelectable;
+        }
+
+        void btnNotSelectable_Clicked(System.Object sender, System.EventArgs e)
+        {
+            model.IsSelectable = !model.IsSelectable;
         }
     }
 }

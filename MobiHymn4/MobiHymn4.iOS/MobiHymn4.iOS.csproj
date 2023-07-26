@@ -79,6 +79,7 @@
     <Compile Include="FirebaseHelper.cs" />
     <Compile Include="AppVersionBuild.cs" />
     <Compile Include="MidiHelper.cs" />
+    <Compile Include="CustomLabelRenderer.cs" />
   </ItemGroup>
   <ItemGroup>
     <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Contents.json">
@@ -129,6 +130,16 @@
     <InterfaceDefinition Include="Resources\LaunchScreen.storyboard" />
     <BundleResource Include="Resources\icon.png" />
     <BundleResource Include="GoogleService-Info.plist" />
+    <BundleResource Include="Resources\Fonts\ChelseaMarket-Regular.ttf" />
+    <BundleResource Include="Resources\Fonts\Cookie-Regular.ttf" />
+    <BundleResource Include="Resources\Fonts\DancingScript.ttf" />
+    <BundleResource Include="Resources\Fonts\Frosty.ttf" />
+    <BundleResource Include="Resources\Fonts\KGKissMeSlowly.ttf" />
+    <BundleResource Include="Resources\Fonts\KGMelonheadz.ttf" />
+    <BundleResource Include="Resources\Fonts\KGWhattheTeacherWants.ttf" />
+    <BundleResource Include="Resources\Fonts\NotoSerif-Regular.ttf" />
+    <BundleResource Include="Resources\Fonts\StyleScript-Regular.ttf" />
+    <BundleResource Include="Resources\Fonts\UnifrakturMaguntia-Regular.ttf" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="System" />
@@ -193,5 +204,8 @@
       <Project>{6DEE28B3-5084-46C0-B10B-D2BE6C3E2E96}</Project>
       <Name>MobiHymn4</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Resources\Fonts\" />
   </ItemGroup>
 </Project>

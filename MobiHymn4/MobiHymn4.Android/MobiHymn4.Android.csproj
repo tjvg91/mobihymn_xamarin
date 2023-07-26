@@ -397,6 +397,7 @@
   <ItemGroup>
     <Folder Include="Resources\mipmap-ldpi\" />
     <Folder Include="Resources\xml\" />
+    <Folder Include="Assets\Fonts\" />
   </ItemGroup>
   <ItemGroup>
     <AndroidAsset Include="Assets\bookmark-deleted.json" />
@@ -416,6 +417,16 @@
     <AndroidAsset Include="Assets\search-light.json" />
     <AndroidAsset Include="Assets\settingup.json" />
     <AndroidAsset Include="Assets\welcome.json" />
+    <AndroidAsset Include="Assets\Fonts\ChelseaMarket.ttf" />
+    <AndroidAsset Include="Assets\Fonts\Cookie.ttf" />
+    <AndroidAsset Include="Assets\Fonts\DancingScript.ttf" />
+    <AndroidAsset Include="Assets\Fonts\Frosty.ttf" />
+    <AndroidAsset Include="Assets\Fonts\KGKissMeSlowly.ttf" />
+    <AndroidAsset Include="Assets\Fonts\KGMelonheadz.ttf" />
+    <AndroidAsset Include="Assets\Fonts\KGWhattheTeacherWants.ttf" />
+    <AndroidAsset Include="Assets\Fonts\NotoSerif.ttf" />
+    <AndroidAsset Include="Assets\Fonts\StyleScript.ttf" />
+    <AndroidAsset Include="Assets\Fonts\UnifrakturMaguntia.ttf" />
   </ItemGroup>
  <Import Project="$(MSBuildExtensionsPath)\Xamarin\Android\Xamarin.Android.CSharp.targets" />
 </Project>

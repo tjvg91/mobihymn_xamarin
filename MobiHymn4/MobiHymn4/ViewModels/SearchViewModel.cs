@@ -20,6 +20,17 @@ namespace MobiHymn4.ViewModels
         private Globals globalInstance = Globals.Instance;
         HtmlDocument htmlDocument;
 
+        private bool isSearched;
+        public bool IsSearched
+        {
+            get => isSearched;
+            set
+            {
+                isSearched = value;
+                SetProperty(ref isSearched, value, nameof(IsSearched));
+                OnPropertyChanged();
+            }
+        }
         private ObservableCollection<ShortHymn> items;
         public ObservableCollection<ShortHymn> Items
         {
@@ -27,16 +38,33 @@ namespace MobiHymn4.ViewModels
             set
             {
                 items = value;
-                SetProperty(ref itemCount, value.Count, "ItemCount");
+                SetProperty(ref items, value, nameof(Items));
+                OnPropertyChanged();
             }
         }
+
         private int itemCount;
         public int ItemCount
         {
             get => itemCount;
-            set
+            private set
             {
                 itemCount = value;
+                ItemCountString = $"{(value == 0 ? "No" : value.ToString())} result{(value > 1 ? "s" : "")} found";
+                SetProperty(ref itemCount, value, nameof(ItemCount));
+                OnPropertyChanged();
+            }
+        }
+
+        private string itemCountString;
+        public string ItemCountString
+        {
+            get => itemCountString;
+            private set
+            {
+                itemCountString = value;
+                SetProperty(ref itemCountString, value, nameof(ItemCountString));
+                OnPropertyChanged();
             }
         }
         private BackgroundWorker bwSearcher;
@@ -51,6 +79,7 @@ namespace MobiHymn4.ViewModels
             bwSearcher.RunWorkerCompleted += BwSearcher_RunWorkerCompleted;
 
             htmlDocument = new HtmlDocument();
+            IsSearched = false;
 
             Title = "Search";
         }
@@ -58,11 +87,11 @@ namespace MobiHymn4.ViewModels
         private void BwSearcher_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
         {
             IsBusy = false;
-            //Task.Delay(1000);
-            //UserDialogs.Instance.HideLoading();
             if (!e.Cancelled)
             {
                 Items = (ObservableCollection<ShortHymn>)e.Result;
+                ItemCount = Items.Count();
+                IsSearched = true;
                 Globals.LogAppCenter($"Searched", "Search Count", Items.Count().ToString());
                 OnSearchFinished(Items, EventArgs.Empty);
             }
@@ -115,7 +144,7 @@ namespace MobiHymn4.ViewModels
                            select new
                            {
                                Number = hymn.Number,
-                               Lines = new Regex("<br>").Split(parsedLyrics(hymn.Lyrics))
+                               Lines = new Regex("<br>").Split(ParsedLyrics(hymn.Lyrics))
                                          .Where(line => new Regex(text.StripPunctuation(), RegexOptions.IgnoreCase).IsMatch(line.StripPunctuation()))
                                          .Select(line => new ShortHymn
                                          {
@@ -135,7 +164,7 @@ namespace MobiHymn4.ViewModels
             }
         }
 
-        private string parsedLyrics(string lyrics)
+        private string ParsedLyrics(string lyrics)
         {
             htmlDocument.LoadHtml(lyrics);
             var root = htmlDocument.DocumentNode;
