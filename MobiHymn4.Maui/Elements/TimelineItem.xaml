@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:fa="clr-namespace:FontAwesome"
+    x:Name="this"
+    x:Class="MobiHymn4.Elements.TimelineItem">
+    <VerticalStackLayout Spacing="4" Padding="0">
+        <Label
+            FontAttributes="Bold"
+            FontSize="15"
+            HorizontalOptions="Start"
+            Text="{Binding Item.Header, Source={x:Reference this}, FallbackValue='Title'}"
+            TextColor="{AppThemeBinding Dark={StaticResource Primary}, Light={StaticResource PrimaryText}}"
+            HorizontalTextAlignment="Start"
+            Margin="0,0,0,4"/>
+
+        <VerticalStackLayout
+            Spacing="2"
+            BindableLayout.ItemsSource="{Binding Item.Details, Source={x:Reference this}}">
+            <BindableLayout.ItemTemplate>
+                <DataTemplate>
+                    <HorizontalStackLayout Spacing="8" Padding="0">
+                        <Label
+                            FontSize="7"
+                            FontFamily="FAS"
+                            TextColor="{StaticResource Primary}"
+                            Text="{Static Member=fa:FontAwesomeIcons.Circle}"
+                            Margin="0,6,0,0"/>
+                        <Label
+                            FontSize="14"
+                            Text="{Binding ., FallbackValue='Detail'}"
+                            LineHeight="1.3"
+                            TextColor="{AppThemeBinding Dark={StaticResource GrayLight}, Light={StaticResource PrimaryText}}" />
+                    </HorizontalStackLayout>
+                </DataTemplate>
+            </BindableLayout.ItemTemplate>
+        </VerticalStackLayout>
+    </VerticalStackLayout>
+</ContentView>
+

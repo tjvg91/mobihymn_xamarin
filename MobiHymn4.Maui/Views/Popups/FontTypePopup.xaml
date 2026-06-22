@@ -1,0 +1,43 @@
+<toolkit:Popup
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    xmlns:ViewModels="clr-namespace:MobiHymn4.ViewModels"
+    x:Class="MobiHymn4.Views.Popups.FontTypePopup"
+    x:Name="root">
+
+	<toolkit:Popup.BindingContext>
+		<ViewModels:ReadViewModel/>
+	</toolkit:Popup.BindingContext>
+
+    <StackLayout Padding="10" Style="{StaticResource SLChanger}">
+        <ScrollView>
+            <CollectionView ItemsSource="{Binding FontList}">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <StackLayout Padding="5">
+                            <StackLayout.GestureRecognizers>
+                                <TapGestureRecognizer
+                                    Command="{Binding Source={x:Reference root}, Path=BindingContext.FontSelected}"
+                                    CommandParameter="{Binding Value}" />
+                            </StackLayout.GestureRecognizers>
+                            <Label
+                                Text="{Binding Name}"
+                                FontFamily="{Binding Value}"
+                                FontSize="Medium"
+                                Style="{StaticResource Title}"
+                            />
+                        </StackLayout>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </ScrollView>
+        <StackLayout HorizontalOptions="End" Orientation="Horizontal">
+            <Button
+                Text="OK"
+                Clicked="Button_Clicked"
+                Style="{AppThemeBinding Light={StaticResource Button-Clear-Reverse}, Dark={StaticResource Button-Clear}}"
+            />
+        </StackLayout>
+    </StackLayout>
+</toolkit:Popup>

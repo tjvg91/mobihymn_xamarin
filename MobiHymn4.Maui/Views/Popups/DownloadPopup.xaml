@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<toolkit:Popup
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    xmlns:ViewModels="clr-namespace:MobiHymn4.ViewModels"
+    xmlns:elements="clr-namespace:MobiHymn4.Elements"
+    x:Class="MobiHymn4.Views.Popups.DownloadPopup"
+    Color="Black">
+	<toolkit:Popup.BindingContext>
+		<ViewModels:DownloadViewModel/>
+	</toolkit:Popup.BindingContext>
+    <FlexLayout HorizontalOptions="FillAndExpand" VerticalOptions="FillAndExpand"
+                JustifyContent="Center" AlignItems="Center"
+                Direction="Column" Style="{StaticResource FLChanger}">
+        <AbsoluteLayout
+            IsClippedToBounds="True"
+            WidthRequest="200"
+            HeightRequest="200">
+            <elements:AnimatingView
+                Size="{OnPlatform Android=150, iOS={OnIdiom Tablet=0.8, Default=0.8 }}"
+                AbsoluteLayout.LayoutBounds="0,-0.2,1,0.9"
+                AbsoluteLayout.LayoutFlags="All"
+                Source="{Binding LottieIcon}" />
+        </AbsoluteLayout>
+        
+        <!--<lottie:AnimationView
+            Animation="{Binding LottieIcon}"
+            RepeatMode="Infinite"
+            AnimationSource="AssetOrBundle"
+            WidthRequest="150"
+            HeightRequest="150"
+            AutoPlay="True"
+        />-->
+        <Label
+            Text="{Binding Message}"
+            FontSize="Small"
+            Style="{StaticResource Title}"
+            HorizontalTextAlignment="Center"
+            HorizontalOptions="FillAndExpand"/>
+        <Label
+            Text="(this might take a while)"
+            FontSize="12"
+            TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"
+            HorizontalTextAlignment="Center"
+            HorizontalOptions="FillAndExpand"
+            Margin="0,4,0,0"
+            IsVisible="{Binding ShowDurationHint}"/>
+    </FlexLayout>
+</toolkit:Popup>
+

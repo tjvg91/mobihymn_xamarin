@@ -1,0 +1,118 @@
+<toolkit:Popup
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    xmlns:fontawesome="clr-namespace:FontAwesome"
+    Color="#8C000000"
+    CanBeDismissedByTappingOutsideOfPopup="True"
+    x:Class="MobiHymn4.Views.Popups.SettingsPopup">
+
+    <toolkit:Popup.Resources>
+        <Style x:Key="SettingsSectionLabel" TargetType="Label">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="TextColor" Value="{AppThemeBinding Dark={StaticResource White}, Light={StaticResource PrimaryText}}"/>
+            <Setter Property="FontFamily" Value="{OnPlatform Android=Roboto, iOS=SFPro}"/>
+        </Style>
+
+        <Style x:Key="SettingsOptionLabel" TargetType="Label">
+            <Setter Property="HorizontalOptions" Value="Center"/>
+            <Setter Property="VerticalOptions" Value="Center"/>
+            <Setter Property="HorizontalTextAlignment" Value="Center"/>
+            <Setter Property="VerticalTextAlignment" Value="Center"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="TextColor" Value="{StaticResource PrimaryText}"/>
+        </Style>
+
+        <Style x:Key="OptionBox" TargetType="Border">
+            <Setter Property="HeightRequest" Value="36"/>
+            <Setter Property="WidthRequest" Value="36"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="StrokeThickness" Value="1"/>
+            <Setter Property="Stroke" Value="{StaticResource GrayLight}"/>
+            <Setter Property="StrokeShape" Value="RoundRectangle 8"/>
+            <Setter Property="BackgroundColor" Value="Transparent"/>
+        </Style>
+    </toolkit:Popup.Resources>
+
+    <Border
+        Padding="14"
+        Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+        StrokeThickness="1"
+        Background="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}"
+        StrokeShape="RoundRectangle 16"
+        MaximumWidthRequest="450"
+        Margin="16"
+        HorizontalOptions="Center"
+        VerticalOptions="Center">
+        <VerticalStackLayout Spacing="8">
+
+            <Label
+                Text="Reader Settings"
+                FontAttributes="Bold"
+                FontSize="15"
+                TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                Margin="0,0,0,2"/>
+
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <Label Grid.Column="0" Text="Alignment" Style="{StaticResource SettingsSectionLabel}" VerticalOptions="Center"/>
+                <HorizontalStackLayout Grid.Column="1" Spacing="4" HorizontalOptions="End">
+                    <Border x:Name="alignStartBox" Style="{StaticResource OptionBox}">
+                        <Border.GestureRecognizers><TapGestureRecognizer Tapped="Alignment_Tapped" CommandParameter="Start"/></Border.GestureRecognizers>
+                        <Label x:Name="alignStartLabel" Text="{x:Static fontawesome:FontAwesomeIcons.AlignLeft}" FontFamily="FAS" Style="{StaticResource SettingsOptionLabel}"/>
+                    </Border>
+                    <Border x:Name="alignCenterBox" Style="{StaticResource OptionBox}">
+                        <Border.GestureRecognizers><TapGestureRecognizer Tapped="Alignment_Tapped" CommandParameter="Center"/></Border.GestureRecognizers>
+                        <Label x:Name="alignCenterLabel" Text="{x:Static fontawesome:FontAwesomeIcons.AlignCenter}" FontFamily="FAS" Style="{StaticResource SettingsOptionLabel}"/>
+                    </Border>
+                    <Border x:Name="alignEndBox" Style="{StaticResource OptionBox}">
+                        <Border.GestureRecognizers><TapGestureRecognizer Tapped="Alignment_Tapped" CommandParameter="End"/></Border.GestureRecognizers>
+                        <Label x:Name="alignEndLabel" Text="{x:Static fontawesome:FontAwesomeIcons.AlignRight}" FontFamily="FAS" Style="{StaticResource SettingsOptionLabel}"/>
+                    </Border>
+                </HorizontalStackLayout>
+            </Grid>
+
+            <!-- Theme -->
+            <VerticalStackLayout Spacing="6">
+                <Label Text="Theme" Style="{StaticResource SettingsSectionLabel}"/>
+                <VerticalStackLayout Spacing="4">
+                    <HorizontalStackLayout Spacing="4" HorizontalOptions="Center">
+                        <Border x:Name="themeWhiteBox" Style="{StaticResource OptionBox}" BackgroundColor="{StaticResource White}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Theme_Tapped" CommandParameter="White"/></Border.GestureRecognizers><Label x:Name="themeWhiteLabel" Text="{x:Static fontawesome:FontAwesomeIcons.Check}" FontFamily="FAS" Style="{StaticResource SettingsOptionLabel}"/></Border>
+                        <Border x:Name="themeSepiaBox" Style="{StaticResource OptionBox}" BackgroundColor="{StaticResource Sepia}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Theme_Tapped" CommandParameter="Sepia"/></Border.GestureRecognizers><Label x:Name="themeSepiaLabel" Text="{x:Static fontawesome:FontAwesomeIcons.Check}" FontFamily="FAS" Style="{StaticResource SettingsOptionLabel}"/></Border>
+                        <Border x:Name="themeBrownBox" Style="{StaticResource OptionBox}" BackgroundColor="{StaticResource Brown}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Theme_Tapped" CommandParameter="Brown"/></Border.GestureRecognizers><Label x:Name="themeBrownLabel" Text="{x:Static fontawesome:FontAwesomeIcons.Check}" FontFamily="FAS" Style="{StaticResource SettingsOptionLabel}" TextColor="{StaticResource White}"/></Border>
+                        <Border x:Name="themeGrayBox" Style="{StaticResource OptionBox}" BackgroundColor="{StaticResource Gray}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Theme_Tapped" CommandParameter="Gray"/></Border.GestureRecognizers><Label x:Name="themeGrayLabel" Text="{x:Static fontawesome:FontAwesomeIcons.Check}" FontFamily="FAS" Style="{StaticResource SettingsOptionLabel}" TextColor="{StaticResource White}"/></Border>
+                        <Border x:Name="themeDarkBox" Style="{StaticResource OptionBox}" BackgroundColor="{StaticResource PrimaryText}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Theme_Tapped" CommandParameter="PrimaryText"/></Border.GestureRecognizers><Label x:Name="themeDarkLabel" Text="{x:Static fontawesome:FontAwesomeIcons.Check}" FontFamily="FAS" Style="{StaticResource SettingsOptionLabel}" TextColor="{StaticResource White}"/></Border>
+                    </HorizontalStackLayout>
+                    <HorizontalStackLayout Spacing="4" HorizontalOptions="Center">
+                        <Border x:Name="themeGreenBox" Style="{StaticResource OptionBox}" BackgroundColor="{StaticResource Green}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Theme_Tapped" CommandParameter="Green"/></Border.GestureRecognizers><Label x:Name="themeGreenLabel" Text="{x:Static fontawesome:FontAwesomeIcons.Check}" FontFamily="FAS" Style="{StaticResource SettingsOptionLabel}"/></Border>
+                        <Border x:Name="themeOrangeBox" Style="{StaticResource OptionBox}" BackgroundColor="{StaticResource Orange}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Theme_Tapped" CommandParameter="Orange"/></Border.GestureRecognizers><Label x:Name="themeOrangeLabel" Text="{x:Static fontawesome:FontAwesomeIcons.Check}" FontFamily="FAS" Style="{StaticResource SettingsOptionLabel}" TextColor="{StaticResource White}"/></Border>
+                        <Border x:Name="themeBlueBox" Style="{StaticResource OptionBox}" BackgroundColor="{StaticResource Blue}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Theme_Tapped" CommandParameter="Blue"/></Border.GestureRecognizers><Label x:Name="themeBlueLabel" Text="{x:Static fontawesome:FontAwesomeIcons.Check}" FontFamily="FAS" Style="{StaticResource SettingsOptionLabel}"/></Border>
+                        <Border x:Name="themePurpleBox" Style="{StaticResource OptionBox}" BackgroundColor="{StaticResource Purple}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Theme_Tapped" CommandParameter="Purple"/></Border.GestureRecognizers><Label x:Name="themePurpleLabel" Text="{x:Static fontawesome:FontAwesomeIcons.Check}" FontFamily="FAS" Style="{StaticResource SettingsOptionLabel}"/></Border>
+                        <Border x:Name="themePinkBox" Style="{StaticResource OptionBox}" BackgroundColor="{StaticResource Pink}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Theme_Tapped" CommandParameter="Pink"/></Border.GestureRecognizers><Label x:Name="themePinkLabel" Text="{x:Static fontawesome:FontAwesomeIcons.Check}" FontFamily="FAS" Style="{StaticResource SettingsOptionLabel}"/></Border>
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+
+            <!-- Font -->
+            <VerticalStackLayout Spacing="6">
+                <Label Text="Font Type" Style="{StaticResource SettingsSectionLabel}"/>
+                <VerticalStackLayout Spacing="4">
+                    <HorizontalStackLayout Spacing="4" HorizontalOptions="Center">
+                        <Border x:Name="fontRobotoBox" Style="{StaticResource OptionBox}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Font_Tapped" CommandParameter="Roboto"/></Border.GestureRecognizers><Label x:Name="fontRobotoLabel" Text="Aa" FontFamily="Roboto" Style="{StaticResource SettingsOptionLabel}"/></Border>
+                        <Border x:Name="fontNotoBox" Style="{StaticResource OptionBox}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Font_Tapped" CommandParameter="NotoSerif"/></Border.GestureRecognizers><Label x:Name="fontNotoLabel" Text="Aa" FontFamily="NotoSerif" Style="{StaticResource SettingsOptionLabel}"/></Border>
+                        <Border x:Name="fontChelseaBox" Style="{StaticResource OptionBox}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Font_Tapped" CommandParameter="ChelseaMarket"/></Border.GestureRecognizers><Label x:Name="fontChelseaLabel" Text="Aa" FontFamily="ChelseaMarket" Style="{StaticResource SettingsOptionLabel}"/></Border>
+                        <Border x:Name="fontUnifrakturBox" Style="{StaticResource OptionBox}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Font_Tapped" CommandParameter="UnifrakturMaguntia"/></Border.GestureRecognizers><Label x:Name="fontUnifrakturLabel" Text="Aa" FontFamily="UnifrakturMaguntia" Style="{StaticResource SettingsOptionLabel}"/></Border>
+                        <Border x:Name="fontStyleScriptBox" Style="{StaticResource OptionBox}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Font_Tapped" CommandParameter="StyleScript"/></Border.GestureRecognizers><Label x:Name="fontStyleScriptLabel" Text="Aa" FontFamily="StyleScript" Style="{StaticResource SettingsOptionLabel}"/></Border>
+                    </HorizontalStackLayout>
+                    <HorizontalStackLayout Spacing="4" HorizontalOptions="Center">
+                        <Border x:Name="fontCookieBox" Style="{StaticResource OptionBox}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Font_Tapped" CommandParameter="Cookie"/></Border.GestureRecognizers><Label x:Name="fontCookieLabel" Text="Aa" FontFamily="Cookie" Style="{StaticResource SettingsOptionLabel}"/></Border>
+                        <Border x:Name="fontFrostyBox" Style="{StaticResource OptionBox}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Font_Tapped" CommandParameter="Frosty"/></Border.GestureRecognizers><Label x:Name="fontFrostyLabel" Text="Aa" FontFamily="Frosty" Style="{StaticResource SettingsOptionLabel}"/></Border>
+                        <Border x:Name="fontKissBox" Style="{StaticResource OptionBox}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Font_Tapped" CommandParameter="KGKissMeSlowly"/></Border.GestureRecognizers><Label x:Name="fontKissLabel" Text="Aa" FontFamily="KGKissMeSlowly" Style="{StaticResource SettingsOptionLabel}"/></Border>
+                        <Border x:Name="fontMelonBox" Style="{StaticResource OptionBox}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Font_Tapped" CommandParameter="KGMelonheadz"/></Border.GestureRecognizers><Label x:Name="fontMelonLabel" Text="Aa" FontFamily="KGMelonheadz" Style="{StaticResource SettingsOptionLabel}"/></Border>
+                        <Border x:Name="fontTeacherBox" Style="{StaticResource OptionBox}"><Border.GestureRecognizers><TapGestureRecognizer Tapped="Font_Tapped" CommandParameter="KGWhattheTeacherWants"/></Border.GestureRecognizers><Label x:Name="fontTeacherLabel" Text="Aa" FontFamily="KGWhattheTeacherWants" Style="{StaticResource SettingsOptionLabel}"/></Border>
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+
+        </VerticalStackLayout>
+    </Border>
+</toolkit:Popup>

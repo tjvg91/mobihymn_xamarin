@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<toolkit:Popup
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    xmlns:viewmodels="clr-namespace:MobiHymn4.ViewModels"
+    x:Name="this"
+    x:Class="MobiHymn4.Views.Popups.InputPopup"
+    Color="Transparent"
+    CanBeDismissedByTappingOutsideOfPopup="True">
+
+    <toolkit:Popup.BindingContext>
+        <viewmodels:InputPopupModel />
+    </toolkit:Popup.BindingContext>
+
+    <Grid
+        HorizontalOptions="Fill"
+        VerticalOptions="Fill">
+
+        <Button
+            Style="{x:Null}"
+            BackgroundColor="#8C000000"
+            BorderWidth="0"
+            CornerRadius="0"
+            Padding="0"
+            HorizontalOptions="Fill"
+            VerticalOptions="Fill"
+            Clicked="Overlay_Tapped"/>
+
+        <Border
+            Padding="20"
+            Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+            StrokeThickness="1"
+            Background="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}"
+            StrokeShape="RoundRectangle 16"
+            WidthRequest="320"
+            MaximumWidthRequest="400"
+            Margin="24,0"
+            HorizontalOptions="Center"
+            VerticalOptions="Center">
+
+            <VerticalStackLayout Spacing="14">
+
+                <Label
+                    Text="{Binding Title}"
+                    FontAttributes="Bold"
+                    FontSize="17"
+                    HorizontalTextAlignment="Center"
+                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+
+                <VerticalStackLayout
+                    Spacing="6"
+                    IsVisible="{Binding HasGroupOptions}">
+                    <Label
+                        Text="Select group"
+                        FontSize="13"
+                        TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                    <Border
+                        Padding="4,0"
+                        Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 10"
+                        Background="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}">
+                        <Picker
+                            x:Name="groupPicker"
+                            Title="Choose a group"
+                            FontSize="15"
+                            TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                            ItemsSource="{Binding GroupOptions}"
+                            SelectedItem="{Binding SelectedGroup, Mode=TwoWay}"
+                            HorizontalOptions="Fill"/>
+                    </Border>
+                </VerticalStackLayout>
+
+                <Label
+                    Text="Or create new group"
+                    FontSize="13"
+                    TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+
+                <Border
+                    Padding="12,4"
+                    Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 10"
+                    Background="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}">
+                    <Entry
+                        x:Name="entInput"
+                        Placeholder="New group name"
+                        PlaceholderColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"
+                        FontSize="15"
+                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                        BackgroundColor="Transparent"
+                        HorizontalOptions="Fill"/>
+                </Border>
+
+                <Label
+                    Text="{Binding ErrorString}"
+                    FontSize="12"
+                    TextColor="{StaticResource Primary}"
+                    HorizontalTextAlignment="Center"
+                    IsVisible="{Binding HasError}"/>
+
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="12" Margin="0,4,0,0">
+                    <Button
+                        x:Name="btnCancel"
+                        Grid.Column="0"
+                        Text="Cancel"
+                        HeightRequest="44"
+                        CornerRadius="10"
+                        FontSize="15"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                        Clicked="btnCancel_Clicked"/>
+                    <Button
+                        x:Name="btnOK"
+                        Grid.Column="1"
+                        Text="{Binding ActionString}"
+                        HeightRequest="44"
+                        CornerRadius="10"
+                        FontSize="15"
+                        FontAttributes="Bold"
+                        BackgroundColor="{StaticResource Primary}"
+                        TextColor="{StaticResource PrimaryText}"
+                        Clicked="btnOK_Clicked"/>
+                </Grid>
+
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</toolkit:Popup>

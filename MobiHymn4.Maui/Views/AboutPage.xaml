@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="MobiHymn4.Views.AboutPage"
+             xmlns:vm="clr-namespace:MobiHymn4.ViewModels"
+             xmlns:elem="clr-namespace:MobiHymn4.Elements"
+             xmlns:logo="clr-namespace:LogoIcon"
+             xmlns:fontawesome="clr-namespace:FontAwesome"
+             Title="{Binding Title}"
+             BackgroundColor="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}">
+
+    <ContentPage.BindingContext>
+        <vm:AboutViewModel />
+    </ContentPage.BindingContext>
+
+    <ScrollView>
+        <VerticalStackLayout Spacing="0" Padding="0,0,0,28">
+
+            <!-- Hero -->
+            <Border
+                StrokeThickness="0"
+                Background="{StaticResource Primary}"
+                StrokeShape="RoundRectangle 0"
+                Padding="24,28,24,26">
+                <VerticalStackLayout Spacing="10" HorizontalOptions="Center">
+                    <Border
+                        WidthRequest="84"
+                        HeightRequest="84"
+                        StrokeThickness="0"
+                        Background="{StaticResource PrimaryText}"
+                        StrokeShape="RoundRectangle 18"
+                        HorizontalOptions="Center"
+                        Padding="12">
+                        <Label
+                            Text="{x:Static logo:IconFont.Logo}"
+                            FontFamily="LOGO"
+                            TextColor="{StaticResource Primary}"
+                            FontSize="48"
+                            HorizontalOptions="Center"
+                            VerticalOptions="Center"
+                            HorizontalTextAlignment="Center"
+                            VerticalTextAlignment="Center"
+                            LineHeight="1"/>
+                    </Border>
+
+                    <Label HorizontalOptions="Center" FontFamily="VaudDisplay" FontSize="26" FontAttributes="Bold">
+                        <Label.FormattedText>
+                            <FormattedString>
+                                <Span Text="Mobi" TextColor="{StaticResource White}" FontAttributes="Bold"/>
+                                <Span Text="Hymn" TextColor="{StaticResource PrimaryText}" FontAttributes="Bold"/>
+                            </FormattedString>
+                        </Label.FormattedText>
+                    </Label>
+
+                    <Label
+                        Text="Your pocket hymn companion"
+                        FontSize="14"
+                        TextColor="{StaticResource PrimaryText}"
+                        Opacity="0.85"
+                        HorizontalTextAlignment="Center"/>
+
+                    <Label
+                        Text="{Binding AppVersion}"
+                        FontSize="12"
+                        TextColor="{StaticResource PrimaryText}"
+                        Opacity="0.7"
+                        HorizontalTextAlignment="Center"
+                        Margin="0,4,0,0"/>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Features tour -->
+            <Border
+                Margin="16,20,16,0"
+                Padding="16"
+                Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                StrokeThickness="1"
+                Background="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}"
+                StrokeShape="RoundRectangle 14">
+                <VerticalStackLayout Spacing="12">
+                    <Label
+                        Text="Browse, read, bookmark, and play hymns with themes and fonts you can customize."
+                        FontSize="14"
+                        LineHeight="1.35"
+                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                        HorizontalTextAlignment="Center"/>
+
+                    <Button
+                        Text="View Features Tour"
+                        Padding="14,10"
+                        CornerRadius="10"
+                        FontSize="15"
+                        FontAttributes="Bold"
+                        BackgroundColor="{StaticResource Primary}"
+                        TextColor="{StaticResource PrimaryText}"
+                        HorizontalOptions="Fill"
+                        Clicked="Button_Clicked"/>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Release history -->
+            <HorizontalStackLayout Margin="20,28,20,10" Spacing="8" VerticalOptions="Center">
+                <Label
+                    FontFamily="FAS"
+                    FontSize="14"
+                    Text="{x:Static fontawesome:FontAwesomeIcons.ClockRotateLeft}"
+                    TextColor="{StaticResource Primary}"
+                    VerticalOptions="Center"/>
+                <Label
+                    Text="Release History"
+                    FontSize="17"
+                    FontAttributes="Bold"
+                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                    VerticalOptions="Center"/>
+            </HorizontalStackLayout>
+
+            <Grid Margin="16,0">
+                <VerticalStackLayout
+                    Spacing="8"
+                    Padding="0,20"
+                    IsVisible="{Binding IsLoadingRevisions}">
+                    <ActivityIndicator
+                        Color="{StaticResource Primary}"
+                        WidthRequest="32"
+                        HeightRequest="32"
+                        HorizontalOptions="Center"
+                        IsRunning="{Binding IsLoadingRevisions}"/>
+                    <Label
+                        Text="Loading release history..."
+                        FontSize="13"
+                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                        HorizontalTextAlignment="Center"/>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout
+                    BindableLayout.ItemsSource="{Binding Revisions}"
+                    Spacing="10"
+                    IsVisible="{Binding IsNotLoadingRevisions}">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate>
+                            <Border
+                                Padding="10,8,12,10"
+                                Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                                StrokeThickness="1"
+                                Background="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}"
+                                StrokeShape="RoundRectangle 12">
+                                <elem:TimelineItem Item="{Binding .}" />
+                            </Border>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
+            </Grid>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:ViewModels="clr-namespace:MobiHymn4.ViewModels"
+    xmlns:fontawesome="clr-namespace:FontAwesome" xmlns:elements="clr-namespace:MobiHymn4.Elements"
+    x:Class="MobiHymn4.Views.SettingsPage"
+    Title="App Settings">
+	<ContentPage.BindingContext>
+		<ViewModels:SettingsViewModel/>
+	</ContentPage.BindingContext>
+    <ContentPage.Resources>
+        <Style TargetType="FlexLayout" x:Key="FlexShort">
+            <Setter Property="Padding" Value="15" />
+            <Setter Property="JustifyContent" Value="SpaceBetween" />
+            <Setter Property="AlignItems" Value="Center" />
+         </Style>
+        <Style TargetType="BoxView">
+            <Setter Property="HeightRequest" Value="1" />
+            <Setter Property="HorizontalOptions" Value="FillAndExpand"/>
+            <Setter Property="Background" Value="{AppThemeBinding Dark={StaticResource Gray}, Light={StaticResource GrayLight}}" />
+        </Style>
+
+    </ContentPage.Resources>
+    <StackLayout Padding="0, 10, 0, 0">
+        <FlexLayout BackgroundColor="Transparent" Style="{StaticResource FlexShort}">
+            <Label Text="Dark Mode" Style="{StaticResource Key=Title}"/>
+            <Switch
+                IsToggled="{Binding IsDarkMode}"
+                x:Name="swDarkMode"
+                Toggled="swDarkMode_Toggled"
+                ThumbColor="{StaticResource Primary}"
+                OnColor="{StaticResource PrimaryLight}"
+            />
+        </FlexLayout>
+        <BoxView />
+        <FlexLayout BackgroundColor="Transparent" Style="{StaticResource FlexShort}">
+            <Label Text="Keep Awake" Style="{StaticResource Key=Title}"/>
+            <Switch
+                IsToggled="{Binding KeepAwake}"
+                x:Name="swKeepAwake"
+                Toggled="swKeepAwake_Toggled"
+                ThumbColor="{StaticResource Primary}"
+                OnColor="{StaticResource PrimaryLight}"
+            />
+        </FlexLayout>
+        <FlexLayout BackgroundColor="Transparent" IsVisible="False" Style="{StaticResource FlexShort}">
+            <Label Text="Lock Orientation" Style="{StaticResource Key=Title}"/>
+            <Switch
+                IsToggled="{Binding IsOrientationLocked}"
+                x:Name="swOrientationLock"
+                Toggled="swOrientationLock_Toggled"
+                ThumbColor="{StaticResource Primary}"
+                OnColor="{StaticResource PrimaryLight}"
+            />
+        </FlexLayout>
+        <BoxView />
+        <VerticalStackLayout Padding="15,12" Spacing="8">
+            <Label Text="Resync Hymn" Style="{StaticResource Key=Title}"/>
+            <VerticalStackLayout Spacing="2">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" Margin="0,5,0,0">
+                    <Border
+                        Padding="8,4"
+                        Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource GrayLight}}"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 6"
+                        BackgroundColor="Transparent">
+                        <Entry
+                            x:Name="entResyncHymn"
+                            Placeholder="Input hymn(s)"
+                            PlaceholderColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"
+                            TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                            BackgroundColor="Transparent"
+                            Keyboard="Text"
+                            ReturnType="Go"
+                            Completed="btnResyncSingle_Clicked"/>
+                    </Border>
+                    <ImageButton
+                        Grid.Column="1"
+                        x:Name="btnResyncSingle"
+                        WidthRequest="32"
+                        HeightRequest="32"
+                        Padding="4"
+                        BackgroundColor="Transparent"
+                        VerticalOptions="Center"
+                        Clicked="btnResyncSingle_Clicked"/>
+                </Grid>
+                <Label
+                    Text="Separate multiple hymns with commas (e.g. 132, 77s, 801)"
+                    FontSize="9"
+                    TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+            </VerticalStackLayout>
+        </VerticalStackLayout>
+        <BoxView />
+        <FlexLayout
+            BackgroundColor="Transparent"
+            Padding="15,20"
+            JustifyContent="SpaceBetween"
+            AlignItems="Center"
+            IsVisible="False">
+            <FlexLayout.Triggers>
+                <DataTrigger TargetType="FlexLayout" Binding="{Binding ShowSyncs}" Value="False">
+                    <Setter Property="IsVisible" Value="True" />
+                </DataTrigger>
+            </FlexLayout.Triggers>
+            <FlexLayout.GestureRecognizers>
+                <TapGestureRecognizer Tapped="swResync_Clicked" />
+            </FlexLayout.GestureRecognizers>
+            <Label Text="Resync Resources" Style="{StaticResource Key=Title}" VerticalOptions="Center"/>
+            <ImageButton
+                x:Name="swResync"
+                WidthRequest="32"
+                HeightRequest="32"
+                Padding="4"
+                BackgroundColor="Transparent"
+                VerticalOptions="Center"
+                Clicked="swResync_Clicked"/>
+        </FlexLayout>
+        <VerticalStackLayout
+            x:Name="syncDetailsHost"
+            IsVisible="False"
+            Padding="15"/>
+    </StackLayout>
+
+</ContentPage>
+

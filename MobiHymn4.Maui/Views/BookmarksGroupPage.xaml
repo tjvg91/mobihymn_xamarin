@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    xmlns:ViewModels="clr-namespace:MobiHymn4.ViewModels"
+    xmlns:fontawesome="clr-namespace:FontAwesome"
+    xmlns:elems="clr-namespace:MobiHymn4.Elements"
+    x:Class="MobiHymn4.Views.BookmarksGroupPage"
+    x:Name="root"
+    Title="{Binding Title}"
+    Padding="0">
+	<ContentPage.BindingContext>
+		<ViewModels:BookmarksViewModel/>
+	</ContentPage.BindingContext>
+
+    <CollectionView
+            x:Name="GroupListView"
+            ItemsSource="{Binding GroupKeys}"
+            SelectionMode="Single"
+            SelectionChanged="GroupSelection_Changed">
+        <CollectionView.ItemTemplate>
+            <DataTemplate>
+                <Grid
+                    ColumnDefinitions="44,*"
+                    BackgroundColor="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}">
+                    <VisualStateManager.VisualStateGroups>
+                        <VisualStateGroup Name="CommonStates">
+                            <VisualState Name="Normal">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}" />
+                                    <Setter TargetName="selectionIcon" Property="IsVisible" Value="False" />
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState Name="Selected">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}" />
+                                    <Setter TargetName="selectionIcon" Property="IsVisible" Value="True" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateManager.VisualStateGroups>
+                    <Label
+                        x:Name="selectionIcon"
+                        Grid.Column="0"
+                        Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
+                        FontFamily="FAS"
+                        FontSize="18"
+                        TextColor="{StaticResource Primary}"
+                        HorizontalTextAlignment="Center"
+                        VerticalTextAlignment="Center"
+                        IsVisible="False" />
+                    <SwipeView
+                        Grid.Column="1"
+                        BindingContext="{Binding .}">
+                        <SwipeView.RightItems>
+                            <SwipeItems>
+                                <SwipeItem
+                                    BackgroundColor="{StaticResource Red}"
+                                    CommandParameter="{Binding .}"
+                                    Invoked="DeleteGroup_Invoked">
+                                    <SwipeItem.IconImageSource>
+                                        <FontImageSource
+                                            FontFamily="FAR"
+                                            Size="{OnPlatform iOS=Medium, Android=11}"
+                                            Glyph="{x:Static fontawesome:FontAwesomeIcons.TrashCan}"/>
+                                    </SwipeItem.IconImageSource>
+                                </SwipeItem>
+                            </SwipeItems>
+                        </SwipeView.RightItems>
+                        <FlexLayout
+                            BackgroundColor="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}"
+                            HorizontalOptions="FillAndExpand"
+                            JustifyContent="SpaceBetween"
+                            AlignItems="Center"
+                            Padding="20"
+                            Margin="0">
+                            <StackLayout Orientation="Vertical" HorizontalOptions="FillAndExpand">
+                                <Label Text="{Binding Name}" Style="{StaticResource Title}" TextType="Html" HorizontalTextAlignment="Start"/>
+                                <Label Text="{Binding CountString}" Style="{StaticResource Subtitle}" TextType="Html" HorizontalTextAlignment="Start" Margin="0,-2.5,0,0"/>
+                            </StackLayout>
+                            <Label
+                                Text="{Static fontawesome:FontAwesomeIcons.ChevronRight}"
+                                TextColor="{AppThemeBinding Dark={StaticResource White}, Light={StaticResource PrimaryText}}"
+                                FontFamily="FAS"
+                                FontSize="Large"/>
+                        </FlexLayout>
+                    </SwipeView>
+                </Grid>
+            </DataTemplate>
+        </CollectionView.ItemTemplate>
+        <CollectionView.EmptyView>
+            <FlexLayout
+                JustifyContent="Center"
+                AlignItems="Center"
+                HorizontalOptions="FillAndExpand"
+                VerticalOptions="FillAndExpand"
+                Padding="0,0,0,40"
+            >
+                <StackLayout HorizontalOptions="Center" Spacing="0">
+                    <AbsoluteLayout
+                        WidthRequest="300"
+                        HeightRequest="320"
+                        IsClippedToBounds="False"
+                    >
+                        <elems:AnimatingView
+                            Source="heart"
+                            Size="{OnPlatform iOS=2.5, Android=300}"
+                            AbsoluteLayout.LayoutBounds="{OnPlatform Android='0.5, 0.42, 1, 1', iOS='0.8, 2.1, 1, 1'}"
+                            AbsoluteLayout.LayoutFlags="All"
+                            CascadeInputTransparent="True"/>
+                    </AbsoluteLayout>
+                    <StackLayout Margin="0,-28,0,0">
+                        <Label
+                            HorizontalTextAlignment="Center"
+                            TextColor="{StaticResource Primary}"
+                            Text="Your loved hymns will show here."
+                        />
+                    </StackLayout>
+                </StackLayout>
+            </FlexLayout>
+        </CollectionView.EmptyView>
+    </CollectionView>
+</ContentPage>
+

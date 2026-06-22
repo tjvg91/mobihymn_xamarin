@@ -79,7 +79,7 @@
                             </MultiTrigger>
                         </Image.Triggers>
                     </Image>
-                    <Label Text="{Binding Title}"  FontSize="14" x:Name="FlyoutLabel"/>
+                    <Label Text="{Binding Title}"  FontSize="14" Padding="5,0,0,0" x:Name="FlyoutLabel"/>
                 </RelativeLayout>
                 
             </Grid>
@@ -199,7 +199,7 @@
                         FontFamily="VaudDisplay"
                         FontSize="20"
                         FontAttributes="Bold"
-                        Padding="-5,0,0,0"
+                        Padding="3,0,0,0"
                     />
                 </StackLayout>
                 

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<toolkit:Popup
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    xmlns:ViewModels="clr-namespace:MobiHymn4.ViewModels"
+    xmlns:elements="clr-namespace:MobiHymn4.Elements"
+    x:Class="MobiHymn4.Views.Popups.IntroPopup">
+    <toolkit:Popup.BindingContext>
+        <ViewModels:AboutViewModel/>
+    </toolkit:Popup.BindingContext>
+
+    <Grid
+        Background="{StaticResource PrimaryText}"
+        Padding="20,50,20,8"
+        RowDefinitions="*,Auto"
+        RowSpacing="0">
+
+        <VerticalStackLayout
+            Grid.Row="0"
+            Spacing="0"
+            HorizontalOptions="Fill"
+            VerticalOptions="Center">
+            <elements:AnimatingView
+                x:Name="introAnimation"
+                HorizontalOptions="Center"
+                VerticalOptions="Center">
+                <elements:AnimatingView.GestureRecognizers>
+                    <SwipeGestureRecognizer Direction="Left" Swiped="IntroAnimation_Swiped" />
+                    <SwipeGestureRecognizer Direction="Right" Swiped="IntroAnimation_Swiped" />
+                </elements:AnimatingView.GestureRecognizers>
+            </elements:AnimatingView>
+
+            <CarouselView
+                x:Name="carouselIntro"
+                ItemsSource="{Binding IntroSlides}"
+                IndicatorView="{x:Reference introIndicator}"
+                HeightRequest="82"
+                Margin="0,18,0,0"
+                VerticalOptions="Start"
+                HorizontalOptions="Fill"
+                Position="{Binding CurrentSlideIndex, Mode=TwoWay}"
+                PositionChanged="CarouselIntro_PositionChanged">
+                <CarouselView.ItemTemplate>
+                    <DataTemplate>
+                        <VerticalStackLayout
+                            Spacing="10"
+                            VerticalOptions="Center"
+                            HorizontalOptions="Fill"
+                            Padding="0">
+                            <Label
+                                Text="{Binding Title}"
+                                FontSize="Large"
+                                TextColor="{StaticResource White}"
+                                HorizontalTextAlignment="Center"/>
+                            <Label
+                                Text="{Binding Subitle}"
+                                FontSize="Small"
+                                TextColor="{StaticResource White}"
+                                HorizontalTextAlignment="Center"/>
+                        </VerticalStackLayout>
+                    </DataTemplate>
+                </CarouselView.ItemTemplate>
+            </CarouselView>
+
+            <IndicatorView
+                x:Name="introIndicator"
+                HorizontalOptions="Center"
+                IndicatorColor="#66FFFFFF"
+                SelectedIndicatorColor="{StaticResource Primary}"
+                Margin="0,8,0,0" />
+        </VerticalStackLayout>
+
+        <!-- Skip / Done -->
+        <Button
+            x:Name="btnSkipDone"
+            Grid.Row="1"
+            Style="{StaticResource Button-Clear}"
+            Text="Skip"
+            Clicked="Button_Clicked"
+            HorizontalOptions="End"
+            VerticalOptions="End"
+            Margin="{OnPlatform Android='0,0,0,8', Default=0}"/>
+    </Grid>
+</toolkit:Popup>
