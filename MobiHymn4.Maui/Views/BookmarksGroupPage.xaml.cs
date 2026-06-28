@@ -28,16 +28,35 @@ namespace MobiHymn4.Views
         {
             InitializeComponent();
             model = (BookmarksViewModel)BindingContext;
+            model.OnBookmarksChanged += Model_OnBookmarksChanged;
             BuildSelectionToolbarItems();
             SetSelectionMode(false);
         }
 
+        protected override void OnAppearing()
+        {
+            base.OnAppearing();
+            model?.RefreshBookmarks();
+            if (!isSelectionMode)
+                SetSelectionMode(false);
+        }
+
+        void Model_OnBookmarksChanged(object sender, EventArgs e)
+        {
+            if (!isSelectionMode)
+                SetSelectionMode(false);
+            else
+                UpdateSelectionActions();
+        }
+
+        bool HasSavedBookmarks() => model.GroupKeys?.Count > 0;
+
         private void BuildSelectionToolbarItems()
         {
-            tbSelect = new ToolbarItem { Text = "Select" };
+            tbSelect = new ToolbarItem { IconImageSource = CreateToolbarIcon(FontAwesomeIcons.SquareCheck) };
             tbSelect.Clicked += tbSelect_Clicked;
 
-            tbSelectAll = new ToolbarItem { Text = "Select All", IconImageSource = CreateToolbarIcon(FontAwesomeIcons.Check) };
+            tbSelectAll = new ToolbarItem { IconImageSource = CreateToolbarIcon(FontAwesomeIcons.CheckDouble) };
             tbSelectAll.Clicked += tbSelectAll_Clicked;
 
             tbDeleteSelected = new ToolbarItem { Text = "Delete", IconImageSource = CreateToolbarIcon(FontAwesomeIcons.TrashCan) };
@@ -71,11 +90,13 @@ namespace MobiHymn4.Views
                 ToolbarItems.Add(tbSelectAll);
                 ToolbarItems.Add(tbDeleteSelected);
                 ToolbarItems.Add(tbCancelSelection);
+                Title = "Bookmarks";
                 UpdateSelectionActions();
                 return;
             }
 
-            ToolbarItems.Add(tbSelect);
+            if (HasSavedBookmarks())
+                ToolbarItems.Add(tbSelect);
             Title = "Bookmarks";
         }
 
@@ -88,7 +109,6 @@ namespace MobiHymn4.Views
             var total = model.GroupKeys?.Count ?? 0;
             tbSelectAll.IsEnabled = total > 0 && count < total;
             tbDeleteSelected.IsEnabled = count > 0;
-            Title = count == 0 ? "Select groups" : $"{count} selected";
         }
 
         private void GroupSelection_Changed(object sender, SelectionChangedEventArgs e)

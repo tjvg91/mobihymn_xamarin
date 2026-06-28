@@ -4,7 +4,6 @@ namespace MobiHymn4.Elements;
 
 public partial class AnimatingView : ContentView
 {
-    private static readonly Dictionary<string, byte[]> GifCache = new();
     private string currentSource;
     private double currentSize;
     private int loadVersion;
@@ -150,6 +149,14 @@ public partial class AnimatingView : ContentView
         });
     }
 
+    public void ForceReload()
+    {
+        if (string.IsNullOrWhiteSpace(currentSource))
+            return;
+
+        ApplySourceAsync(currentSource);
+    }
+
     async Task LoadAnimationAsync(string name, int version)
     {
         if (await TryLoadGifAsync(name, version))
@@ -162,16 +169,10 @@ public partial class AnimatingView : ContentView
     {
         try
         {
-            if (!GifCache.TryGetValue(name, out var bytes))
-            {
-                await using var stream = await FileSystem.OpenAppPackageFileAsync($"{name}.gif");
-                using var buffer = new MemoryStream();
-                await stream.CopyToAsync(buffer);
-                bytes = buffer.ToArray();
-                GifCache[name] = bytes;
-            }
-
-            var payload = bytes;
+            await using var stream = await FileSystem.OpenAppPackageFileAsync($"{name}.gif");
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            var payload = buffer.ToArray();
 
             await MainThread.InvokeOnMainThreadAsync(() =>
             {

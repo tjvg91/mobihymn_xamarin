@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using FontAwesome;
 using MobiHymn4.Models;
 using MobiHymn4.Utils;
@@ -18,6 +20,8 @@ namespace MobiHymn4.Views
         bool isNewInput = true;
 
         NumSearchViewModel model;
+        CancellationTokenSource voicePulseCts;
+        CancellationTokenSource voiceListenCts;
 
         private Globals globalInstance = Globals.Instance;
 
@@ -38,10 +42,17 @@ namespace MobiHymn4.Views
             model.HymnInputType = globalInstance.HymnInputType;
             model.ApplyInitComplete();
             UpdateToolbarIcons();
-            UpdateInputToggleIcons();
+            UpdateInputModeBar();
             UpdateBackIcon();
+            UpdateVoiceListeningAnimation();
             ShowDownloadPopupIfNeeded();
             ScheduleDownloadPopupRetries();
+        }
+
+        protected override void OnDisappearing()
+        {
+            base.OnDisappearing();
+            StopVoiceListening();
         }
 
         static Color GetNavBarIconColor() =>
@@ -93,34 +104,47 @@ namespace MobiHymn4.Views
             }
         }
 
-        void UpdateInputToggleIcons()
+        void UpdateInputModeBar()
         {
-            var iconColor = Application.Current?.RequestedTheme == AppTheme.Dark
+            var activeType = model?.HymnInputType ?? globalInstance.HymnInputType;
+            var primary = (Color)Application.Current.Resources["Primary"];
+            var primaryText = (Color)Application.Current.Resources["PrimaryText"];
+            var inactiveBg = Application.Current?.RequestedTheme == AppTheme.Dark
+                ? (Color)Application.Current.Resources["Gray"]
+                : Colors.White;
+            var inactiveText = Application.Current?.RequestedTheme == AppTheme.Dark
                 ? Colors.White
                 : (Color)Application.Current.Resources["PrimaryText"];
 
-            if (btnShowGrid != null)
-            {
-                btnShowGrid.Source = new FontImageSource
-                {
-                    FontFamily = "FAS",
-                    Glyph = FontAwesomeIcons.GripVertical,
-                    Size = 20,
-                    Color = iconColor,
-                };
-            }
-
-            if (btnShowNumpad != null)
-            {
-                btnShowNumpad.Source = new FontImageSource
-                {
-                    FontFamily = "FAS",
-                    Glyph = FontAwesomeIcons.Keyboard,
-                    Size = 20,
-                    Color = iconColor,
-                };
-            }
+            SetModeButtonStyle(btnModeGrid, activeType == Utils.InputType.Grid, primary, primaryText, inactiveBg, inactiveText);
+            SetModeButtonStyle(btnModeNumpad, activeType == Utils.InputType.Numpad, primary, primaryText, inactiveBg, inactiveText);
+            SetModeButtonStyle(btnModeVoice, activeType == Utils.InputType.Voice, primary, primaryText, inactiveBg, inactiveText);
         }
+
+        static void SetModeButtonStyle(Button button, bool isActive, Color activeBg, Color activeText, Color inactiveBg, Color inactiveText)
+        {
+            if (button == null)
+                return;
+
+            button.BackgroundColor = isActive ? activeBg : inactiveBg;
+            var iconColor = isActive ? activeText : inactiveText;
+            if (button.ImageSource is FontImageSource fontImage)
+                fontImage.Color = iconColor;
+        }
+
+        void SetInputMode(Utils.InputType inputType)
+        {
+            globalInstance.HymnInputType = inputType;
+            model.HymnInputType = inputType;
+            UpdateInputModeBar();
+            UpdateVoiceListeningAnimation();
+        }
+
+        void ModeGrid_Clicked(object sender, EventArgs e) => SetInputMode(Utils.InputType.Grid);
+
+        void ModeNumpad_Clicked(object sender, EventArgs e) => SetInputMode(Utils.InputType.Numpad);
+
+        void ModeVoice_Clicked(object sender, EventArgs e) => SetInputMode(Utils.InputType.Voice);
 
         void ShowDownloadPopupIfNeeded()
         {
@@ -236,28 +260,158 @@ namespace MobiHymn4.Views
             return $"{baseException.GetType().Name}: {baseException.Message}";
         }
 
-        private static void ShowHymnNotFound()
+        private static void ShowHymnNotFound() =>
+            ShowVoiceToast("Hymn not found");
+
+        private static void ShowVoiceToast(string message)
         {
             if (DeviceInfo.Platform == DevicePlatform.Android)
                 Globals.ShowToastPopup(
                     "not-found",
-                    "Hymn not found",
+                    message,
                     130,
                     new Rect(0.3, 0, 0.8, 0.9)
                 );
             else
                 Globals.ShowToastPopup(
                     "not-found",
-                    "Hymn not found",
+                    message,
                     0.7,
                     new Rect(0.3, -0.5, 0.8, 0.9)
                 );
         }
 
-        void Toggle_Clicked(Object sender, EventArgs e)
+        void UpdateVoiceListeningAnimation()
         {
-            var tempVal = ((int)globalInstance.HymnInputType) + 1;
-            globalInstance.HymnInputType = (Utils.InputType)(tempVal % 2);
+            if (model?.HymnInputType == Utils.InputType.Voice && model.IsNotBusy)
+                StartVoiceListening();
+            else
+                StopVoiceListening();
+        }
+
+        async void StartVoiceListening()
+        {
+            if (voiceListenCts != null)
+                return;
+
+            if (model?.HymnInputType != Utils.InputType.Voice || !model.IsNotBusy)
+                return;
+
+            voiceListenCts = new CancellationTokenSource();
+            _ = RunVoiceListenLoopAsync(voiceListenCts.Token);
+        }
+
+        async Task RunVoiceListenLoopAsync(CancellationToken token)
+        {
+            StartVoicePulse();
+            try
+            {
+                while (!token.IsCancellationRequested &&
+                       model?.HymnInputType == Utils.InputType.Voice &&
+                       model.IsNotBusy)
+                {
+                    try
+                    {
+                        var voiceService = ServiceHelper.Get<IVoiceRecognitionService>();
+                        var recognizedText = await voiceService.ListenOnceAsync(token);
+                        if (string.IsNullOrWhiteSpace(recognizedText))
+                            continue;
+
+                        if (!VoiceHymnParser.TryParseHymnNumber(recognizedText, out var hymnNumber))
+                        {
+                            ShowVoiceToast($"Couldn't find hymn number in \"{recognizedText}\"");
+                            continue;
+                        }
+
+                        model.HymnNum = hymnNumber;
+                        var hymn = globalInstance.HymnList?.FirstOrDefault(h => h?.Number.Equals(hymnNumber, StringComparison.OrdinalIgnoreCase) == true);
+                        if (hymn == null)
+                        {
+                            ShowHymnNotFound();
+                            continue;
+                        }
+
+                        globalInstance.ActiveHymn = hymn;
+                        await Shell.Current.GoToAsync($"//{Routes.READ}");
+                        break;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        ShowVoiceToast(ex.GetBaseException().Message);
+                    }
+                }
+            }
+            finally
+            {
+                StopVoiceListening();
+            }
+        }
+
+        void StopVoiceListening()
+        {
+            var cts = voiceListenCts;
+            voiceListenCts = null;
+
+            if (cts != null)
+            {
+                cts.Cancel();
+                cts.Dispose();
+            }
+
+            StopVoicePulse();
+        }
+
+        void StartVoicePulse()
+        {
+            if (voicePulseCts != null || micPulse == null)
+                return;
+
+            voicePulseCts = new CancellationTokenSource();
+            _ = RunVoicePulseAsync(voicePulseCts.Token);
+        }
+
+        void StopVoicePulse()
+        {
+            var cts = voicePulseCts;
+            voicePulseCts = null;
+
+            if (cts == null)
+                return;
+
+            cts.Cancel();
+            cts.Dispose();
+
+            if (micPulse == null)
+                return;
+
+            micPulse.AbortAnimation("ScaleTo");
+            micPulse.Scale = 1;
+            micPulse.Opacity = 0.25;
+        }
+
+        async Task RunVoicePulseAsync(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested && micPulse != null)
+            {
+                try
+                {
+                    micPulse.Opacity = 0.25;
+                    await micPulse.ScaleTo(1.22, 650, Easing.CubicOut);
+                    if (token.IsCancellationRequested)
+                        break;
+
+                    micPulse.Opacity = 0.08;
+                    await micPulse.ScaleTo(1, 650, Easing.CubicIn);
+                }
+                catch
+                {
+                    break;
+                }
+            }
         }
 
         async void tbSearch_Clicked(Object sender, EventArgs e)

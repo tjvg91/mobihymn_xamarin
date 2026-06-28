@@ -12,8 +12,8 @@
 
     <ApplicationTitle>MobiHymn</ApplicationTitle>
     <ApplicationId>com.tjapps.mobihymn</ApplicationId>
-    <ApplicationDisplayVersion>0.9.0</ApplicationDisplayVersion>
-    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>0.8.4</ApplicationDisplayVersion>
+    <ApplicationVersion>4</ApplicationVersion>
 
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">11.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>

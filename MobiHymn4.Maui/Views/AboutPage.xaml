@@ -3,7 +3,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="MobiHymn4.Views.AboutPage"
              xmlns:vm="clr-namespace:MobiHymn4.ViewModels"
-             xmlns:elem="clr-namespace:MobiHymn4.Elements"
              xmlns:logo="clr-namespace:LogoIcon"
              xmlns:fontawesome="clr-namespace:FontAwesome"
              Title="{Binding Title}"
@@ -24,18 +23,18 @@
                 Padding="24,28,24,26">
                 <VerticalStackLayout Spacing="10" HorizontalOptions="Center">
                     <Border
-                        WidthRequest="84"
-                        HeightRequest="84"
+                        WidthRequest="70"
+                        HeightRequest="70"
                         StrokeThickness="0"
-                        Background="{StaticResource PrimaryText}"
-                        StrokeShape="RoundRectangle 18"
+                        Background="Transparent"
+                        StrokeShape="RoundRectangle 15"
                         HorizontalOptions="Center"
-                        Padding="12">
+                        Padding="0">
                         <Label
                             Text="{x:Static logo:IconFont.Logo}"
                             FontFamily="LOGO"
-                            TextColor="{StaticResource Primary}"
-                            FontSize="48"
+                            TextColor="{StaticResource PrimaryText}"
+                            FontSize="70"
                             HorizontalOptions="Center"
                             VerticalOptions="Center"
                             HorizontalTextAlignment="Center"
@@ -43,7 +42,13 @@
                             LineHeight="1"/>
                     </Border>
 
-                    <Label HorizontalOptions="Center" FontFamily="VaudDisplay" FontSize="26" FontAttributes="Bold">
+                    <Label
+                        HorizontalOptions="Center"
+                        FontFamily="VaudDisplay"
+                        FontSize="26"
+                        FontAttributes="Bold"
+                        CharacterSpacing="1"
+                        Margin="0,-10,0,0">
                         <Label.FormattedText>
                             <FormattedString>
                                 <Span Text="Mobi" TextColor="{StaticResource White}" FontAttributes="Bold"/>
@@ -69,37 +74,8 @@
                 </VerticalStackLayout>
             </Border>
 
-            <!-- Features tour -->
-            <Border
-                Margin="16,20,16,0"
-                Padding="16"
-                Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
-                StrokeThickness="1"
-                Background="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}"
-                StrokeShape="RoundRectangle 14">
-                <VerticalStackLayout Spacing="12">
-                    <Label
-                        Text="Browse, read, bookmark, and play hymns with themes and fonts you can customize."
-                        FontSize="14"
-                        LineHeight="1.35"
-                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
-                        HorizontalTextAlignment="Center"/>
-
-                    <Button
-                        Text="View Features Tour"
-                        Padding="14,10"
-                        CornerRadius="10"
-                        FontSize="15"
-                        FontAttributes="Bold"
-                        BackgroundColor="{StaticResource Primary}"
-                        TextColor="{StaticResource PrimaryText}"
-                        HorizontalOptions="Fill"
-                        Clicked="Button_Clicked"/>
-                </VerticalStackLayout>
-            </Border>
-
             <!-- Release history -->
-            <HorizontalStackLayout Margin="20,28,20,10" Spacing="8" VerticalOptions="Center">
+            <HorizontalStackLayout Margin="20,28,20,4" Spacing="8" VerticalOptions="Center">
                 <Label
                     FontFamily="FAS"
                     FontSize="14"
@@ -114,7 +90,7 @@
                     VerticalOptions="Center"/>
             </HorizontalStackLayout>
 
-            <Grid Margin="16,0">
+            <Grid Margin="20,0,16,0">
                 <VerticalStackLayout
                     Spacing="8"
                     Padding="0,20"
@@ -134,22 +110,116 @@
 
                 <VerticalStackLayout
                     BindableLayout.ItemsSource="{Binding Revisions}"
-                    Spacing="10"
+                    Spacing="0"
                     IsVisible="{Binding IsNotLoadingRevisions}">
                     <BindableLayout.ItemTemplate>
                         <DataTemplate>
-                            <Border
-                                Padding="10,8,12,10"
-                                Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
-                                StrokeThickness="1"
-                                Background="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}"
-                                StrokeShape="RoundRectangle 12">
-                                <elem:TimelineItem Item="{Binding .}" />
-                            </Border>
+                            <Grid ColumnDefinitions="40,*">
+
+                                <!-- Vertical stem + dot + horizontal connector -->
+                                <Grid Grid.Column="0">
+                                    <!-- Vertical stem -->
+                                    <BoxView
+                                        Color="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                                        WidthRequest="2"
+                                        HorizontalOptions="Center"
+                                        VerticalOptions="Fill"/>
+                                    <!-- Horizontal connector: dot right-edge → column right edge -->
+                                    <BoxView
+                                        Color="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                                        WidthRequest="14"
+                                        HeightRequest="1.5"
+                                        HorizontalOptions="End"
+                                        VerticalOptions="Start"
+                                        Margin="0,21,0,0"/>
+                                    <!-- Dot rendered last so it sits on top -->
+                                    <Ellipse
+                                        Fill="{StaticResource Primary}"
+                                        WidthRequest="12"
+                                        HeightRequest="12"
+                                        HorizontalOptions="Center"
+                                        VerticalOptions="Start"
+                                        Margin="0,16,0,0"/>
+                                </Grid>
+
+                                <!-- Content -->
+                                <VerticalStackLayout
+                                    Grid.Column="1"
+                                    Padding="0,8,4,20"
+                                    Spacing="8">
+
+                                    <!-- Version badge pill -->
+                                    <Border
+                                        StrokeThickness="0"
+                                        StrokeShape="RoundRectangle 14"
+                                        BackgroundColor="{StaticResource Primary}"
+                                        Padding="12,5"
+                                        HorizontalOptions="Start">
+                                        <Label
+                                            Text="{Binding Header}"
+                                            TextColor="{StaticResource PrimaryText}"
+                                            FontAttributes="Bold"
+                                            FontSize="13"/>
+                                    </Border>
+
+                                    <!-- Feature items with branch lines -->
+                                    <VerticalStackLayout
+                                        BindableLayout.ItemsSource="{Binding Details}"
+                                        Spacing="0"
+                                        Margin="-20,0,0,0">
+                                        <BindableLayout.ItemTemplate>
+                                            <DataTemplate>
+                                                <HorizontalStackLayout Spacing="0" Padding="0,5,0,0">
+                                                    <BoxView
+                                                        WidthRequest="18"
+                                                        HeightRequest="1.5"
+                                                        BackgroundColor="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                                                        VerticalOptions="Start"
+                                                        Margin="0,8,0,0"/>
+                                                    <Ellipse
+                                                        Fill="{StaticResource Primary}"
+                                                        WidthRequest="7"
+                                                        HeightRequest="7"
+                                                        VerticalOptions="Start"
+                                                        Margin="0,5,6,0"/>
+                                                    <Label
+                                                        FontSize="14"
+                                                        Text="{Binding .}"
+                                                        LineHeight="1.35"
+                                                        TextColor="{AppThemeBinding Dark={StaticResource GrayLight}, Light={StaticResource PrimaryText}}"/>
+                                                </HorizontalStackLayout>
+                                            </DataTemplate>
+                                        </BindableLayout.ItemTemplate>
+                                    </VerticalStackLayout>
+
+                                </VerticalStackLayout>
+                            </Grid>
                         </DataTemplate>
                     </BindableLayout.ItemTemplate>
                 </VerticalStackLayout>
             </Grid>
+
+            <!-- Features tour -->
+            <Border
+                Margin="16,20,16,0"
+                Padding="16"
+                Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                StrokeThickness="1"
+                Background="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}"
+                StrokeShape="RoundRectangle 14">
+                <VerticalStackLayout Spacing="12">
+                    <Button
+                        Text="View Features Tour"
+                        Padding="14,10"
+                        CornerRadius="10"
+                        FontSize="15"
+                        FontAttributes="Bold"
+                        BackgroundColor="{StaticResource Primary}"
+                        TextColor="{StaticResource PrimaryText}"
+                        HorizontalOptions="Fill"
+                        Clicked="Button_Clicked"/>
+                </VerticalStackLayout>
+            </Border>
 
         </VerticalStackLayout>
     </ScrollView>

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 using CommunityToolkit.Maui.Extensions;
 using CommunityToolkit.Maui.Views;
@@ -38,9 +40,15 @@ namespace MobiHymn4.Views
         bool initStartQueued;
         bool settingsOverlayBuilt;
         bool settingsOverlayBuildQueued;
+        Border settingsCard;
+        VerticalStackLayout settingsContent;
+        Label settingsTitleLabel;
+        CancellationTokenSource setupLogoPulseCts;
         List<(Border Box, Label Label, TextAlignment Value)> alignmentOptions;
         List<(Border Box, Label Label, Color Value)> themeOptions;
         List<(Border Box, Label Label, string Value)> fontOptions;
+        List<(Border Box, Label Label, double Value)> letterSpacingOptions;
+        List<(Border Box, Label Label, double Value)> lineSpacingOptions;
         Border alignStartBox, alignCenterBox, alignEndBox;
         Label alignStartLabel, alignCenterLabel, alignEndLabel;
         Border themeWhiteBox, themeSepiaBox, themeBrownBox, themeGrayBox, themeDarkBox;
@@ -93,6 +101,7 @@ namespace MobiHymn4.Views
                 model = (ReadViewModel)this.BindingContext;
                 model.PropertyChanged += Model_PropertyChanged;
                 model.OnHymnChanged += Model_OnHymnChanged;
+                globalInstance.SettingsLoaded += GlobalInstance_SettingsLoaded;
                 model.ConnectivityChanged += (_, _) =>
                 {
                     if (HasInternetConnection())
@@ -136,18 +145,23 @@ namespace MobiHymn4.Views
             model?.UpdateInternetNotice();
             globalInstance.RefreshIncompleteDownloadState();
             model?.RefreshLoadingState();
+            model?.RefreshReaderSettings();
+            if (settingsOverlayBuilt)
+                UpdateSelectedStates();
             ShowIntroIfNeeded();
             ShowDownloadPopupIfNeeded();
             QueueInitStarted();
             ScheduleDownloadPopupRetries();
             model?.RefreshFromActiveHymn();
 
+            UpdateSetupLogoPulse();
             QueueSettingsOverlayBuild();
         }
 
         protected override void OnDisappearing()
         {
             base.OnDisappearing();
+            StopSetupLogoPulse();
             audioPlayer?.Pause();
             isPlaying = false;
             model?.SetAudioBuffering(false);
@@ -251,6 +265,8 @@ namespace MobiHymn4.Views
                 UpdateBookmarkIcon();
             else if (e.PropertyName is nameof(ReadViewModel.IsSelectable) or nameof(ReadViewModel.ShowLyricsContent))
                 UpdateSelectionToolbar();
+            else if (e.PropertyName == nameof(ReadViewModel.IsLoadingLyrics))
+                UpdateSetupLogoPulse();
         }
 
         void UpdateSelectionToolbar()
@@ -353,8 +369,13 @@ namespace MobiHymn4.Views
                 if (loadId != audioLoadGeneration)
                     return;
 
-                var audioUrl = Globals.GetHymnAudioUrl(number);
-                isAudioReady = await audioPlayer.LoadAsync(audioUrl);
+                isAudioReady = false;
+                foreach (var audioUrl in GetAudioUrlCandidates(number))
+                {
+                    isAudioReady = await audioPlayer.LoadAsync(audioUrl);
+                    if (isAudioReady || loadId != audioLoadGeneration)
+                        break;
+                }
 
                 if (loadId != audioLoadGeneration)
                     return;
@@ -444,6 +465,18 @@ namespace MobiHymn4.Views
         bool HasInternetConnection() =>
             Connectivity.NetworkAccess == NetworkAccess.Internet;
 
+        static IEnumerable<string> GetAudioUrlCandidates(string hymnNumber)
+        {
+            if (string.IsNullOrWhiteSpace(hymnNumber))
+                yield break;
+
+            yield return Globals.GetHymnAudioUrl(hymnNumber);
+
+            var baseNumber = Regex.Replace(hymnNumber, "[stf]$", "", RegexOptions.IgnoreCase);
+            if (!string.Equals(baseNumber, hymnNumber, StringComparison.OrdinalIgnoreCase))
+                yield return Globals.GetHymnAudioUrl(baseNumber);
+        }
+
         private async void AddBookmark(string groupName)
         {
             globalInstance.AddBookmark(groupName);
@@ -487,19 +520,35 @@ namespace MobiHymn4.Views
             await Shell.Current.GoToAsync($"//{Routes.SEARCH}");
         }
 
+        async void tbShare_Clicked(object sender, EventArgs e)
+        {
+            var number = globalInstance.ActiveHymn?.Number;
+            if (string.IsNullOrEmpty(number))
+                return;
+
+            await Share.Default.RequestAsync(new ShareTextRequest
+            {
+                Uri = $"mobihymn://hymn/{number}",
+                Title = model?.Title ?? $"Hymn #{number}"
+            });
+        }
+
         void tbSettings_Clicked(object sender, EventArgs e)
         {
             if (settingsOverlay?.IsVisible == true)
                 return;
 
             EnsureSettingsOverlayBuilt();
+            ApplySettingsTheme();
             UpdateSelectedStates();
+            model.IsSettingsOpen = true;
             settingsOverlay.IsVisible = true;
         }
 
         void SettingsBackdrop_Clicked(object sender, EventArgs e)
         {
             settingsOverlay.IsVisible = false;
+            model.IsSettingsOpen = false;
         }
 
         void QueueSettingsOverlayBuild()
@@ -519,57 +568,129 @@ namespace MobiHymn4.Views
             settingsOverlayBuilt = true;
             settingsOverlayBuildQueued = false;
 
-            var backdrop = new Button
+            var backdrop = new ContentView
             {
-                Padding = 0,
-                BorderWidth = 0,
-                CornerRadius = 0,
-                Text = string.Empty,
                 BackgroundColor = Color.FromArgb("#8C000000"),
                 HorizontalOptions = LayoutOptions.Fill,
                 VerticalOptions = LayoutOptions.Fill
             };
-            backdrop.Clicked += SettingsBackdrop_Clicked;
+            backdrop.GestureRecognizers.Add(new TapGestureRecognizer
+            {
+                Command = new Command(() => SettingsBackdrop_Clicked(backdrop, EventArgs.Empty))
+            });
             settingsOverlay.Children.Add(backdrop);
 
             var card = new Border
             {
                 Padding = 14,
-                Stroke = (Color)Application.Current.Resources["GrayLight"],
-                StrokeThickness = 1,
-                BackgroundColor = Colors.White,
+                StrokeThickness = 0,
+                Stroke = Colors.Transparent,
                 StrokeShape = new RoundRectangle { CornerRadius = 16 },
                 WidthRequest = 310,
                 MaximumWidthRequest = 450,
                 Margin = 16,
                 HorizontalOptions = LayoutOptions.Center,
                 VerticalOptions = LayoutOptions.Center,
+                Shadow = new Shadow
+                {
+                    Brush = Colors.Black,
+                    Offset = new Point(0, 6),
+                    Radius = 24,
+                    Opacity = 0.45f
+                },
                 Content = BuildSettingsContent()
             };
+            settingsCard = card;
+            // Absorb taps inside the card so they don't fall through to the backdrop.
+            card.GestureRecognizers.Add(new TapGestureRecognizer());
             settingsOverlay.Children.Add(card);
 
             InitializeSettingsOverlay();
+            ApplySettingsTheme();
+            Application.Current.RequestedThemeChanged += Application_RequestedThemeChanged;
+            globalInstance.DarkModeChanged += GlobalInstance_DarkModeChanged;
         }
+
+        void Application_RequestedThemeChanged(object sender, AppThemeChangedEventArgs e) =>
+            ApplySettingsTheme();
+
+        void GlobalInstance_DarkModeChanged(object sender, EventArgs e) =>
+            ApplySettingsTheme();
+
+        bool IsSettingsDarkMode() =>
+            Application.Current?.UserAppTheme == AppTheme.Dark;
+
+        Color SettingsTextColor() =>
+            IsSettingsDarkMode() ? Colors.White : globalInstance.PrimaryText;
+
+        Color SettingsDividerColor() =>
+            IsSettingsDarkMode()
+                ? (Color)Application.Current.Resources["Gray"]
+                : (Color)Application.Current.Resources["GrayLight"];
+
+        Color SettingsOptionStrokeColor() =>
+            IsSettingsDarkMode()
+                ? (Color)Application.Current.Resources["GrayLight"]
+                : globalInstance.Gray;
+
+        void ApplySettingsTheme()
+        {
+            if (settingsCard == null)
+                return;
+
+            settingsCard.BackgroundColor = IsSettingsDarkMode()
+                ? Color.FromArgb("#202020")
+                : Colors.White;
+
+            if (settingsTitleLabel != null)
+                settingsTitleLabel.TextColor = SettingsTextColor();
+
+            if (settingsContent != null)
+            {
+                foreach (var child in settingsContent.Children)
+                {
+                    if (child is BoxView divider)
+                        divider.BackgroundColor = SettingsDividerColor();
+                    else if (child is VerticalStackLayout section && section.Children.Count > 0 && section.Children[0] is Label sectionLabel)
+                        sectionLabel.TextColor = SettingsTextColor();
+                }
+            }
+
+            if (settingsOverlayBuilt)
+                UpdateSelectedStates();
+        }
+
+        View CreateSettingsDivider() =>
+            new BoxView
+            {
+                HeightRequest = 1,
+                HorizontalOptions = LayoutOptions.Fill,
+                BackgroundColor = SettingsDividerColor(),
+                Margin = new Thickness(0, 2, 0, 2)
+            };
 
         View BuildSettingsContent()
         {
-            var content = new VerticalStackLayout { Spacing = 8 };
-            content.Children.Add(new Label
+            settingsContent = new VerticalStackLayout { Spacing = 8 };
+            settingsTitleLabel = new Label
             {
                 Text = "Reader Settings",
                 FontAttributes = FontAttributes.Bold,
                 FontSize = 15,
-                TextColor = globalInstance.PrimaryText,
+                TextColor = SettingsTextColor(),
                 Margin = new Thickness(0, 0, 0, 2)
-            });
+            };
+            settingsContent.Children.Add(settingsTitleLabel);
 
-            content.Children.Add(BuildOptionSection("Alignment",
+            settingsContent.Children.Add(CreateSettingsDivider());
+            settingsContent.Children.Add(BuildOptionSection("Alignment",
                 BuildOptionRow(
                     CreateOptionBox(FontAwesomeIcons.AlignLeft, "FAS", "Start", Alignment_Tapped, out alignStartBox, out alignStartLabel),
                     CreateOptionBox(FontAwesomeIcons.AlignCenter, "FAS", "Center", Alignment_Tapped, out alignCenterBox, out alignCenterLabel),
                     CreateOptionBox(FontAwesomeIcons.AlignRight, "FAS", "End", Alignment_Tapped, out alignEndBox, out alignEndLabel))));
 
-            content.Children.Add(BuildOptionSection("Theme",
+            settingsContent.Children.Add(CreateSettingsDivider());
+            settingsContent.Children.Add(BuildOptionSection("Theme",
                 new VerticalStackLayout
                 {
                     Spacing = 4,
@@ -590,7 +711,8 @@ namespace MobiHymn4.Views
                     }
                 }));
 
-            content.Children.Add(BuildOptionSection("Font Type",
+            settingsContent.Children.Add(CreateSettingsDivider());
+            settingsContent.Children.Add(BuildOptionSection("Font Type",
                 new VerticalStackLayout
                 {
                     Spacing = 4,
@@ -611,7 +733,58 @@ namespace MobiHymn4.Views
                     }
                 }));
 
-            return content;
+            settingsContent.Children.Add(CreateSettingsDivider());
+            settingsContent.Children.Add(BuildOptionSection("Letter Spacing", BuildLetterSpacingSection()));
+            settingsContent.Children.Add(CreateSettingsDivider());
+            settingsContent.Children.Add(BuildOptionSection("Line Spacing", BuildLineSpacingSection()));
+
+            return settingsContent;
+        }
+
+        View BuildLetterSpacingSection()
+        {
+            letterSpacingOptions = new List<(Border, Label, double)>();
+            return BuildOptionRow(
+                AddLetterSpacingOption("0", 0),
+                AddLetterSpacingOption(".5", 0.5),
+                AddLetterSpacingOption("1", 1));
+        }
+
+        View BuildLineSpacingSection()
+        {
+            lineSpacingOptions = new List<(Border, Label, double)>();
+            return BuildOptionRow(
+                AddLineSpacingOption("1", 1),
+                AddLineSpacingOption("1.25", 1.25),
+                AddLineSpacingOption("1.5", 1.5));
+        }
+
+        View AddLetterSpacingOption(string label, double value)
+        {
+            CreateOptionBox(
+                label,
+                "Roboto",
+                value.ToString(CultureInfo.InvariantCulture),
+                LetterSpacing_Tapped,
+                out var createdBox,
+                out var createdLabel,
+                12);
+            letterSpacingOptions.Add((createdBox, createdLabel, value));
+            return createdBox;
+        }
+
+        View AddLineSpacingOption(string label, double value)
+        {
+            CreateOptionBox(
+                label,
+                "Roboto",
+                value.ToString(CultureInfo.InvariantCulture),
+                LineSpacing_Tapped,
+                out var createdBox,
+                out var createdLabel,
+                11);
+            lineSpacingOptions.Add((createdBox, createdLabel, value));
+            return createdBox;
         }
 
         View BuildOptionSection(string title, View body)
@@ -626,7 +799,7 @@ namespace MobiHymn4.Views
                         Text = title,
                         FontSize = 14,
                         FontFamily = DeviceInfo.Platform == DevicePlatform.Android ? "Roboto" : "SFPro",
-                        TextColor = globalInstance.PrimaryText
+                        TextColor = SettingsTextColor()
                     },
                     body
                 }
@@ -647,14 +820,14 @@ namespace MobiHymn4.Views
             return row;
         }
 
-        Border CreateOptionBox(string text, string fontFamily, string parameter, EventHandler<TappedEventArgs> tapped, out Border box, out Label label)
+        Border CreateOptionBox(string text, string fontFamily, string parameter, EventHandler<TappedEventArgs> tapped, out Border box, out Label label, double fontSize = 15)
         {
             label = new Label
             {
                 Text = text,
                 FontFamily = fontFamily,
-                FontSize = 15,
-                TextColor = globalInstance.PrimaryText,
+                FontSize = fontSize,
+                TextColor = SettingsTextColor(),
                 HorizontalOptions = LayoutOptions.Center,
                 VerticalOptions = LayoutOptions.Center,
                 HorizontalTextAlignment = TextAlignment.Center,
@@ -688,7 +861,7 @@ namespace MobiHymn4.Views
                 WidthRequest = 36,
                 Margin = 2,
                 StrokeThickness = 1,
-                Stroke = globalInstance.Gray,
+                Stroke = SettingsOptionStrokeColor(),
                 StrokeShape = new RoundRectangle { CornerRadius = 8 },
                 BackgroundColor = Colors.Transparent
             };
@@ -773,6 +946,37 @@ namespace MobiHymn4.Views
             UpdateFontSelection();
         }
 
+        void LetterSpacing_Tapped(object sender, TappedEventArgs e)
+        {
+            if (e.Parameter is not string valueText)
+                return;
+
+            if (!double.TryParse(valueText, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+                return;
+
+            globalInstance.ActiveLetterSpacing = value;
+            UpdateLetterSpacingSelection();
+        }
+
+        void LineSpacing_Tapped(object sender, TappedEventArgs e)
+        {
+            if (e.Parameter is not string valueText)
+                return;
+
+            if (!double.TryParse(valueText, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+                return;
+
+            globalInstance.ActiveLineSpacing = value;
+            UpdateLineSpacingSelection();
+        }
+
+        void GlobalInstance_SettingsLoaded(object sender, EventArgs e)
+        {
+            model?.RefreshReaderSettings();
+            if (settingsOverlayBuilt)
+                UpdateSelectedStates();
+        }
+
         void Globals_ActiveReadThemeChanged(object sender, EventArgs e)
         {
             UpdateThemeSelection();
@@ -783,6 +987,8 @@ namespace MobiHymn4.Views
             UpdateAlignmentSelection();
             UpdateThemeSelection();
             UpdateFontSelection();
+            UpdateLetterSpacingSelection();
+            UpdateLineSpacingSelection();
         }
 
         void UpdateAlignmentSelection()
@@ -797,7 +1003,10 @@ namespace MobiHymn4.Views
             {
                 var isSelected = option.Value.Equals(globalInstance.ActiveReadTheme);
                 option.Label.Opacity = isSelected ? 1 : 0;
-                option.Box.Stroke = isSelected ? globalInstance.PrimaryText : globalInstance.Gray;
+                option.Box.StrokeThickness = isSelected ? 3 : 1;
+                option.Box.Stroke = isSelected
+                    ? (IsSettingsDarkMode() ? Colors.White : globalInstance.PrimaryText)
+                    : SettingsOptionStrokeColor();
             }
         }
 
@@ -807,20 +1016,41 @@ namespace MobiHymn4.Views
                 SetOptionSelected(option.Box, option.Label, option.Value == globalInstance.ActiveFont);
         }
 
+        void UpdateLetterSpacingSelection()
+        {
+            if (letterSpacingOptions == null)
+                return;
+
+            foreach (var option in letterSpacingOptions)
+                SetOptionSelected(option.Box, option.Label, Math.Abs(option.Value - globalInstance.ActiveLetterSpacing) <= 0.001);
+        }
+
+        void UpdateLineSpacingSelection()
+        {
+            if (lineSpacingOptions == null)
+                return;
+
+            foreach (var option in lineSpacingOptions)
+                SetOptionSelected(option.Box, option.Label, Math.Abs(option.Value - globalInstance.ActiveLineSpacing) <= 0.001);
+        }
+
         void SetOptionSelected(Border box, Label label, bool isSelected)
         {
             box.BackgroundColor = isSelected ? globalInstance.Primary : Colors.Transparent;
-            box.Stroke = isSelected ? globalInstance.Primary : globalInstance.Gray;
-            label.TextColor = globalInstance.PrimaryText;
+            box.StrokeThickness = isSelected ? 3 : 1;
+            box.Stroke = isSelected
+                ? (IsSettingsDarkMode() ? Colors.White : globalInstance.PrimaryText)
+                : SettingsOptionStrokeColor();
+            label.TextColor = isSelected ? globalInstance.PrimaryText : SettingsTextColor();
         }
 
-        void PinchGestureRecognizer_PinchUpdated(System.Object sender, Microsoft.Maui.Controls.PinchGestureUpdatedEventArgs e)
+        void PinchGestureRecognizer_PinchUpdated(object sender, PinchGestureUpdatedEventArgs e)
         {
-            if(e.Status == GestureStatus.Running)
+            if (e.Status == GestureStatus.Running)
             {
-                globalInstance.ActiveFontSize = (e.Scale < 1) ?
-                    Math.Max(globalInstance.ActiveFontSize * e.Scale, 15) :
-                    Math.Min(globalInstance.ActiveFontSize * e.Scale, 40);
+                globalInstance.ActiveFontSize = e.Scale < 1
+                    ? Math.Max(globalInstance.ActiveFontSize * e.Scale, 15)
+                    : Math.Min(globalInstance.ActiveFontSize * e.Scale, 40);
             }
         }
 
@@ -923,6 +1153,83 @@ namespace MobiHymn4.Views
         void btnAddNewGroup_Clicked(System.Object sender, System.EventArgs e)
         {
             ShowBookmarkSavePopup();
+        }
+
+        void UpdateSetupLogoPulse()
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (model?.IsLoadingLyrics == true)
+                    StartSetupLogoPulse();
+                else
+                    StopSetupLogoPulse();
+            });
+        }
+
+        void StartSetupLogoPulse()
+        {
+            if (setupLogoPulseCts != null || setupLogoPulse == null || setupLogo == null)
+                return;
+
+            setupLogoPulseCts = new CancellationTokenSource();
+            _ = RunSetupLogoPulseAsync(setupLogoPulseCts.Token);
+        }
+
+        void StopSetupLogoPulse()
+        {
+            var cts = setupLogoPulseCts;
+            setupLogoPulseCts = null;
+
+            if (cts != null)
+            {
+                cts.Cancel();
+                cts.Dispose();
+            }
+
+            if (setupLogoPulse == null)
+                return;
+
+            setupLogoPulse.AbortAnimation("ScaleTo");
+            setupLogoPulse.Scale = 1;
+            setupLogoPulse.Opacity = 0.2;
+
+            if (setupLogo == null)
+                return;
+
+            setupLogo.AbortAnimation("ScaleTo");
+            setupLogo.Scale = 1;
+        }
+
+        async Task RunSetupLogoPulseAsync(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested && model?.IsLoadingLyrics == true)
+            {
+                try
+                {
+                    if (setupLogoPulse == null || setupLogo == null)
+                        break;
+
+                    setupLogoPulse.Opacity = 0.25;
+                    setupLogoPulse.Scale = 1;
+                    setupLogo.Scale = 1;
+
+                    await Task.WhenAll(
+                        setupLogoPulse.ScaleTo(1.15, 650, Easing.CubicOut),
+                        setupLogo.ScaleTo(1.06, 650, Easing.CubicOut));
+
+                    if (token.IsCancellationRequested)
+                        break;
+
+                    setupLogoPulse.Opacity = 0.08;
+                    await Task.WhenAll(
+                        setupLogoPulse.ScaleTo(1, 650, Easing.CubicIn),
+                        setupLogo.ScaleTo(1, 650, Easing.CubicIn));
+                }
+                catch
+                {
+                    break;
+                }
+            }
         }
     }
 }

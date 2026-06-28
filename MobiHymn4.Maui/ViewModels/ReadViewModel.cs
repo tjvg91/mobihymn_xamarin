@@ -49,10 +49,14 @@ namespace MobiHymn4.ViewModels
                 globalInstance.ActiveAlignmentChanged += Globals_ActiveAlignmentChanged;
                 globalInstance.ActiveFontSizeChanged += Globals_ActiveFontSizeChanged;
                 globalInstance.ActiveFontChanged += Globals_ActiveFontChanged;
+                globalInstance.ActiveLetterSpacingChanged += Globals_ActiveLetterSpacingChanged;
+                globalInstance.ActiveLineSpacingChanged += Globals_ActiveLineSpacingChanged;
                 globalInstance.HymnInputTypeChanged += GlobalInstance_HymnInputTypeChanged;
                 globalInstance.BookmarksChanged += GlobalInstance_BookmarksChanged;
+                globalInstance.SettingsLoaded += GlobalInstance_SettingsLoaded;
 
-                LetterSpacing = globalInstance.FontList.Find(f => f.Name == activeFont)?.CharacterSpacing ?? 0;
+                LetterSpacing = 0;
+                LineSpacing = 1;
 
                 GroupKeys = ModifyBookmarks(globalInstance.BookmarkList ?? new ObservableRangeCollection<ShortHymn>()).Select((grp, count) => new GroupDisplay
                 {
@@ -62,6 +66,7 @@ namespace MobiHymn4.ViewModels
 
                 DrawerHeight = GetDrawerHeight();
 
+                RefreshReaderSettings();
                 Title = "Hymn";
                 Lyrics = string.Empty;
                 BookmarkFont = "FAR";
@@ -84,6 +89,7 @@ namespace MobiHymn4.ViewModels
                 ActiveAlignment = TextAlignment.Start;
                 HymnInputType = globalInstance.HymnInputType;
                 LetterSpacing = 0;
+                LineSpacing = 1;
                 GroupKeys = new ObservableRangeCollection<GroupDisplay>();
                 DrawerHeight = GetDrawerHeight();
             }
@@ -102,6 +108,9 @@ namespace MobiHymn4.ViewModels
             DrawerHeight = GetDrawerHeight();
         }
 
+        private void GlobalInstance_SettingsLoaded(object sender, EventArgs e) =>
+            RefreshReaderSettings();
+
         private void GlobalInstance_HymnInputTypeChanged(object sender, EventArgs e)
         {
             HymnInputType = (Utils.InputType)sender;
@@ -110,7 +119,16 @@ namespace MobiHymn4.ViewModels
         private void Globals_ActiveFontChanged(object sender, EventArgs e)
         {
             ActiveFont = (string)sender;
-            LetterSpacing = globalInstance.FontList.Find(f => f.Name == ActiveFont)?.CharacterSpacing ?? 0;
+        }
+
+        private void Globals_ActiveLetterSpacingChanged(object sender, EventArgs e)
+        {
+            LetterSpacing = (double)sender;
+        }
+
+        private void Globals_ActiveLineSpacingChanged(object sender, EventArgs e)
+        {
+            LineSpacing = (double)sender;
         }
 
         private void Globals_ActiveFontSizeChanged(object sender, EventArgs e)
@@ -174,6 +192,18 @@ namespace MobiHymn4.ViewModels
         #endregion
 
         #region Methods
+        public void RefreshReaderSettings()
+        {
+            ActiveColor = globalInstance.ActiveReadTheme;
+            ActiveColorText = globalInstance.ActiveThemeText ?? globalInstance.PrimaryText;
+            ActiveFontSize = globalInstance.ActiveFontSize;
+            ActiveFont = globalInstance.ActiveFont;
+            ActiveAlignment = globalInstance.ActiveAlignment;
+            HymnInputType = globalInstance.HymnInputType;
+            LineSpacing = globalInstance.ActiveLineSpacing;
+            LetterSpacing = globalInstance.ActiveLetterSpacing;
+        }
+
         public void RefreshFromActiveHymn()
         {
             var activeHymn = globalInstance.ActiveHymn;
@@ -219,7 +249,18 @@ namespace MobiHymn4.ViewModels
 
         public bool ShowLyricsContent => HasLyrics && !globalInstance.IsDownloadRecoveryPending;
 
-        public bool ShowNavBar => IsReadView && ShowLyricsContent;
+        public bool ShowNavBar => IsReadView && ShowLyricsContent && !IsSettingsOpen;
+
+        private bool isSettingsOpen;
+        public bool IsSettingsOpen
+        {
+            get => isSettingsOpen;
+            set
+            {
+                if (SetProperty(ref isSettingsOpen, value, nameof(IsSettingsOpen)))
+                    OnPropertyChanged(nameof(ShowNavBar));
+            }
+        }
 
         public bool IsDownloadOverlayVisible => globalInstance.IsDownloadRecoveryPending;
 
@@ -290,6 +331,7 @@ namespace MobiHymn4.ViewModels
 
         private ObservableRangeCollection<IGrouping<string, ShortHymn>> ModifyBookmarks(ObservableRangeCollection<ShortHymn> shortHymns)
         {
+            globalInstance.NormalizeBookmarkGroups();
             return shortHymns.OrderBy(shortHymn => shortHymn.Line)
                 .GroupBy((shortHymn) => shortHymn.BookmarkGroup)
                 .OrderBy(group => group.Key).ToObservableRangeCollection();
@@ -417,13 +459,22 @@ namespace MobiHymn4.ViewModels
         public double LetterSpacing
         {
             get => letterSpacing;
+            set => SetProperty(ref letterSpacing, value, nameof(LetterSpacing));
+        }
+
+        private double lineSpacing = 1;
+        public double LineSpacing
+        {
+            get => lineSpacing;
             set
             {
-                letterSpacing = value;
-                SetProperty(ref letterSpacing, value, nameof(LetterSpacing));
-                OnPropertyChanged();
+                if (SetProperty(ref lineSpacing, value, nameof(LineSpacing)))
+                    OnPropertyChanged(nameof(TitleLabelMargin));
             }
         }
+
+        public Thickness TitleLabelMargin =>
+            new Thickness(0, 0, 15, Math.Max(0, (lineSpacing - 1) * 16));
 
 
         private string activeFont;

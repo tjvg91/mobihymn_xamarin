@@ -3,16 +3,27 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Firebase.Database;
+using Microsoft.Maui.Devices;
 using MobiHymn4.Utils;
 
 namespace MobiHymn4.Models
 {
+	public class LatestRelease
+	{
+		public string Version { get; set; } = string.Empty;
+		public string DownloadUrl { get; set; } = string.Empty;
+		public bool Mandatory { get; set; } = false;
+	}
+
 	public class FirebaseHelper
     {
 		public static string FirebaseClient = "https://mobihymn.firebaseio.com";
 		public static string FirebaseSecret = "resiwCezcusOmAtXQggJWbbvQfqG9DMS6sYDNkYJ";
 
 		private const string ACTIVE_SYNC_VERSION_KEY = "ActiveSyncVersion";
+		private const string LATEST_RELEASE_KEY = "LatestRelease";
+		private static string LatestReleasePlatformKey =>
+			$"{LATEST_RELEASE_KEY}/{DeviceInfo.Platform.ToString()}";
 
         private FirebaseClient fc;
 
@@ -44,6 +55,18 @@ namespace MobiHymn4.Models
 			catch (Exception ex)
 			{
 				return -1;
+			}
+		}
+
+		public async Task<LatestRelease> RetrieveLatestRelease()
+		{
+			try
+			{
+				return await fc.Child(LatestReleasePlatformKey).OnceSingleAsync<LatestRelease>();
+			}
+			catch (Exception)
+			{
+				return null;
 			}
 		}
 

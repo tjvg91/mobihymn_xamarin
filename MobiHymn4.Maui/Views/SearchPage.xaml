@@ -23,14 +23,97 @@
     </ContentPage.ToolbarItems>
     
     <StackLayout VerticalOptions="FillAndExpand">
-        <SearchBar x:Name="searchBar"
-                   HorizontalOptions="Fill"
-                   Placeholder="Search hymns..."
-                   IsEnabled="{Binding IsNotBusy}"
-                   SearchCommand="{Binding SearchHymns}" 
-                   SearchCommandParameter="{Binding Text, Source={x:Reference searchBar}}"
-                   Keyboard="Text"
-                   Margin="0,0,0,0"/>
+        <Border
+            StrokeThickness="0"
+            Padding="2,4"
+            BackgroundColor="{AppThemeBinding Dark={StaticResource Gray}, Light={StaticResource White}, Default=White}">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="0">
+                <SearchBar x:Name="searchBar"
+                           Grid.Column="0"
+                           HorizontalOptions="Fill"
+                           VerticalOptions="Center"
+                           BackgroundColor="Transparent"
+                           Placeholder="Search hymns..."
+                           IsEnabled="{Binding IsNotBusy}"
+                           SearchCommand="{Binding SearchHymns}" 
+                           SearchCommandParameter="{Binding Text, Source={x:Reference searchBar}}"
+                           Keyboard="Text"
+                           HandlerChanged="searchBar_HandlerChanged"/>
+                <Image
+                    x:Name="btnVoiceSearch"
+                    Grid.Column="1"
+                    WidthRequest="24"
+                    HeightRequest="24"
+                    Margin="0,0,8,0"
+                    VerticalOptions="Center"
+                    HorizontalOptions="Center"
+                    BackgroundColor="Transparent">
+                    <Image.Source>
+                        <FontImageSource
+                            x:Name="btnVoiceSearchIcon"
+                            FontFamily="FAS"
+                            Color="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                            Size="16"
+                            Glyph="{x:Static fontawesome:FontAwesomeIcons.Microphone}"/>
+                    </Image.Source>
+                    <Image.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="btnVoiceSearch_Clicked"/>
+                    </Image.GestureRecognizers>
+                </Image>
+            </Grid>
+        </Border>
+        <Grid
+            x:Name="voiceListeningPanel"
+            Padding="12,18"
+            IsVisible="False"
+            BackgroundColor="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}">
+            <VerticalStackLayout
+                Spacing="10"
+                HorizontalOptions="Center">
+                <Grid
+                    WidthRequest="88"
+                    HeightRequest="88"
+                    HorizontalOptions="Center">
+                    <Ellipse
+                        x:Name="micPulse"
+                        WidthRequest="76"
+                        HeightRequest="76"
+                        Fill="{StaticResource Primary}"
+                        Opacity="0.25"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center"/>
+                    <Border
+                        WidthRequest="58"
+                        HeightRequest="58"
+                        BackgroundColor="{StaticResource Primary}"
+                        StrokeThickness="0"
+                        StrokeShape="RoundRectangle 29"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center">
+                        <Label
+                            FontFamily="FAS"
+                            FontSize="24"
+                            Text="{x:Static fontawesome:FontAwesomeIcons.Microphone}"
+                            TextColor="{StaticResource PrimaryText}"
+                            HorizontalTextAlignment="Center"
+                            VerticalTextAlignment="Center"
+                            HorizontalOptions="Center"
+                            VerticalOptions="Center"/>
+                    </Border>
+                </Grid>
+                <Label
+                    Text="Listening for search text..."
+                    FontSize="14"
+                    FontAttributes="Bold"
+                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                    HorizontalTextAlignment="Center"/>
+                <Label
+                    Text="Say a lyric, phrase, or hymn search term."
+                    FontSize="12"
+                    TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"
+                    HorizontalTextAlignment="Center"/>
+            </VerticalStackLayout>
+        </Grid>
         <StackLayout
             Padding="10,5"
             IsVisible="False">

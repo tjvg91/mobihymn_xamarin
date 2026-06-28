@@ -1,10 +1,14 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
+using CommunityToolkit.Maui.Extensions;
+using CommunityToolkit.Maui.Views;
+using MobiHymn4.Extensions;
 using MobiHymn4.Models;
 using MobiHymn4.Services;
 using MobiHymn4.Utils;
 using MobiHymn4.ViewModels;
+using MobiHymn4.Views.Popups;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 
@@ -41,10 +45,16 @@ public partial class App : Application
     {
         try
         {
-            DeviceDisplay.KeepScreenOn = globalInstance.KeepAwake;
+            MainThread.BeginInvokeOnMainThread(async () =>
+            {
+                await globalInstance.LoadSettings();
+                DeviceDisplay.KeepScreenOn = globalInstance.KeepAwake;
+            });
 
             if (!fromFirebaseNotif)
                 QueueFirebaseInit();
+            else
+                QueueUpdateCheck();
 
             QueueInterruptedDownloadRecovery();
         }
@@ -90,19 +100,95 @@ public partial class App : Application
         {
             await Task.Delay(1500);
             await InitFirebaseAsync();
+            await CheckForAppUpdateAsync();
+        });
+    }
+
+    void QueueUpdateCheck()
+    {
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            await Task.Delay(1500);
+            await CheckForAppUpdateAsync();
         });
     }
 
     async Task InitFirebaseAsync()
     {
-        globalInstance.IsFetchingSyncDetails = true;
         await fbHelper.LoginWithEmailPassword("tim.gandionco@gmail.com", "TLmSIsnw231");
+        await globalInstance.RefreshMissingHymnCountAsync();
+    }
 
-        var deviceVersion = int.Parse(Preferences.Get(PreferencesVar.RESYNC_VERSION, "0"));
-        globalInstance.ResyncDetails.AddRange(
-            await fbInstance.RetrieveSyncChangesFrom(deviceVersion));
+    async Task CheckForAppUpdateAsync()
+    {
+        try
+        {
+            var release = await fbInstance.RetrieveLatestRelease();
+            if (release == null || string.IsNullOrWhiteSpace(release.Version))
+                return;
 
-        globalInstance.IsFetchingSyncDetails = false;
+            var current = AppInfo.VersionString;
+            if (!IsNewerVersion(release.Version, current))
+                return;
+
+            await MainThread.InvokeOnMainThreadAsync(async () =>
+                await PromptUpdateAsync(release));
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Update check failed: {ex.Message}");
+        }
+    }
+
+    async Task PromptUpdateAsync(LatestRelease release)
+    {
+        if (release.Mandatory)
+        {
+            await ShowUpdatePopupAsync(
+                "Update Required",
+                "A new version is available and this update is required. Please download and install it to continue using MobiHymn.",
+                mandatory: true,
+                downloadText: "Download Now");
+
+            if (!string.IsNullOrWhiteSpace(release.DownloadUrl))
+                await Launcher.OpenAsync(release.DownloadUrl);
+
+            await PromptUpdateAsync(release);
+        }
+        else
+        {
+            var result = await ShowUpdatePopupAsync(
+                "Update Available",
+                "A new update is available.",
+                mandatory: false);
+
+            if (result == UpdatePopup.ResultDownload && !string.IsNullOrWhiteSpace(release.DownloadUrl))
+                await Launcher.OpenAsync(release.DownloadUrl);
+        }
+    }
+
+    async Task<string> ShowUpdatePopupAsync(string title, string message, bool mandatory, string downloadText = "Download")
+    {
+        var page = Shell.Current?.CurrentPage as Page ?? MainPage as Page;
+        if (page == null)
+            return UpdatePopup.ResultLater;
+
+        var popup = new UpdatePopup();
+        popup.Configure(title, message, mandatory, downloadText);
+
+        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        popup.Closed += (_, e) =>
+            tcs.TrySetResult(e.Result as string ?? UpdatePopup.ResultLater);
+
+        await MainThread.InvokeOnMainThreadAsync(() => page.ShowPopup(popup));
+        return await tcs.Task;
+    }
+
+    static bool IsNewerVersion(string remote, string local)
+    {
+        if (Version.TryParse(remote, out var r) && Version.TryParse(local, out var l))
+            return r > l;
+        return string.Compare(remote, local, StringComparison.OrdinalIgnoreCase) > 0;
     }
 
     protected override void OnResume()
@@ -142,7 +228,38 @@ public partial class App : Application
         if (globalInstance.ActiveHymn == null || globalInstance.HymnList == null || globalInstance.HymnList.Count == 0)
             return;
 
+#if ANDROID
+        var pending = MobiHymn4.MainActivity.PendingHymnNumber;
+        if (!string.IsNullOrEmpty(pending))
+        {
+            MobiHymn4.MainActivity.ConsumePendingHymnNumber();
+            NavigateToHymn(pending);
+            return;
+        }
+#endif
+
         await NavigateToStartupReaderAsync();
+    }
+
+    public static void NavigateToHymn(string number)
+    {
+        var globals = Globals.Instance;
+        var hymn = globals.HymnList?[number];
+        if (hymn == null)
+            return;
+
+        globals.ActiveHymn = hymn;
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            try
+            {
+                await Shell.Current.GoToAsync($"//{Routes.READ}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Deep link navigation failed: {ex.Message}");
+            }
+        });
     }
 
     async Task NavigateToStartupReaderAsync()

@@ -153,6 +153,29 @@ namespace MobiHymn4.ViewModels
             {
                 syncCount = value;
                 SetProperty(ref syncCount, value, nameof(SyncCount));
+            }
+        }
+
+        private string syncSummary = string.Empty;
+        public string SyncSummary
+        {
+            get => syncSummary;
+            set
+            {
+                syncSummary = value;
+                SetProperty(ref syncSummary, value, nameof(SyncSummary));
+                OnPropertyChanged();
+            }
+        }
+
+        private ObservableRangeCollection<SyncChangeItem> syncChangeItems = new();
+        public ObservableRangeCollection<SyncChangeItem> SyncChangeItems
+        {
+            get => syncChangeItems;
+            set
+            {
+                syncChangeItems = value;
+                SetProperty(ref syncChangeItems, value, nameof(SyncChangeItems));
                 OnPropertyChanged();
             }
         }
@@ -164,28 +187,47 @@ namespace MobiHymn4.ViewModels
             IsOrientationLocked = globalInstance.IsOrientationLocked;
             IsBusy = globalInstance.IsFetchingSyncDetails;
 
-            SyncCount = globalInstance.ResyncDetails?.Count ?? 0;
-            ShowSyncs = SyncCount > 0;
+            SyncCount = globalInstance.MissingHymnCount;
+            UpdateMissingSummary();
 
             globalInstance.DarkModeChanged += GlobalInstance_DarkModeChanged;
             globalInstance.KeepAwakeChanged += GlobalInstance_KeepAwakeChanged;
             globalInstance.OrientationLockedChanged += GlobalInstance_OrientationLockedChanged;
             globalInstance.IsFetchingSyncDetailsChanged += GlobalInstance_IsFetchingSyncDetailsChanged;
-            globalInstance.ResyncDetails.CollectionChanged += ResyncDetails_CollectionChanged;
+            globalInstance.MissingHymnCountChanged += GlobalInstance_MissingHymnCountChanged;
+        }
+
+        private void GlobalInstance_MissingHymnCountChanged(object sender, EventArgs e)
+        {
+            SyncCount = globalInstance.MissingHymnCount;
+            UpdateMissingSummary();
         }
 
         private void ResyncDetails_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
         {
             resyncInitialized = false;
-            SyncCount = globalInstance.ResyncDetails?.Count ?? 0;
-            ShowSyncs = SyncCount > 0;
         }
 
         private void GlobalInstance_IsFetchingSyncDetailsChanged(object sender, EventArgs e)
         {
+            IsBusy = (bool)sender;
             resyncInitialized = false;
-            SyncCount = globalInstance.ResyncDetails?.Count ?? 0;
-            ShowSyncs = SyncCount > 0;
+            UpdateMissingSummary();
+        }
+
+        void UpdateMissingSummary()
+        {
+            if (globalInstance.IsFetchingSyncDetails)
+            {
+                SyncSummary = "Checking for missing hymns…";
+                ShowSyncs = true;
+                return;
+            }
+
+            var count = globalInstance.MissingHymnCount;
+            SyncCount = count;
+            SyncSummary = Globals.FormatMissingHymnSummary(globalInstance.MissingHymnNumbers);
+            ShowSyncs = true;
         }
 
         private void GlobalInstance_OrientationLockedChanged(object sender, EventArgs e)
@@ -216,21 +258,13 @@ namespace MobiHymn4.ViewModels
         {
             ResyncList = globalInstance.ResyncDetails.ToObservableRangeCollection();
 
-            var createDetails = ResyncList.Where(detail => detail.Mode == CRUD.Create)
-                        .Select(detail => detail.Number == "*" ?
-                        $"All {Enum.GetName(detail.Type.GetType(), detail.Type)} files" :
-                        $"{detail.Number.ToTitle()} ({Enum.GetName(detail.Type.GetType(), detail.Type)})")
-                        .ToObservableRangeCollection();
-            var updateDetails = ResyncList.Where(detail => detail.Mode == CRUD.Update)
-                        .Select(detail => detail.Number == "*" ?
-                        $"All {Enum.GetName(detail.Type.GetType(), detail.Type)} files" :
-                        $"{detail.Number.ToTitle()} ({Enum.GetName(detail.Type.GetType(), detail.Type)})")
-                        .ToObservableRangeCollection();
-            var deleteDetails = ResyncList.Where(detail => detail.Mode == CRUD.Delete)
-                        .Select(detail => detail.Number == "*" ?
-                        $"All {Enum.GetName(detail.Type.GetType(), detail.Type)} files" :
-                        $"{detail.Number.ToTitle()} ({Enum.GetName(detail.Type.GetType(), detail.Type)})")
-                        .ToObservableRangeCollection();
+            var createDetails = BuildDetailStrings(ResyncList, CRUD.Create);
+            var updateDetails = BuildDetailStrings(ResyncList, CRUD.Update);
+            var deleteDetails = BuildDetailStrings(ResyncList, CRUD.Delete);
+
+            SyncChangeItems = ResyncList
+                .Select(FormatSyncChangeItem)
+                .ToObservableRangeCollection();
 
             var fontSize = 20;
 
@@ -261,6 +295,30 @@ namespace MobiHymn4.ViewModels
             SyncCount = ResyncList.Count;
             ShowSyncs = SyncCount > 0;
         }
+
+        static SyncChangeItem FormatSyncChangeItem(ResyncDetail detail) =>
+            new()
+            {
+                ModeLabel = detail.Mode switch
+                {
+                    CRUD.Create => "Add",
+                    CRUD.Update => "Edit",
+                    CRUD.Delete => "Remove",
+                    _ => detail.Mode.ToString()
+                },
+                Description = FormatResyncDescription(detail)
+            };
+
+        static ObservableRangeCollection<string> BuildDetailStrings(IEnumerable<ResyncDetail> details, CRUD mode) =>
+            details
+                .Where(detail => detail.Mode == mode)
+                .Select(FormatResyncDescription)
+                .ToObservableRangeCollection();
+
+        static string FormatResyncDescription(ResyncDetail detail) =>
+            detail.Number == "*"
+                ? $"All {Enum.GetName(detail.Type.GetType(), detail.Type)} files"
+                : $"{detail.Number.ToTitle()} ({Enum.GetName(detail.Type.GetType(), detail.Type)})";
     }
 }
 

@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<toolkit:Popup
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    xmlns:elements="clr-namespace:MobiHymn4.Elements"
+    x:Class="MobiHymn4.Views.Popups.UpdatePopup"
+    Color="Transparent">
+
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill">
+        <ContentView
+            x:Name="overlay"
+            BackgroundColor="#8C000000"
+            HorizontalOptions="Fill"
+            VerticalOptions="Fill"/>
+
+        <Border
+            Padding="20"
+            StrokeThickness="0"
+            Stroke="Transparent"
+            Background="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}"
+            StrokeShape="RoundRectangle 16"
+            WidthRequest="320"
+            MaximumWidthRequest="400"
+            Margin="24,0"
+            HorizontalOptions="Center"
+            VerticalOptions="Center">
+            <Border.Shadow>
+                <Shadow Brush="Black" Offset="0,6" Radius="24" Opacity="0.45"/>
+            </Border.Shadow>
+
+            <VerticalStackLayout Spacing="12">
+                <elements:AnimatingView
+                    x:Name="updateAnimation"
+                    Size="120"
+                    HorizontalOptions="Center"/>
+
+                <Label
+                    x:Name="lblTitle"
+                    FontAttributes="Bold"
+                    FontSize="18"
+                    HorizontalTextAlignment="Center"
+                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+
+                <Label
+                    x:Name="lblMessage"
+                    FontSize="14"
+                    LineBreakMode="WordWrap"
+                    HorizontalTextAlignment="Center"
+                    TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="12" Margin="0,4,0,0">
+                    <Button
+                        x:Name="btnLater"
+                        Grid.Column="0"
+                        Text="Later"
+                        HeightRequest="44"
+                        CornerRadius="10"
+                        FontSize="15"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                        Clicked="btnLater_Clicked"/>
+                    <Button
+                        x:Name="btnDownload"
+                        Grid.Column="1"
+                        Text="Download"
+                        HeightRequest="44"
+                        CornerRadius="10"
+                        FontSize="15"
+                        FontAttributes="Bold"
+                        BackgroundColor="{StaticResource Primary}"
+                        TextColor="{StaticResource PrimaryText}"
+                        Clicked="btnDownload_Clicked"/>
+                </Grid>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</toolkit:Popup>

@@ -26,7 +26,7 @@ namespace MobiHymn4.ViewModels
                 SetProperty(ref bookmarksList, bookmarksList, nameof(BookmarksList));
                 GroupKeys = value.Select((grp, count) => new GroupDisplay
                 {
-                    Name = grp.Key,
+                    Name = string.IsNullOrWhiteSpace(grp.Key) ? "General" : grp.Key,
                     Count = grp.Count()
                 }).ToObservableRangeCollection();
                 OnPropertyChanged();
@@ -139,7 +139,12 @@ namespace MobiHymn4.ViewModels
             Title = "Bookmarks";
 
             globalInstance.BookmarksChanged += Globals_BookmarksChanged;
+            globalInstance.SettingsLoaded += (_, _) =>
+                Globals_BookmarksChanged(globalInstance.BookmarkList, EventArgs.Empty);
         }
+
+        public void RefreshBookmarks() =>
+            Globals_BookmarksChanged(globalInstance.BookmarkList, EventArgs.Empty);
 
         private ICommand bookmarkGroupSelected;
         public ICommand BookmarkGroupSelected
@@ -182,8 +187,9 @@ namespace MobiHymn4.ViewModels
 
         private ObservableRangeCollection<IGrouping<string, ShortHymn>> ModifyBookmarks(ObservableRangeCollection<ShortHymn> shortHymns)
         {
+            globalInstance.NormalizeBookmarkGroups();
             return shortHymns.OrderBy(shortHymn => shortHymn.Line)
-                .GroupBy((shortHymn) => shortHymn.BookmarkGroup)
+                .GroupBy(shortHymn => string.IsNullOrWhiteSpace(shortHymn.BookmarkGroup) ? "General" : shortHymn.BookmarkGroup)
                 .OrderBy(group => group.Key).ToObservableRangeCollection();
         }
 

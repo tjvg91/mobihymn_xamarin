@@ -6,6 +6,7 @@ using Microsoft.Maui.ApplicationModel;
 
 #if ANDROID
 using Android.Media;
+using Android.Net;
 #elif IOS
 using AVFoundation;
 using CoreMedia;
@@ -20,7 +21,6 @@ public class HymnAudioPlayer : IPlayService
     MediaPlayer mediaPlayer;
     System.Timers.Timer positionTimer;
     TaskCompletionSource<bool>? pendingLoad;
-    CancellationTokenSource? loadTimeoutCts;
 #elif IOS
     AVPlayer avPlayer;
     NSObject timeObserver;
@@ -179,78 +179,79 @@ public class HymnAudioPlayer : IPlayService
 
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         pendingLoad = tcs;
-        loadTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        loadTimeoutCts.Token.Register(() => CompletePendingLoad(false));
 
-        try
+        Task.Run(() =>
         {
-            mediaPlayer = new MediaPlayer();
-            mediaPlayer.SetDataSource(url);
-            mediaPlayer.Info += (_, e) =>
+            var localTcs = tcs;
+            try
             {
-                if (pendingLoad != tcs)
-                    return;
+                var mp = new MediaPlayer();
 
-                if (e.What == MediaInfo.BufferingStart)
-                    SetBuffering(true);
-                else if (e.What == MediaInfo.BufferingEnd)
+                mp.SetAudioAttributes(
+                    new AudioAttributes.Builder()
+                        .SetUsage(AudioUsageKind.Media)
+                        .SetContentType(AudioContentType.Music)
+                        .Build());
+
+                if (System.Uri.TryCreate(url, System.UriKind.Absolute, out var sysUri) &&
+                    (sysUri.Scheme == System.Uri.UriSchemeHttp || sysUri.Scheme == System.Uri.UriSchemeHttps))
+                    mp.SetDataSource(Android.App.Application.Context, Android.Net.Uri.Parse(url));
+                else
+                    mp.SetDataSource(url);
+
+                mp.Prepare();
+
+                if (pendingLoad != localTcs)
+                {
+                    mp.Release();
+                    mp.Dispose();
+                    return;
+                }
+
+                mp.Info += (_, e) =>
+                {
+                    if (e.What == MediaInfo.BufferingStart)
+                        SetBuffering(true);
+                    else if (e.What == MediaInfo.BufferingEnd)
+                        SetBuffering(false);
+                };
+                mp.Completion += (_, _) =>
+                {
+                    IsPlaying = false;
                     SetBuffering(false);
-            };
-            mediaPlayer.Prepared += (_, _) =>
-            {
-                if (pendingLoad != tcs)
-                    return;
+                    FinalizePlaybackAtCurrentPosition();
+                    StopPositionTimer();
+                    RaisePositionChanged();
+                    PlaybackEnded?.Invoke(this, EventArgs.Empty);
+                };
+                mp.Error += (_, e) =>
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"Audio playback error: What={e.What}({(int)e.What}) Extra={e.Extra}({(int)e.Extra})");
+                };
 
-                Duration = mediaPlayer.Duration / 1000.0;
+                mediaPlayer = mp;
+                Duration = mp.Duration / 1000.0;
                 SetBuffering(false);
-                CompletePendingLoad(true);
-            };
-            mediaPlayer.Error += (_, e) =>
+                localTcs.TrySetResult(true);
+            }
+            catch (Exception ex)
             {
-                if (pendingLoad != tcs)
-                    return;
-
-                System.Diagnostics.Debug.WriteLine($"Audio load error: {e.What} / {e.Extra}");
-                CompletePendingLoad(false);
-            };
-            mediaPlayer.Completion += (_, _) =>
+                System.Diagnostics.Debug.WriteLine($"Audio load failed: {ex.Message}");
+                localTcs.TrySetResult(false);
+            }
+            finally
             {
-                IsPlaying = false;
-                SetBuffering(false);
-                FinalizePlaybackAtCurrentPosition();
-                StopPositionTimer();
-                RaisePositionChanged();
-                PlaybackEnded?.Invoke(this, EventArgs.Empty);
-            };
-            mediaPlayer.PrepareAsync();
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Audio load failed: {ex.Message}");
-            CompletePendingLoad(false);
-        }
+                if (pendingLoad == localTcs)
+                    pendingLoad = null;
+            }
+        });
 
         return tcs.Task;
     }
 
-    void CompletePendingLoad(bool success)
-    {
-        loadTimeoutCts?.Cancel();
-        loadTimeoutCts?.Dispose();
-        loadTimeoutCts = null;
-
-        if (pendingLoad == null)
-            return;
-
-        pendingLoad.TrySetResult(success);
-        pendingLoad = null;
-    }
-
     void CancelPendingLoad()
     {
-        loadTimeoutCts?.Cancel();
-        loadTimeoutCts?.Dispose();
-        loadTimeoutCts = null;
         pendingLoad?.TrySetResult(false);
         pendingLoad = null;
     }
@@ -307,7 +308,7 @@ public class HymnAudioPlayer : IPlayService
 
             var currentItem = avPlayer.CurrentItem;
             bufferEmptyObserver = NSNotificationCenter.DefaultCenter.AddObserver(
-                AVPlayerItem.PlaybackBufferEmptyNotification,
+                new NSString("AVPlayerItemPlaybackBufferEmptyNotification"),
                 _ =>
                 {
                     if (IsPlaying)
@@ -316,7 +317,7 @@ public class HymnAudioPlayer : IPlayService
                 currentItem);
 
             bufferReadyObserver = NSNotificationCenter.DefaultCenter.AddObserver(
-                AVPlayerItem.PlaybackLikelyToKeepUpNotification,
+                new NSString("AVPlayerItemPlaybackLikelyToKeepUpNotification"),
                 _ => SetBuffering(false),
                 currentItem);
 

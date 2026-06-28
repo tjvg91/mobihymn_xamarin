@@ -1,5 +1,6 @@
 using System;
 using MobiHymn4.Utils;
+using MobiHymn4.ViewModels;
 
 using Microsoft.Maui.Controls;
 
@@ -12,6 +13,12 @@ namespace MobiHymn4.Views
         public HistoryPage()
         {
             InitializeComponent();
+        }
+
+        protected override void OnAppearing()
+        {
+            base.OnAppearing();
+            (BindingContext as HistoryViewModel)?.RefreshHistoryGroups();
         }
 
         async void MyListView_ChildAdded(Object sender, ElementEventArgs e)

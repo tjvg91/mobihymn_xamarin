@@ -56,6 +56,9 @@ namespace MobiHymn4.Utils
         private bool suppressSettingsSave;
 
         [JsonIgnore]
+        private bool settingsHydratedFromDisk;
+
+        [JsonIgnore]
         private readonly SemaphoreSlim settingsSaveLock = new SemaphoreSlim(1, 1);
 
         [JsonIgnore]
@@ -63,6 +66,9 @@ namespace MobiHymn4.Utils
 
         [JsonIgnore]
         int downloadInFlight;
+
+        [JsonIgnore]
+        CancellationTokenSource missingCountCts;
 
         [JsonIgnore]
         public bool InitInProgress => Volatile.Read(ref downloadInFlight) != 0;
@@ -258,6 +264,60 @@ namespace MobiHymn4.Utils
             }
         }
 
+        private int missingHymnCount;
+        private List<string> missingHymnNumbers = new();
+
+        [JsonIgnore]
+        public IReadOnlyList<string> MissingHymnNumbers => missingHymnNumbers;
+
+        [JsonIgnore]
+        public int MissingHymnCount
+        {
+            get => missingHymnCount;
+            private set => missingHymnCount = value;
+        }
+
+        public void SetMissingHymnScanResult(IEnumerable<string> numbers)
+        {
+            var sorted = (numbers ?? Enumerable.Empty<string>())
+                .OrderBy(HymnNumberSortKey)
+                .ToList();
+
+            var changed = missingHymnCount != sorted.Count
+                || !missingHymnNumbers.SequenceEqual(sorted, StringComparer.OrdinalIgnoreCase);
+
+            missingHymnNumbers = sorted;
+            missingHymnCount = sorted.Count;
+
+            if (changed)
+                OnMissingHymnCountChanged();
+        }
+
+        public static string FormatMissingHymnNumberList(IReadOnlyList<string> numbers, int maxListed = 24)
+        {
+            if (numbers == null || numbers.Count == 0)
+                return string.Empty;
+
+            var listed = numbers.Take(maxListed).Select(n => $"#{n}");
+            var text = string.Join(", ", listed);
+            if (numbers.Count > maxListed)
+                text += $" … and {numbers.Count - maxListed} more";
+
+            return text;
+        }
+
+        public static string FormatMissingHymnSummary(IReadOnlyList<string> numbers, int maxListed = 24)
+        {
+            if (numbers == null || numbers.Count == 0)
+                return "All hymns are up to date";
+
+            var text = FormatMissingHymnNumberList(numbers, maxListed);
+
+            return numbers.Count == 1
+                ? $"1 missing hymn: {text}"
+                : $"{numbers.Count} missing hymns: {text}";
+        }
+
         private ObservableRangeCollection<ShortHymn> historyList = new ObservableRangeCollection<ShortHymn>();
         public ObservableRangeCollection<ShortHymn> HistoryList
         {
@@ -373,15 +433,19 @@ namespace MobiHymn4.Utils
         public double ActiveFontSize
         {
             get => activeFontSize;
-            set
-            {
-                if (Math.Abs(activeFontSize - value) > 0.01)
-                {
-                    activeFontSize = value;
-                    OnActiveFontSizeChanged(activeFontSize);
-                    SaveSettings();
-                }
-            }
+            set => SetActiveFontSize(value);
+        }
+
+        public void SetActiveFontSize(double value, bool saveSettings = true)
+        {
+            if (Math.Abs(activeFontSize - value) <= 0.01)
+                return;
+
+            activeFontSize = value;
+            OnActiveFontSizeChanged(activeFontSize);
+
+            if (saveSettings)
+                SaveSettings();
         }
 
         private string activeFont = DeviceInfo.Platform == DevicePlatform.Android ? "Roboto" : "SFPro";
@@ -396,6 +460,37 @@ namespace MobiHymn4.Utils
                     OnActiveFontChanged(value);
                     SaveSettings();
                 }
+            }
+        }
+
+        private double activeLetterSpacing;
+        public double ActiveLetterSpacing
+        {
+            get => activeLetterSpacing;
+            set
+            {
+                var clamped = Math.Clamp(value, 0, 1);
+                if (Math.Abs(activeLetterSpacing - clamped) <= 0.001)
+                    return;
+
+                activeLetterSpacing = clamped;
+                OnActiveLetterSpacingChanged(activeLetterSpacing);
+                SaveSettings();
+            }
+        }
+
+        private double activeLineSpacing = 1;
+        public double ActiveLineSpacing
+        {
+            get => activeLineSpacing;
+            set
+            {
+                if (Math.Abs(activeLineSpacing - value) <= 0.001)
+                    return;
+
+                activeLineSpacing = value;
+                OnActiveLineSpacingChanged(activeLineSpacing);
+                SaveSettings();
             }
         }
 
@@ -454,12 +549,16 @@ namespace MobiHymn4.Utils
         public event EventHandler ActiveAlignmentChanged;
         public event EventHandler ActiveFontSizeChanged;
         public event EventHandler ActiveFontChanged;
+        public event EventHandler ActiveLetterSpacingChanged;
+        public event EventHandler ActiveLineSpacingChanged;
         public event EventHandler BookmarksChanged;
         public event EventHandler HistoryChanged;
         public event EventHandler DarkModeChanged;
         public event EventHandler KeepAwakeChanged;
         public event EventHandler OrientationLockedChanged;
         public event EventHandler IsFetchingSyncDetailsChanged;
+        public event EventHandler MissingHymnCountChanged;
+        public event EventHandler SettingsLoaded;
 
         private void OnActiveHymnChanged(Hymn value)
         {
@@ -472,7 +571,12 @@ namespace MobiHymn4.Utils
         private void OnBookmarksChanged(ObservableRangeCollection<ShortHymn> value, EventArgs eventArgs = null)
         {
             var args = eventArgs ?? EventArgs.Empty;
-            RaiseOnMainThread(() => BookmarksChanged?.Invoke(value, args));
+            RaiseOnMainThread(() =>
+            {
+                BookmarksChanged?.Invoke(value, args);
+                if (!suppressSettingsSave)
+                    SaveSettings();
+            });
         }
         private void OnHistoryChanged(ObservableRangeCollection<ShortHymn> value)
         {
@@ -480,19 +584,27 @@ namespace MobiHymn4.Utils
         }
         private void OnAlignmentChanged(TextAlignment value)
         {
-            if (ActiveAlignmentChanged != null) ActiveAlignmentChanged(value, EventArgs.Empty);
+            RaiseOnMainThread(() => ActiveAlignmentChanged?.Invoke(value, EventArgs.Empty));
         }
         private void OnActiveReadThemeChanged(Color value)
         {
-            if (ActiveReadThemeChanged != null) ActiveReadThemeChanged(value, EventArgs.Empty);
+            RaiseOnMainThread(() => ActiveReadThemeChanged?.Invoke(value, EventArgs.Empty));
         }
         private void OnActiveFontChanged(string value)
         {
-            if (ActiveFontChanged != null) ActiveFontChanged(value, EventArgs.Empty);
+            RaiseOnMainThread(() => ActiveFontChanged?.Invoke(value, EventArgs.Empty));
+        }
+        private void OnActiveLetterSpacingChanged(double value)
+        {
+            RaiseOnMainThread(() => ActiveLetterSpacingChanged?.Invoke(value, EventArgs.Empty));
+        }
+        private void OnActiveLineSpacingChanged(double value)
+        {
+            RaiseOnMainThread(() => ActiveLineSpacingChanged?.Invoke(value, EventArgs.Empty));
         }
         private void OnActiveFontSizeChanged(double value)
         {
-            if (ActiveFontSizeChanged != null) ActiveFontSizeChanged(value, EventArgs.Empty);
+            RaiseOnMainThread(() => ActiveFontSizeChanged?.Invoke(value, EventArgs.Empty));
         }
         private void OnDarkModeChanged(bool value)
         {
@@ -508,6 +620,7 @@ namespace MobiHymn4.Utils
         }
         private void OnDownloadStarted(string value)
         {
+            CancelMissingHymnCountScan();
             IsDownloadUiActive = true;
             RefreshIncompleteDownloadState();
             RaiseOnMainThread(() => DownloadStarted?.Invoke(value, EventArgs.Empty));
@@ -559,6 +672,11 @@ namespace MobiHymn4.Utils
         public void OnIsFetchingSyncDetailsChanged(bool value)
         {
             if (IsFetchingSyncDetailsChanged != null) IsFetchingSyncDetailsChanged(value, EventArgs.Empty);
+        }
+
+        public void OnMissingHymnCountChanged()
+        {
+            MissingHymnCountChanged?.Invoke(this, EventArgs.Empty);
         }
 
         private void BookmarkList_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -656,7 +774,7 @@ namespace MobiHymn4.Utils
             var checkpoint = await httpHelper.LoadCheckpoint();
 
             // Resume interrupted full download (first install or force resync)
-            if (checkpoint != null && checkpoint.NextSyncDetailIndex == null)
+            if (checkpoint != null && checkpoint.NextSyncDetailIndex == null && !checkpoint.MissingOnly)
             {
                 if (!HttpHelper.IsConnected())
                 {
@@ -698,6 +816,109 @@ namespace MobiHymn4.Utils
             return true;
         }
 
+        public async Task RefreshMissingHymnCountAsync()
+        {
+            if (!HttpHelper.IsConnected())
+            {
+                SetMissingHymnScanResult(Array.Empty<string>());
+                return;
+            }
+
+            CancelMissingHymnCountScan();
+            missingCountCts = new CancellationTokenSource();
+            var token = missingCountCts.Token;
+
+            IsFetchingSyncDetails = true;
+            try
+            {
+                await EnsureHymnsAndSettingsLoadedAsync().ConfigureAwait(false);
+                var local = HymnList ?? new HymnList();
+                var httpHelper = new HttpHelper();
+                var numbers = await Task.Run(
+                    async () => await httpHelper.FindMissingHymnNumbersAsync(local, token).ConfigureAwait(false),
+                    token).ConfigureAwait(true);
+                SetMissingHymnScanResult(numbers);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"RefreshMissingHymnCountAsync failed: {ex.Message}");
+            }
+            finally
+            {
+                IsFetchingSyncDetails = false;
+            }
+        }
+
+        void CancelMissingHymnCountScan()
+        {
+            try
+            {
+                missingCountCts?.Cancel();
+                missingCountCts?.Dispose();
+            }
+            catch
+            {
+            }
+
+            missingCountCts = null;
+        }
+
+        public async Task<bool> DownloadMissingReadHymns()
+        {
+            HttpHelper httpHelper = new HttpHelper();
+            var checkpoint = await httpHelper.LoadCheckpoint();
+
+            if (checkpoint != null && checkpoint.NextSyncDetailIndex == null && checkpoint.MissingOnly)
+            {
+                if (!HttpHelper.IsConnected())
+                {
+                    OnDownloadError("Please connect to download resources.");
+                    return true;
+                }
+
+                EnsureDownloadCancellationReady();
+                OnDownloadStarted("");
+                var resumeProgress = new Progress<string>(report => OnDownloadProgressed(report));
+                var local = await httpHelper.ReadHymns();
+                HymnList = await httpHelper.DownloadHymns(
+                    resumeProgress,
+                    CTS.Token,
+                    local,
+                    forceSync: false,
+                    excludeMidi: true,
+                    trackCheckpoint: true,
+                    skipExisting: true,
+                    updateResyncVersion: false);
+                return true;
+            }
+
+            if (!HttpHelper.IsConnected())
+            {
+                OnDownloadError("Please connect to download resources.");
+                return false;
+            }
+
+            await EnsureHymnsAndSettingsLoadedAsync();
+            var existing = HymnList ?? await httpHelper.ReadHymns();
+
+            EnsureDownloadCancellationReady();
+            OnDownloadStarted("");
+            var downloadProgress = new Progress<string>(report => OnDownloadProgressed(report));
+            HymnList = await httpHelper.DownloadHymns(
+                downloadProgress,
+                CTS.Token,
+                existing,
+                forceSync: false,
+                excludeMidi: true,
+                trackCheckpoint: true,
+                skipExisting: true,
+                updateResyncVersion: false);
+            return true;
+        }
+
         public async Task<bool> ResyncHymns()
         {
             if (!TryBeginDownloadOperation())
@@ -718,17 +939,18 @@ namespace MobiHymn4.Utils
 
         public async Task<bool> ResyncSelectedHymns(string hymnNumbersInput)
         {
-            if (!TryBeginDownloadOperation())
-                return false;
-
             try
             {
+                CancelMissingHymnCountScan();
+
                 if (!HttpHelper.IsConnected())
                 {
                     OnDownloadError("Please connect to download resources.");
                     return false;
                 }
 
+                OnDownloadProgressed("Preparing…");
+                OnDownloadStarted("");
                 await EnsureHymnsAndSettingsLoadedAsync();
                 if (HymnList == null || HymnList.Count == 0)
                 {
@@ -739,12 +961,11 @@ namespace MobiHymn4.Utils
                 var numbers = ParseHymnNumberList(hymnNumbersInput).ToList();
                 if (numbers.Count == 0)
                 {
-                    OnDownloadError("Enter valid hymn numbers (e.g. 132 or 77s, 801).");
+                    OnDownloadError("Enter valid hymn numbers (e.g. 123, 77, 55-100).");
                     return false;
                 }
 
                 EnsureDownloadCancellationReady();
-                OnDownloadStarted("");
 
                 var httpHelper = new HttpHelper();
                 var progress = new Progress<string>(report => OnDownloadProgressed(report));
@@ -785,10 +1006,6 @@ namespace MobiHymn4.Utils
                 OnDownloadError(ex.Message);
                 return false;
             }
-            finally
-            {
-                EndDownloadOperation();
-            }
         }
 
         public static IEnumerable<string> ParseHymnNumberList(string input)
@@ -799,13 +1016,36 @@ namespace MobiHymn4.Utils
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var part in input.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
-                var number = part.ToLowerInvariant();
-                if (!seen.Add(number))
-                    continue;
-
-                if (System.Text.RegularExpressions.Regex.IsMatch(number, @"^\d+[stf]?$"))
-                    yield return number;
+                foreach (var number in ExpandHymnNumberToken(part))
+                {
+                    if (seen.Add(number))
+                        yield return number;
+                }
             }
+        }
+
+        static IEnumerable<string> ExpandHymnNumberToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+                yield break;
+
+            token = token.Trim().ToLowerInvariant();
+            var rangeMatch = System.Text.RegularExpressions.Regex.Match(token, @"^(\d+)-(\d+)$");
+            if (rangeMatch.Success)
+            {
+                var start = int.Parse(rangeMatch.Groups[1].Value);
+                var end = int.Parse(rangeMatch.Groups[2].Value);
+                if (start > end)
+                    (start, end) = (end, start);
+
+                for (var n = start; n <= end; n++)
+                    yield return n.ToString();
+
+                yield break;
+            }
+
+            if (System.Text.RegularExpressions.Regex.IsMatch(token, @"^\d+[stf]?$"))
+                yield return token;
         }
 
         async Task<HymnList> ResyncHymnsInternal(HttpHelper httpHelper)
@@ -869,6 +1109,13 @@ namespace MobiHymn4.Utils
                     HymnList = await ResyncHymnsInternal(httpHelper);
                     await FinishAfterDownloadAsync(isUserSync: true);
                 }
+                else if (checkpoint?.MissingOnly == true)
+                {
+                    OnDownloadStarted("");
+                    EnsureDownloadCancellationReady();
+                    if (await DownloadMissingReadHymns())
+                        await FinishAfterDownloadAsync(isUserSync: false);
+                }
                 else if (await DownloadReadHymns())
                 {
                     await FinishAfterDownloadAsync(isUserSync: checkpoint?.ForceSync ?? false);
@@ -907,9 +1154,11 @@ namespace MobiHymn4.Utils
                 RestoreActiveHymnFromList(rebindOnly: true);
 
             RefreshBookmarkFirstLines();
-            if (settingsLoaded || !settingsFileExists)
+            if ((settingsLoaded || !settingsFileExists) && settingsHydratedFromDisk)
                 SaveSettings();
             RefreshIncompleteDownloadState();
+            if (isUserSync)
+                _ = RefreshMissingHymnCountAsync();
             OnInitFinished(isUserSync ? "sync" : null);
         }
 
@@ -934,7 +1183,15 @@ namespace MobiHymn4.Utils
             if (string.IsNullOrWhiteSpace(hymn?.Number))
                 return double.MaxValue;
 
-            var normalized = hymn.Number.Replace("f", ".4").Replace("s", ".2").Replace("t", ".3");
+            return HymnNumberSortKey(hymn.Number);
+        }
+
+        static double HymnNumberSortKey(string number)
+        {
+            if (string.IsNullOrWhiteSpace(number))
+                return double.MaxValue;
+
+            var normalized = number.Replace("f", ".4").Replace("s", ".2").Replace("t", ".3");
             return double.TryParse(normalized, out var value) ? value : double.MaxValue;
         }
 
@@ -946,6 +1203,12 @@ namespace MobiHymn4.Utils
             var changed = false;
             foreach (var bookmark in BookmarkList)
             {
+                if (string.IsNullOrWhiteSpace(bookmark.BookmarkGroup))
+                {
+                    bookmark.BookmarkGroup = "General";
+                    changed = true;
+                }
+
                 var hymn = HymnList.FirstOrDefault(h => h?.Number == bookmark.Number);
                 if (hymn == null || hymn.FirstLine == bookmark.Line)
                     continue;
@@ -956,6 +1219,27 @@ namespace MobiHymn4.Utils
 
             if (changed)
                 OnBookmarksChanged(BookmarkList);
+        }
+
+        public bool NormalizeBookmarkGroups()
+        {
+            if (BookmarkList == null)
+                return false;
+
+            var changed = false;
+            foreach (var bookmark in BookmarkList)
+            {
+                if (!string.IsNullOrWhiteSpace(bookmark.BookmarkGroup))
+                    continue;
+
+                bookmark.BookmarkGroup = "General";
+                changed = true;
+            }
+
+            if (changed)
+                OnBookmarksChanged(BookmarkList);
+
+            return changed;
         }
 
         void RestoreActiveHymnFromList(bool rebindOnly = false)
@@ -1075,16 +1359,27 @@ namespace MobiHymn4.Utils
             if (suppressSettingsSave)
                 return;
 
+            if (!settingsHydratedFromDisk && SettingsFileExists())
+                return;
+
             try
             {
                 await settingsSaveLock.WaitAsync();
                 if (suppressSettingsSave)
                     return;
 
+                if (!settingsHydratedFromDisk && SettingsFileExists())
+                    return;
+
                 var settings = JsonConvert.SerializeObject(Globals.Instance);
                 var folderPath = AppStorage.GetPath(folderRootName);
                 Directory.CreateDirectory(folderPath);
-                await File.WriteAllTextAsync(Path.Combine(folderPath, settingsName), settings);
+                var filePath = Path.Combine(folderPath, settingsName);
+                if (File.Exists(filePath))
+                    File.Copy(filePath, filePath + ".bak", overwrite: true);
+
+                await File.WriteAllTextAsync(filePath, settings);
+                settingsHydratedFromDisk = true;
             }
             catch (Exception)
             {
@@ -1101,110 +1396,180 @@ namespace MobiHymn4.Utils
 
         public async Task<bool> LoadSettings()
         {
+            await settingsSaveLock.WaitAsync();
             suppressSettingsSave = true;
-            var previousHymnInputType = hymnInputType;
-            var previousActiveHymn = activeHymn;
-            var previousActiveReadTheme = activeReadTheme;
-            var previousActiveThemeText = activeThemeText;
-            var previousActiveAlignment = activeAlignment;
-            var previousHistoryList = HistoryList;
-            var previousBookmarkList = BookmarkList;
-            var previousSearchList = SearchList;
-            var previousActiveFontSize = activeFontSize;
-            var previousActiveFont = activeFont;
-            var previousDarkMode = darkMode;
-            var previousKeepAwake = keepAwake;
-            var previousIsOrientationLocked = isOrientationLocked;
 
             try
             {
                 var filePath = AppStorage.GetPath(folderRootName, settingsName);
                 if (!File.Exists(filePath))
+                {
+                    settingsHydratedFromDisk = true;
                     return false;
+                }
 
                 var settings = await File.ReadAllTextAsync(filePath);
                 var json = await Task.Run(() => JsonConvert.DeserializeObject<Dictionary<string, object>>(settings));
-                foreach (KeyValuePair<string, object> entry in json)
+                if (json == null || json.Count == 0)
+                    return false;
+
+                var loadedAny = LoadSettingsEntries(json);
+
+                if (!loadedAny)
                 {
-                    switch(entry.Key)
+                    var backupPath = filePath + ".bak";
+                    if (File.Exists(backupPath))
                     {
-                        case nameof(HymnInputType):
-                            HymnInputType = (InputType)int.Parse(entry.Value + "");
-                            break;
-                        case nameof(ActiveHymn):
-                            activeHymn = ((JObject)(entry.Value)).ToObject<Hymn>();
-                            break;
-                        case nameof(ActiveReadTheme):
-                            ActiveReadTheme = ParseSavedColor(entry.Value);
-                            break;
-                        case nameof(ActiveAlignment):
-                            ActiveAlignment = (TextAlignment)int.Parse(entry.Value + "");
-                            break;
-                        case nameof(HistoryList):
-                            HistoryList = ((JArray)entry.Value).Select(x => new ShortHymn
-                            {
-                                Number = (string)x["Number"],
-                                TimeStamp = x["TimeStamp"]?.ToObject<DateTime>() ?? DateTime.UtcNow,
-                                Line = (string)x["Line"]
-                            }).ToObservableRangeCollection();
-                            break;
-                        case nameof(BookmarkList):
-                            BookmarkList = ((JArray)entry.Value).Select(x => new ShortHymn
-                            {
-                                Number = (string)x["Number"],
-                                TimeStamp = x["TimeStamp"]?.ToObject<DateTime>() ?? DateTime.UtcNow,
-                                Line = (string)x["Line"],
-                                BookmarkGroup = (string)x["BookmarkGroup"] ?? "General"
-                            }).ToObservableRangeCollection();
-                            break;
-                        case nameof(SearchList):
-                            SearchList = ((JArray)entry.Value).Select(x => (string)x).ToObservableRangeCollection();
-                            break;
-                        case nameof(ActiveFontSize):
-                            ActiveFontSize = double.Parse(entry.Value + "");
-                            break;
-                        case nameof(ActiveFont):
-                            ActiveFont = entry.Value + "";
-                            break;
-                        case nameof(DarkMode):
-                            DarkMode = (bool)entry.Value;
-                            break;
-                        case nameof(KeepAwake):
-                            KeepAwake = (bool)entry.Value;
-                            break;
-                        case nameof(IsOrientationLocked):
-                            IsOrientationLocked = (bool)entry.Value;
-                            break;
-                        default:
-                            var property = GetType().GetProperty(entry.Key);
-                            if (property?.CanWrite == true)
-                                property.SetValue(this, entry.Value, null);
-                            break;
+                        var backupSettings = await File.ReadAllTextAsync(backupPath);
+                        var backupJson = await Task.Run(() =>
+                            JsonConvert.DeserializeObject<Dictionary<string, object>>(backupSettings));
+                        if (backupJson?.Count > 0)
+                            loadedAny = LoadSettingsEntries(backupJson);
                     }
                 }
 
-                return true;
+                if (loadedAny)
+                {
+                    settingsHydratedFromDisk = true;
+                    ApplyLoadedSettingsToRuntime();
+                }
+
+                NormalizeBookmarkGroups();
+
+                if (BookmarkList != null)
+                    RaiseOnMainThread(() => BookmarksChanged?.Invoke(BookmarkList, EventArgs.Empty));
+
+                return loadedAny;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                hymnInputType = previousHymnInputType;
-                activeHymn = previousActiveHymn;
-                activeReadTheme = previousActiveReadTheme;
-                activeThemeText = previousActiveThemeText;
-                activeAlignment = previousActiveAlignment;
-                HistoryList = previousHistoryList;
-                BookmarkList = previousBookmarkList;
-                SearchList = previousSearchList;
-                activeFontSize = previousActiveFontSize;
-                activeFont = previousActiveFont;
-                darkMode = previousDarkMode;
-                keepAwake = previousKeepAwake;
-                isOrientationLocked = previousIsOrientationLocked;
+                System.Diagnostics.Debug.WriteLine($"LoadSettings failed: {ex.Message}");
                 return false;
             }
             finally
             {
                 suppressSettingsSave = false;
+                if (settingsSaveLock.CurrentCount == 0)
+                    settingsSaveLock.Release();
+            }
+        }
+
+        bool LoadSettingsEntries(Dictionary<string, object> json)
+        {
+            var loadedAny = false;
+            foreach (KeyValuePair<string, object> entry in json)
+            {
+                try
+                {
+                    if (ApplySettingsEntry(entry))
+                        loadedAny = true;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"LoadSettings skipped {entry.Key}: {ex.Message}");
+                }
+            }
+
+            return loadedAny;
+        }
+
+        void ApplyLoadedSettingsToRuntime()
+        {
+            RaiseOnMainThread(() =>
+            {
+                ActiveThemeText = ThemeList.Find(theme => theme.Background.Equals(activeReadTheme))?.Foreground ?? PrimaryText;
+                Application.Current.UserAppTheme = darkMode ? AppTheme.Dark : AppTheme.Light;
+                DeviceDisplay.KeepScreenOn = keepAwake;
+                Preferences.Set(PreferencesVar.DARK_MODE, darkMode);
+                Preferences.Set(PreferencesVar.KEEP_AWAKE, keepAwake);
+                Preferences.Set(PreferencesVar.HYMN_INPUT_TYPE, (int)hymnInputType);
+
+                OnHymnInputTypeChanged(hymnInputType);
+                OnAlignmentChanged(activeAlignment);
+                OnActiveReadThemeChanged(activeReadTheme);
+                OnActiveFontChanged(activeFont);
+                OnActiveFontSizeChanged(activeFontSize);
+                OnActiveLetterSpacingChanged(activeLetterSpacing);
+                OnActiveLineSpacingChanged(activeLineSpacing);
+                OnDarkModeChanged(darkMode);
+                OnKeepAwakeChanged(keepAwake);
+                OnOrientationLockedChanged(isOrientationLocked);
+
+                if (activeHymn != null)
+                    OnActiveHymnChanged(activeHymn);
+
+                SettingsLoaded?.Invoke(this, EventArgs.Empty);
+            });
+        }
+
+        static bool ReadBool(object value) =>
+            value switch
+            {
+                bool b => b,
+                null => false,
+                _ => Convert.ToBoolean(value)
+            };
+
+        bool ApplySettingsEntry(KeyValuePair<string, object> entry)
+        {
+            switch (entry.Key)
+            {
+                case nameof(HymnInputType):
+                    hymnInputType = (InputType)int.Parse(entry.Value + "");
+                    return true;
+                case nameof(ActiveHymn):
+                    activeHymn = ((JObject)(entry.Value)).ToObject<Hymn>();
+                    return true;
+                case nameof(ActiveReadTheme):
+                    activeReadTheme = ParseSavedColor(entry.Value);
+                    return true;
+                case nameof(ActiveAlignment):
+                    activeAlignment = (TextAlignment)int.Parse(entry.Value + "");
+                    return true;
+                case nameof(HistoryList):
+                    HistoryList = ((JArray)entry.Value).Select(x => new ShortHymn
+                    {
+                        Number = (string)x["Number"],
+                        TimeStamp = x["TimeStamp"]?.ToObject<DateTime>() ?? DateTime.UtcNow,
+                        Line = (string)x["Line"]
+                    }).ToObservableRangeCollection();
+                    return true;
+                case nameof(BookmarkList):
+                    BookmarkList = ((JArray)entry.Value).Select(x => new ShortHymn
+                    {
+                        Number = (string)x["Number"],
+                        TimeStamp = x["TimeStamp"]?.ToObject<DateTime>() ?? DateTime.UtcNow,
+                        Line = (string)x["Line"],
+                        BookmarkGroup = (string)x["BookmarkGroup"] ?? "General"
+                    }).ToObservableRangeCollection();
+                    return true;
+                case nameof(SearchList):
+                    SearchList = ((JArray)entry.Value).Select(x => (string)x).ToObservableRangeCollection();
+                    return true;
+                case nameof(ActiveFontSize):
+                    activeFontSize = double.Parse(entry.Value + "");
+                    return true;
+                case nameof(ActiveFont):
+                    activeFont = entry.Value + "";
+                    return true;
+                case nameof(ActiveLetterSpacing):
+                case "ActiveLetterSpacingEm":
+                    activeLetterSpacing = Math.Clamp(double.Parse(entry.Value + ""), 0, 1);
+                    return true;
+                case nameof(ActiveLineSpacing):
+                    activeLineSpacing = double.Parse(entry.Value + "");
+                    return true;
+                case nameof(DarkMode):
+                    darkMode = ReadBool(entry.Value);
+                    return true;
+                case nameof(KeepAwake):
+                    keepAwake = ReadBool(entry.Value);
+                    return true;
+                case nameof(IsOrientationLocked):
+                    isOrientationLocked = ReadBool(entry.Value);
+                    return true;
+                default:
+                    return false;
             }
         }
 

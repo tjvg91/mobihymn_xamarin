@@ -6,46 +6,60 @@
     xmlns:ViewModels="clr-namespace:MobiHymn4.ViewModels"
     xmlns:elements="clr-namespace:MobiHymn4.Elements"
     x:Class="MobiHymn4.Views.Popups.DownloadPopup"
-    Color="Black">
-	<toolkit:Popup.BindingContext>
-		<ViewModels:DownloadViewModel/>
-	</toolkit:Popup.BindingContext>
-    <FlexLayout HorizontalOptions="FillAndExpand" VerticalOptions="FillAndExpand"
-                JustifyContent="Center" AlignItems="Center"
-                Direction="Column" Style="{StaticResource FLChanger}">
-        <AbsoluteLayout
-            IsClippedToBounds="True"
-            WidthRequest="200"
-            HeightRequest="200">
-            <elements:AnimatingView
-                Size="{OnPlatform Android=150, iOS={OnIdiom Tablet=0.8, Default=0.8 }}"
-                AbsoluteLayout.LayoutBounds="0,-0.2,1,0.9"
-                AbsoluteLayout.LayoutFlags="All"
-                Source="{Binding LottieIcon}" />
-        </AbsoluteLayout>
-        
-        <!--<lottie:AnimationView
-            Animation="{Binding LottieIcon}"
-            RepeatMode="Infinite"
-            AnimationSource="AssetOrBundle"
-            WidthRequest="150"
-            HeightRequest="150"
-            AutoPlay="True"
-        />-->
-        <Label
-            Text="{Binding Message}"
-            FontSize="Small"
-            Style="{StaticResource Title}"
-            HorizontalTextAlignment="Center"
-            HorizontalOptions="FillAndExpand"/>
-        <Label
-            Text="(this might take a while)"
-            FontSize="12"
-            TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"
-            HorizontalTextAlignment="Center"
-            HorizontalOptions="FillAndExpand"
-            Margin="0,4,0,0"
-            IsVisible="{Binding ShowDurationHint}"/>
-    </FlexLayout>
-</toolkit:Popup>
+    Color="Transparent">
+    <toolkit:Popup.BindingContext>
+        <ViewModels:DownloadViewModel/>
+    </toolkit:Popup.BindingContext>
 
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill">
+        <ContentView
+            BackgroundColor="#8C000000"
+            HorizontalOptions="Fill"
+            VerticalOptions="Fill"/>
+
+        <Border
+            Padding="20"
+            StrokeThickness="0"
+            Stroke="Transparent"
+            Background="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}"
+            StrokeShape="RoundRectangle 16"
+            WidthRequest="320"
+            MaximumWidthRequest="400"
+            Margin="24,0"
+            HorizontalOptions="Center"
+            VerticalOptions="Center">
+            <Border.Shadow>
+                <Shadow Brush="Black" Offset="0,6" Radius="24" Opacity="0.45"/>
+            </Border.Shadow>
+
+            <VerticalStackLayout Spacing="8">
+                <AbsoluteLayout
+                    IsClippedToBounds="True"
+                    WidthRequest="200"
+                    HeightRequest="200"
+                    HorizontalOptions="Center">
+                    <elements:AnimatingView
+                        Size="{OnPlatform Android=150, iOS={OnIdiom Tablet=0.8, Default=0.8 }}"
+                        AbsoluteLayout.LayoutBounds="0,-0.2,1,0.9"
+                        AbsoluteLayout.LayoutFlags="All"
+                        Source="{Binding LottieIcon}" />
+                </AbsoluteLayout>
+
+                <Label
+                    Text="{Binding Message}"
+                    FontSize="Small"
+                    Style="{StaticResource Title}"
+                    HorizontalTextAlignment="Center"
+                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+
+                <Label
+                    Text="(this might take a while)"
+                    FontSize="12"
+                    TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"
+                    HorizontalTextAlignment="Center"
+                    Margin="0,4,0,0"
+                    IsVisible="{Binding ShowDurationHint}"/>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</toolkit:Popup>

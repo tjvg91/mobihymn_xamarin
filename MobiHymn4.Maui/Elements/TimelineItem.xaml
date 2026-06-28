@@ -25,7 +25,7 @@
                             FontSize="7"
                             FontFamily="FAS"
                             TextColor="{StaticResource Primary}"
-                            Text="{Static Member=fa:FontAwesomeIcons.Circle}"
+                            Text="{x:Static fa:FontAwesomeIcons.Circle}"
                             Margin="0,6,0,0"/>
                         <Label
                             FontSize="14"
@@ -38,4 +38,3 @@
         </VerticalStackLayout>
     </VerticalStackLayout>
 </ContentView>
-

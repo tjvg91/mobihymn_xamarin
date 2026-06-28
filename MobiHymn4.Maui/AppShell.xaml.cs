@@ -107,17 +107,19 @@ namespace MobiHymn4
             }
         }
 
+        const bool ShowSyncChangesPopup = false;
+
         private void ResyncDetails_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
         {
-            if(globalInstance.ResyncDetails.Count > 0)
+            if (!ShowSyncChangesPopup || globalInstance.ResyncDetails.Count <= 0)
+                return;
+
+            SyncPopup syncPopup = new SyncPopup
             {
-                SyncPopup syncPopup = new SyncPopup
-                {
-                    CanBeDismissedByTappingOutsideOfPopup = true
-                };
-                syncPopup.Closed += SyncPopup_Dismissed;
-                Navigation.ShowPopup(syncPopup);
-            }
+                CanBeDismissedByTappingOutsideOfPopup = true
+            };
+            syncPopup.Closed += SyncPopup_Dismissed;
+            Navigation.ShowPopup(syncPopup);
         }
 
         private async void SyncPopup_Dismissed(object sender, PopupClosedEventArgs e)

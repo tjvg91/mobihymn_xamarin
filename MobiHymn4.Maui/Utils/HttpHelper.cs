@@ -48,7 +48,9 @@ namespace MobiHymn4.Utils
             HymnList origList = null,
             bool forceSync = false,
             bool excludeMidi = true,
-            bool trackCheckpoint = true)
+            bool trackCheckpoint = true,
+            bool skipExisting = false,
+            bool updateResyncVersion = true)
 		{
 			string[] tunes = new string[] { "", "s", "t", "f" };
             HymnList hymnList;
@@ -59,7 +61,8 @@ namespace MobiHymn4.Utils
             if (trackCheckpoint)
             {
                 var checkpoint = await LoadCheckpoint();
-                if (checkpoint != null && checkpoint.NextSyncDetailIndex == null && checkpoint.ForceSync == forceSync)
+                if (checkpoint != null && checkpoint.NextSyncDetailIndex == null
+                    && checkpoint.ForceSync == forceSync && checkpoint.MissingOnly == skipExisting)
                 {
                     hymnList = await ReadHymns();
                     i = Math.Max(1, checkpoint.NextBaseIndex);
@@ -69,19 +72,20 @@ namespace MobiHymn4.Utils
                 }
                 else
                 {
-                    hymnList = new HymnList();
+                    hymnList = skipExisting && origList != null ? new HymnList(origList) : new HymnList();
                     i = 1;
                     await SaveCheckpoint(new DownloadCheckpoint
                     {
                         NextBaseIndex = 1,
                         ForceSync = forceSync,
-                        SavedHymnCount = 0
+                        MissingOnly = skipExisting,
+                        SavedHymnCount = hymnList.Count
                     });
                 }
             }
             else
             {
-                hymnList = new HymnList();
+                hymnList = skipExisting && origList != null ? new HymnList(origList) : new HymnList();
                 i = 1;
             }
 
@@ -93,7 +97,7 @@ namespace MobiHymn4.Utils
                 {
                     progress?.Report(message);
                     if (trackCheckpoint)
-                        await PersistDownloadProgress(hymnList, i, forceSync);
+                        await PersistDownloadProgress(hymnList, i, forceSync, skipExisting);
                     return hymnList;
                 }
 
@@ -109,6 +113,9 @@ namespace MobiHymn4.Utils
                         }
 
                         var number = $"{i}{tune}";
+
+                        if (skipExisting && hymnList.Any(h => h.Number == number))
+                            return;
 
                         // Skip tunes already saved when resuming the same base index
                         if (resumed && hymnList.Any(h => h.Number == number))
@@ -143,7 +150,7 @@ namespace MobiHymn4.Utils
 
                         if (!excludeMidi) await DownloadMIDI(number, cts);
 
-                        string reportText = forceSync ? "Syncing" : "Downloaded";
+                        string reportText = skipExisting ? "Downloaded" : forceSync ? "Syncing" : "Downloaded";
                         progress?.Report($"{reportText} hymn #{number}...");
                     }
                     catch (Exception ex)
@@ -156,19 +163,66 @@ namespace MobiHymn4.Utils
                 i++;
 
                 if (!isDone && trackCheckpoint && (i == 2 || i % SaveEveryBaseIndices == 0))
-                    await PersistDownloadProgress(hymnList, i, forceSync);
+                    await PersistDownloadProgress(hymnList, i, forceSync, skipExisting);
             }
 
-            if (!forceSync || (forceSync && syncables.Count > 0))
+            if (skipExisting || !forceSync || (forceSync && syncables.Count > 0))
                 await SaveHymns(hymnList);
 
             if (trackCheckpoint)
                 await ClearCheckpoint();
 
-            if (trackCheckpoint)
+            if (trackCheckpoint && updateResyncVersion)
                 UpdateResyncVersion();
             return hymnList;
 		}
+
+        public async Task<List<string>> FindMissingHymnNumbersAsync(HymnList local, CancellationToken cts)
+        {
+            string[] tunes = { "", "s", "t", "f" };
+            var localNumbers = new HashSet<string>(
+                local.Select(h => h.Number),
+                StringComparer.OrdinalIgnoreCase);
+            var missing = new List<string>();
+            var i = 1;
+            var done = false;
+
+            while (!done && !cts.IsCancellationRequested)
+            {
+                for (var j = 0; j < tunes.Length; j++)
+                {
+                    if (cts.IsCancellationRequested)
+                        break;
+
+                    var number = $"{i}{tunes[j]}";
+                    if (localNumbers.Contains(number))
+                        continue;
+
+                    try
+                    {
+                        var lyrics = await GetLyricsAsync(number).ConfigureAwait(false);
+                        if (string.IsNullOrEmpty(lyrics) || new Regex("Error:", RegexOptions.IgnoreCase).IsMatch(lyrics))
+                        {
+                            if (j == 0)
+                                done = true;
+                            continue;
+                        }
+
+                        missing.Add(number);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"FindMissingHymnNumbersAsync #{number}: {ex.Message}");
+                        if (j == 0)
+                            done = true;
+                    }
+                }
+
+                i++;
+            }
+
+            return missing;
+        }
 
         public async Task<HymnList> SyncChanges(
             IProgress<string> progress,
@@ -303,6 +357,7 @@ namespace MobiHymn4.Utils
                 try
                 {
                     cts.ThrowIfCancellationRequested();
+                    progress?.Report($"Syncing hymn #{number}…");
                     if (await SyncSingleHymnCore(number, hymnList, progress, cts, saveChanges: false))
                         succeeded++;
                     else
@@ -526,7 +581,7 @@ namespace MobiHymn4.Utils
             await Task.CompletedTask;
         }
 
-        async Task PersistDownloadProgress(HymnList hymnList, int nextBaseIndex, bool forceSync)
+        async Task PersistDownloadProgress(HymnList hymnList, int nextBaseIndex, bool forceSync, bool missingOnly = false)
         {
             if (hymnList.Count > 0)
                 await SaveHymns(hymnList);
@@ -535,6 +590,7 @@ namespace MobiHymn4.Utils
             {
                 NextBaseIndex = nextBaseIndex,
                 ForceSync = forceSync,
+                MissingOnly = missingOnly,
                 SavedHymnCount = hymnList.Count
             });
         }

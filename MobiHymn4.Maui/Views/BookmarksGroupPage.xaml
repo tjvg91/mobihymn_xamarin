@@ -21,38 +21,28 @@
             SelectionChanged="GroupSelection_Changed">
         <CollectionView.ItemTemplate>
             <DataTemplate>
-                <Grid
-                    ColumnDefinitions="44,*"
-                    BackgroundColor="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}">
+                <Grid BackgroundColor="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}">
                     <VisualStateManager.VisualStateGroups>
                         <VisualStateGroup Name="CommonStates">
                             <VisualState Name="Normal">
                                 <VisualState.Setters>
                                     <Setter Property="BackgroundColor" Value="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}" />
                                     <Setter TargetName="selectionIcon" Property="IsVisible" Value="False" />
+                                    <Setter TargetName="selectionIcon" Property="WidthRequest" Value="0" />
+                                    <Setter TargetName="selectionIcon" Property="Margin" Value="0" />
                                 </VisualState.Setters>
                             </VisualState>
                             <VisualState Name="Selected">
                                 <VisualState.Setters>
                                     <Setter Property="BackgroundColor" Value="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}" />
                                     <Setter TargetName="selectionIcon" Property="IsVisible" Value="True" />
+                                    <Setter TargetName="selectionIcon" Property="WidthRequest" Value="24" />
+                                    <Setter TargetName="selectionIcon" Property="Margin" Value="0,0,12,0" />
                                 </VisualState.Setters>
                             </VisualState>
                         </VisualStateGroup>
                     </VisualStateManager.VisualStateGroups>
-                    <Label
-                        x:Name="selectionIcon"
-                        Grid.Column="0"
-                        Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
-                        FontFamily="FAS"
-                        FontSize="18"
-                        TextColor="{StaticResource Primary}"
-                        HorizontalTextAlignment="Center"
-                        VerticalTextAlignment="Center"
-                        IsVisible="False" />
-                    <SwipeView
-                        Grid.Column="1"
-                        BindingContext="{Binding .}">
+                    <SwipeView BindingContext="{Binding .}">
                         <SwipeView.RightItems>
                             <SwipeItems>
                                 <SwipeItem
@@ -68,23 +58,36 @@
                                 </SwipeItem>
                             </SwipeItems>
                         </SwipeView.RightItems>
-                        <FlexLayout
-                            BackgroundColor="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}"
-                            HorizontalOptions="FillAndExpand"
-                            JustifyContent="SpaceBetween"
-                            AlignItems="Center"
-                            Padding="20"
-                            Margin="0">
-                            <StackLayout Orientation="Vertical" HorizontalOptions="FillAndExpand">
-                                <Label Text="{Binding Name}" Style="{StaticResource Title}" TextType="Html" HorizontalTextAlignment="Start"/>
-                                <Label Text="{Binding CountString}" Style="{StaticResource Subtitle}" TextType="Html" HorizontalTextAlignment="Start" Margin="0,-2.5,0,0"/>
-                            </StackLayout>
+                        <Grid
+                            Padding="20,16"
+                            ColumnDefinitions="Auto,*,Auto"
+                            ColumnSpacing="12"
+                            BackgroundColor="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}">
                             <Label
+                                x:Name="selectionIcon"
+                                Grid.Column="0"
+                                Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
+                                FontFamily="FAS"
+                                FontSize="18"
+                                TextColor="{StaticResource Primary}"
+                                HorizontalTextAlignment="Center"
+                                VerticalTextAlignment="Center"
+                                VerticalOptions="Center"
+                                IsVisible="False"
+                                WidthRequest="0"
+                                Margin="0" />
+                            <VerticalStackLayout Grid.Column="1" Spacing="0" VerticalOptions="Center">
+                                <Label Text="{Binding Name}" Style="{StaticResource Title}" HorizontalTextAlignment="Start"/>
+                                <Label Text="{Binding CountString}" Style="{StaticResource Subtitle}" HorizontalTextAlignment="Start" Margin="0,-2.5,0,0"/>
+                            </VerticalStackLayout>
+                            <Label
+                                Grid.Column="2"
                                 Text="{Static fontawesome:FontAwesomeIcons.ChevronRight}"
                                 TextColor="{AppThemeBinding Dark={StaticResource White}, Light={StaticResource PrimaryText}}"
                                 FontFamily="FAS"
-                                FontSize="Large"/>
-                        </FlexLayout>
+                                FontSize="Large"
+                                VerticalOptions="Center"/>
+                        </Grid>
                     </SwipeView>
                 </Grid>
             </DataTemplate>

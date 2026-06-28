@@ -4,84 +4,78 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
     xmlns:ViewModels="clr-namespace:MobiHymn4.ViewModels"
-    xmlns:elements="clr-namespace:MobiHymn4.Elements"
+    xmlns:models="clr-namespace:MobiHymn4.Models"
     x:Class="MobiHymn4.Views.Popups.SyncPopup">
 
     <toolkit:Popup.BindingContext>
-		<ViewModels:SettingsViewModel/>
-	</toolkit:Popup.BindingContext>
+        <ViewModels:SettingsViewModel/>
+    </toolkit:Popup.BindingContext>
 
-    <StackLayout Padding="10,20,10,10" VerticalOptions="FillAndExpand"
-                 Background="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryText}}">
-        <Label FontSize="Medium" Text="Sync Changes?" Style="{StaticResource Title}" HorizontalTextAlignment="Start" Margin="0,0,0,10"/>
-        <!--<BoxView HorizontalOptions="FillAndExpand" HeightRequest="1" 
-                 BackgroundColor="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"/>-->
-        <StackLayout Padding="1"
-                     BackgroundColor="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
-                     VerticalOptions="FillAndExpand">
-            <ScrollView VerticalOptions="FillAndExpand"
-                        Background="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryText}}">
-                <StackLayout Padding="0,5">
-                    <elements:TimelineItem
-                        Item="{Binding ResyncCreateList}"
-                        IsVisible="False"
-                        Padding="{OnPlatform Android='100,0,0,10', iOS='125,0,0,0'}">
-                        <elements:TimelineItem.Triggers>
-                            <DataTrigger TargetType="elements:TimelineItem" Binding="{Binding ShowCreate}" Value="True">
-                                <Setter Property="IsVisible" Value="True" />
-                            </DataTrigger>
-                        </elements:TimelineItem.Triggers>
-                    </elements:TimelineItem>
-                    <elements:TimelineItem
-                        Item="{Binding ResyncUpdateList}"
-                        IsVisible="False"
-                        Padding="{OnPlatform Android='100,0,0,10', iOS='125,0,0,0'}">
-                        <elements:TimelineItem.Triggers>
-                            <DataTrigger TargetType="elements:TimelineItem" Binding="{Binding ShowUpdate}" Value="True">
-                                <Setter Property="IsVisible" Value="True" />
-                            </DataTrigger>
-                        </elements:TimelineItem.Triggers>
-                    </elements:TimelineItem>
-                    <elements:TimelineItem
-                        Item="{Binding ResyncDeleteList}"
-                        IsVisible="False"
-                        Margin="{OnPlatform Android='100,0,0,10', iOS='125,0,0,0'}">
-                        <elements:TimelineItem.Triggers>
-                            <DataTrigger TargetType="elements:TimelineItem" Binding="{Binding ShowDelete}" Value="True">
-                                <Setter Property="IsVisible" Value="True" />
-                            </DataTrigger>
-                        </elements:TimelineItem.Triggers>
-                    </elements:TimelineItem>
-                </StackLayout>
-            </ScrollView>
+    <Border
+        Padding="16"
+        Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+        StrokeThickness="1"
+        Background="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryText}}">
+        <VerticalStackLayout Spacing="12">
+            <VerticalStackLayout Spacing="4">
+                <Label
+                    Text="Sync Changes?"
+                    Style="{StaticResource Title}"
+                    FontSize="18"
+                    HorizontalTextAlignment="Start"/>
+                <Label
+                    Text="{Binding SyncSummary}"
+                    FontSize="13"
+                    TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+            </VerticalStackLayout>
 
-        </StackLayout>
-        
-        <!--<Label
-            FontSize="Micro"
-            Text="(You can find sync changes in settings)"
-            Style="{StaticResource Subtitle}"
-            FontAttributes="Italic"
-            HorizontalTextAlignment="Center"/>
-        <BoxView HorizontalOptions="FillAndExpand" HeightRequest="1"
-                 BackgroundColor="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"/>-->
-        <FlexLayout JustifyContent="End" Margin="0,10,0,0">
-            <Button
-                x:Name="btnLater"
-                Text="Later in Settings"
-                Padding="10,5"
-                Clicked="btnLater_Clicked"
-                FontSize="Micro"
-                Style="{StaticResource Button-Clear-Reverse}"
-                />
-            <Button
-                x:Name="btnResync"
-                Text="Let's Go!"
-                Padding="10,5"
-                FontSize="Micro"
-                Clicked="btnResync_Clicked"
-                Style="{StaticResource Button-Clear}"/>
-        </FlexLayout>
-    </StackLayout>
+            <Border
+                Padding="8,4"
+                Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                StrokeThickness="1"
+                Background="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryText}}">
+                <CollectionView
+                    x:Name="changesList"
+                    ItemsSource="{Binding SyncChangeItems}"
+                    SelectionMode="None">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="models:SyncChangeItem">
+                            <Grid ColumnDefinitions="72,*" ColumnSpacing="8" Padding="0,6">
+                                <Label
+                                    Text="{Binding ModeLabel}"
+                                    FontAttributes="Bold"
+                                    FontSize="13"
+                                    TextColor="{StaticResource Primary}"
+                                    VerticalOptions="Center"/>
+                                <Label
+                                    Grid.Column="1"
+                                    Text="{Binding Description}"
+                                    FontSize="14"
+                                    LineBreakMode="WordWrap"
+                                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark={StaticResource GrayLight}}"
+                                    VerticalOptions="Center"/>
+                            </Grid>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+            </Border>
+
+            <FlexLayout JustifyContent="End" Margin="0,4,0,0">
+                <Button
+                    x:Name="btnLater"
+                    Text="Later in Settings"
+                    Padding="10,5"
+                    Clicked="btnLater_Clicked"
+                    FontSize="Micro"
+                    Style="{StaticResource Button-Clear-Reverse}"/>
+                <Button
+                    x:Name="btnResync"
+                    Text="Let's Go!"
+                    Padding="10,5"
+                    FontSize="Micro"
+                    Clicked="btnResync_Clicked"
+                    Style="{StaticResource Button-Clear}"/>
+            </FlexLayout>
+        </VerticalStackLayout>
+    </Border>
 </toolkit:Popup>
-

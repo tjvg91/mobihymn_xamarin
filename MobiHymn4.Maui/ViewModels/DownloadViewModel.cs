@@ -13,9 +13,17 @@ namespace MobiHymn4.ViewModels
         public DownloadViewModel ()
 		{
 			IsConnected = HttpHelper.IsConnected();
-            DownloadStatus = DownloadStatus.None;
-            if (!IsConnected)
+            if (IsConnected)
+            {
+                LottieIcon = "download";
+                DownloadStatus = DownloadStatus.Started;
+                Message = "Initializing…";
+            }
+            else
+            {
+                DownloadStatus = DownloadStatus.Error;
                 SetNoInternet();
+            }
 
             Connectivity.ConnectivityChanged += Connectivity_ConnectivityChanged;
             globalInstance.DownloadStarted += GlobalInstance_DownloadStarted;
@@ -48,8 +56,7 @@ namespace MobiHymn4.ViewModels
             globalInstance.InitFinished -= GlobalInstance_InitFinished;
         }
 
-        private string lottieIcon = Application.Current.UserAppTheme == AppTheme.Light ?
-                                "no-internet-light" : "no-internet-dark";
+        private string lottieIcon = "download";
         public string LottieIcon
         {
             get => lottieIcon;
@@ -104,16 +111,23 @@ namespace MobiHymn4.ViewModels
         private void GlobalInstance_DownloadStarted(object sender, EventArgs e)
         {
             LottieIcon = "download";
-            Message = "Initializing...";
+            DownloadStatus = DownloadStatus.Started;
+            if (string.IsNullOrWhiteSpace(Message) ||
+                Message.Equals("Initializing…", StringComparison.Ordinal) ||
+                Message.Equals("Initializing...", StringComparison.Ordinal))
+            {
+                Message = "Initializing…";
+            }
         }
 
         private void Connectivity_ConnectivityChanged(object sender, ConnectivityChangedEventArgs e)
         {
-            bool prevState = IsConnected;
-            IsConnected = e.NetworkAccess == NetworkAccess.Internet;
-            if (IsConnected && !prevState && Todo != null && !globalInstance.InitInProgress)
+            var wasConnected = IsConnected;
+            IsConnected = HttpHelper.IsConnected();
+
+            if (IsConnected && !wasConnected && Todo != null && !globalInstance.InitInProgress)
                 Todo();
-            else if(!IsConnected)
+            else if (!IsConnected && e.NetworkAccess == NetworkAccess.None)
             {
                 SetNoInternet();
                 globalInstance.CTS.Cancel();

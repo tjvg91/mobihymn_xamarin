@@ -97,7 +97,7 @@ public class SelectableLabelHandler : ViewHandler<SelectableLabel, UITextView>
         mutable.AddAttribute(UIStringAttributeKey.ParagraphStyle, paragraph, range);
 
         if (label.CharacterSpacing != 0)
-            mutable.AddAttribute(UIStringAttributeKey.Kern, NSNumber.FromFloat((float)label.CharacterSpacing), range);
+            mutable.AddAttribute(new NSString("NSKern"), NSNumber.FromFloat((float)label.CharacterSpacing), range);
 
         textView.AttributedText = mutable;
     }

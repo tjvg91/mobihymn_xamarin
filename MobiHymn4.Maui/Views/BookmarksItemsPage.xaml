@@ -41,37 +41,28 @@
                 ChildAdded="MyListView_ChildAdded">
             <CollectionView.ItemTemplate>
                 <DataTemplate>
-                    <Grid
-                        ColumnDefinitions="44,*"
-                        BackgroundColor="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}">
+                    <Grid BackgroundColor="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}">
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup Name="CommonStates">
                                 <VisualState Name="Normal">
                                     <VisualState.Setters>
                                         <Setter Property="BackgroundColor" Value="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}" />
                                         <Setter TargetName="selectionIcon" Property="IsVisible" Value="False" />
+                                        <Setter TargetName="selectionIcon" Property="WidthRequest" Value="0" />
+                                        <Setter TargetName="selectionIcon" Property="Margin" Value="0" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState Name="Selected">
                                     <VisualState.Setters>
                                         <Setter Property="BackgroundColor" Value="{AppThemeBinding Dark={StaticResource PrimaryText}, Light=White,Default=White}" />
                                         <Setter TargetName="selectionIcon" Property="IsVisible" Value="True" />
+                                        <Setter TargetName="selectionIcon" Property="WidthRequest" Value="24" />
+                                        <Setter TargetName="selectionIcon" Property="Margin" Value="0,0,12,0" />
                                     </VisualState.Setters>
                                 </VisualState>
                             </VisualStateGroup>
                         </VisualStateManager.VisualStateGroups>
-                        <Label
-                            x:Name="selectionIcon"
-                            Grid.Column="0"
-                            Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
-                            FontFamily="FAS"
-                            FontSize="18"
-                            TextColor="{StaticResource Primary}"
-                            HorizontalTextAlignment="Center"
-                            VerticalTextAlignment="Center"
-                            IsVisible="False" />
                         <SwipeView
-                            Grid.Column="1"
                             SwipeStarted="SwipeView_SwipeStarted"
                             BindingContext="{Binding .}">
                             <SwipeView.RightItems>
@@ -100,18 +91,32 @@
                                     </SwipeItem>
                                 </SwipeItems>
                             </SwipeView.RightItems>
-                            <StackLayout
-                                BackgroundColor="Transparent"
-                                Padding="20,15,20,15"
-                                Margin="0"
-                                Orientation="Vertical">
-                                <Label Text="{Binding Line}" Style="{StaticResource Title}" TextType="Html"/>
+                            <Grid ColumnDefinitions="Auto,*" Padding="20,15" ColumnSpacing="12">
                                 <Label
-                                    Text="{Binding NumberText}"
-                                    Style="{StaticResource Subtitle}"
-                                    Margin="{OnPlatform iOS='0,0,0,0'}"
-                                />
-                            </StackLayout>
+                                    x:Name="selectionIcon"
+                                    Grid.Column="0"
+                                    Text="{x:Static fontawesome:FontAwesomeIcons.Check}"
+                                    FontFamily="FAS"
+                                    FontSize="18"
+                                    TextColor="{StaticResource Primary}"
+                                    HorizontalTextAlignment="Center"
+                                    VerticalTextAlignment="Center"
+                                    IsVisible="False"
+                                    WidthRequest="0"
+                                    Margin="0" />
+                                <StackLayout
+                                    Grid.Column="1"
+                                    BackgroundColor="Transparent"
+                                    Margin="0"
+                                    Orientation="Vertical">
+                                    <Label Text="{Binding Line}" Style="{StaticResource Title}" TextType="Html"/>
+                                    <Label
+                                        Text="{Binding NumberText}"
+                                        Style="{StaticResource Subtitle}"
+                                        Margin="{OnPlatform iOS='0,0,0,0'}"
+                                    />
+                                </StackLayout>
+                            </Grid>
                         </SwipeView>
                     </Grid>
                 </DataTemplate>

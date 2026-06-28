@@ -5,7 +5,8 @@ namespace MobiHymn4.Utils
 	public enum InputType
 	{
 		Grid = 0,
-		Numpad = 1
+		Numpad = 1,
+		Voice = 2
 	}
 
 	public enum DownloadStatus

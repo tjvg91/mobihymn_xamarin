@@ -10,6 +10,9 @@ namespace MobiHymn4.Models
 
         public bool ForceSync { get; set; }
 
+        /// <summary>When true, only hymns not already on disk are downloaded.</summary>
+        public bool MissingOnly { get; set; }
+
         /// <summary>When set, an incremental Firebase sync was in progress.</summary>
         public int? NextSyncDetailIndex { get; set; }
 

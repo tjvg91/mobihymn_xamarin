@@ -52,7 +52,9 @@ public static class MauiProgram
         builder.Services.AddSingleton<IAppVersionBuild, AppVersionBuildPlatform>();
         builder.Services.AddSingleton<IMidiHelper, MidiHelperPlatform>();
         builder.Services.AddSingleton<IPlayService, HymnAudioPlayer>();
+        builder.Services.AddSingleton<IVoiceRecognitionService, UnavailableVoiceRecognitionService>();
 #if ANDROID
+        builder.Services.AddSingleton<IVoiceRecognitionService, AndroidVoiceRecognitionService>();
         builder.Services.AddSingleton<IDownloadNotificationService, DownloadNotificationService>();
 #endif
 

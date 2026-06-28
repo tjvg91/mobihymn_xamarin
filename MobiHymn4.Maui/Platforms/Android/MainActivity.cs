@@ -12,10 +12,19 @@ namespace MobiHymn4;
 [Activity(
     Theme = "@style/Maui.SplashTheme",
     MainLauncher = true,
-    LaunchMode = LaunchMode.SingleTop,
+    LaunchMode = LaunchMode.SingleTask,
     ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize)]
+[IntentFilter(
+    new[] { Intent.ActionView },
+    Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+    DataScheme = "mobihymn",
+    DataHost = "hymn")]
 public class MainActivity : MauiAppCompatActivity
 {
+    public static string PendingHymnNumber { get; private set; }
+
+    public static void ConsumePendingHymnNumber() => PendingHymnNumber = null;
+
     protected override void OnCreate(Bundle savedInstanceState)
     {
         AppCompatDelegate.DefaultNightMode = AppCompatDelegate.ModeNightNo;
@@ -25,6 +34,7 @@ public class MainActivity : MauiAppCompatActivity
             _ = RequestNotificationPermissionAsync();
 
         HandleNotificationIntent(Intent);
+        HandleDeepLinkIntent(Intent, alreadyLoaded: false);
     }
 
     protected override void OnNewIntent(Intent? intent)
@@ -32,6 +42,23 @@ public class MainActivity : MauiAppCompatActivity
         base.OnNewIntent(intent);
         Intent = intent;
         HandleNotificationIntent(intent);
+        HandleDeepLinkIntent(intent, alreadyLoaded: true);
+    }
+
+    static void HandleDeepLinkIntent(Intent? intent, bool alreadyLoaded)
+    {
+        var uri = intent?.Data;
+        if (uri?.Scheme != "mobihymn" || uri.Host != "hymn")
+            return;
+
+        var number = uri.LastPathSegment;
+        if (string.IsNullOrEmpty(number))
+            return;
+
+        if (alreadyLoaded)
+            App.NavigateToHymn(number);
+        else
+            PendingHymnNumber = number;
     }
 
     static void HandleNotificationIntent(Intent? intent)

@@ -39,6 +39,9 @@ namespace MobiHymn4.Views
                 model.BookmarksPerKey = (group ?? Enumerable.Empty<ShortHymn>())
                     .OrderBy(bk => bk.Line)
                     .ToObservableRangeCollection();
+
+                if (!isSelectionMode)
+                    SetSelectionMode(false);
             }
         }
 
@@ -56,6 +59,8 @@ namespace MobiHymn4.Views
         {
             if (isSelectionMode)
                 UpdateSelectionActions();
+            else
+                SetSelectionMode(false);
 
             var initQuery = model.BookmarksList.Where(bk => bk.Key == Name);
             if (initQuery.Count() == 0)
@@ -69,10 +74,10 @@ namespace MobiHymn4.Views
 
         private void BuildSelectionToolbarItems()
         {
-            tbSelect = new ToolbarItem { Text = "Select" };
+            tbSelect = new ToolbarItem { IconImageSource = CreateToolbarIcon(FontAwesomeIcons.SquareCheck) };
             tbSelect.Clicked += tbSelect_Clicked;
 
-            tbSelectAll = new ToolbarItem { Text = "Select All", IconImageSource = CreateToolbarIcon(FontAwesomeIcons.Check) };
+            tbSelectAll = new ToolbarItem { IconImageSource = CreateToolbarIcon(FontAwesomeIcons.CheckDouble) };
             tbSelectAll.Clicked += tbSelectAll_Clicked;
 
             tbMoveSelected = new ToolbarItem { Text = "Move", IconImageSource = CreateToolbarIcon(FontAwesomeIcons.LayerGroup) };
@@ -94,6 +99,8 @@ namespace MobiHymn4.Views
                 Color = (Color)Application.Current.Resources["PrimaryText"]
             };
 
+        bool HasSavedBookmarks() => model.BookmarksPerKey?.Count > 0;
+
         private void SetSelectionMode(bool enabled)
         {
             isSelectionMode = enabled;
@@ -110,11 +117,13 @@ namespace MobiHymn4.Views
                 ToolbarItems.Add(tbMoveSelected);
                 ToolbarItems.Add(tbDeleteSelected);
                 ToolbarItems.Add(tbCancelSelection);
+                Title = Name?.Capitalize();
                 UpdateSelectionActions();
                 return;
             }
 
-            ToolbarItems.Add(tbSelect);
+            if (HasSavedBookmarks())
+                ToolbarItems.Add(tbSelect);
             ToolbarItems.Add(tbHome);
             Title = Name?.Capitalize();
         }
@@ -129,7 +138,6 @@ namespace MobiHymn4.Views
             tbSelectAll.IsEnabled = total > 0 && count < total;
             tbMoveSelected.IsEnabled = count > 0;
             tbDeleteSelected.IsEnabled = count > 0;
-            Title = count == 0 ? "Select bookmarks" : $"{count} selected";
         }
 
         private void BookmarkSelection_Changed(object sender, SelectionChangedEventArgs e)

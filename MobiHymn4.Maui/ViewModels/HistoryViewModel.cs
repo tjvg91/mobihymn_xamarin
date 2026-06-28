@@ -52,6 +52,14 @@ namespace MobiHymn4.ViewModels
             HistoryList = (ObservableRangeCollection<ShortHymn>)sender;
         }
 
+        public void RefreshHistoryGroups()
+        {
+            if (historyList == null)
+                return;
+
+            HistoryGroupList = ModifyHistory(historyList);
+        }
+
         private ICommand historyItemSelected;
         public ICommand HistoryItemSelected
         {

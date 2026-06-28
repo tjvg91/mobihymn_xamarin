@@ -6,6 +6,7 @@
     xmlns:fontawesome="clr-namespace:FontAwesome"
     xmlns:utils="clr-namespace:MobiHymn4.Utils"
     xmlns:elements="clr-namespace:MobiHymn4.Elements"
+    xmlns:logo="clr-namespace:LogoIcon"
     x:Class="MobiHymn4.Views.ReadPage"
     x:Name="root"
     Shell.TabBarIsVisible="False"
@@ -77,6 +78,15 @@
                     Glyph="{x:Static fontawesome:FontAwesomeIcons.Heart}" />
             </ToolbarItem.IconImageSource>
         </ToolbarItem>
+        <ToolbarItem x:Name="tbShare" Clicked="tbShare_Clicked">
+            <ToolbarItem.IconImageSource>
+                <FontImageSource
+                    FontFamily="FAS"
+                    Color="{StaticResource PrimaryText}"
+                    Size="Medium"
+                    Glyph="{x:Static fontawesome:FontAwesomeIcons.ShareNodes}"/>
+            </ToolbarItem.IconImageSource>
+        </ToolbarItem>
         <ToolbarItem x:Name="tbSettings" Clicked="tbSettings_Clicked">
             <ToolbarItem.IconImageSource>
                 <FontImageSource
@@ -121,9 +131,12 @@
                 AbsoluteLayout.LayoutBounds="0,0,1,1">
                 <ScrollView
                     IsVisible="{Binding ShowLyricsContent}"
+                    BackgroundColor="{Binding ActiveColor}"
                     AbsoluteLayout.LayoutFlags="All"
                     AbsoluteLayout.LayoutBounds="0,0,1,1">
-                    <StackLayout HorizontalOptions="FillAndExpand" Padding="5">
+                    <StackLayout
+                        HorizontalOptions="FillAndExpand"
+                        Padding="5">
                         <Label
                             Text="{Binding Title}"
                             FontFamily="{Binding ActiveFont}"
@@ -132,30 +145,8 @@
                             TextColor="{Binding ActiveColorText}"
                             BackgroundColor="{Binding ActiveColor}"
                             CharacterSpacing="{Binding LetterSpacing}"
-                            LineHeight="1.2"
                             TextDecorations="Underline"
-                            Margin="0,0,15,0"/>
-                        
-                        <Label
-                            Text="{Binding Lyrics}"
-                            FontFamily="{Binding ActiveFont}"
-                            FontSize="{Binding ActiveFontSize}"
-                            HorizontalTextAlignment="{Binding ActiveAlignment}"
-                            TextColor="{Binding ActiveColorText}"
-                            BackgroundColor="{Binding ActiveColor}"
-                            CharacterSpacing="{Binding LetterSpacing}"
-                            LineHeight="1.2"
-                            TextType="Html"
-                            IsVisible="False">
-                            <Label.Triggers>
-                                <DataTrigger TargetType="Label" Binding="{Binding IsSelectable}" Value="False">
-                                    <Setter Property="IsVisible" Value="{OnPlatform Android=True, iOS=False}" />
-                                </DataTrigger>
-                                <DataTrigger TargetType="Label" Binding="{Binding IsSelectable}" Value="True">
-                                    <Setter Property="IsVisible" Value="False" />
-                                </DataTrigger>
-                            </Label.Triggers>
-                        </Label>
+                            Margin="{Binding TitleLabelMargin}"/>
                         
                         <elements:SelectableLabel
                             Text="{Binding Lyrics}"
@@ -166,21 +157,22 @@
                             BackgroundColor="Transparent"
                             CharacterSpacing="{Binding LetterSpacing}"
                             HorizontalOptions="FillAndExpand"
-                            LineHeight="1.2"
+                            LineHeight="{Binding LineSpacing}"
+                            InputTransparent="{OnPlatform Android=True, iOS=False}"
                             Margin="0,0,0,0">
                             <elements:SelectableLabel.Triggers>
-                                <DataTrigger TargetType="elements:SelectableLabel" Binding="{Binding IsSelectable}" Value="False">
-                                    <Setter Property="IsVisible" Value="{OnPlatform Android=False, iOS=True}" />
-                                </DataTrigger>
-                                <DataTrigger TargetType="elements:SelectableLabel" Binding="{Binding IsSelectable}" Value="True">
-                                    <Setter Property="IsVisible" Value="True" />
-                                </DataTrigger>
+                                <MultiTrigger TargetType="elements:SelectableLabel">
+                                    <MultiTrigger.Conditions>
+                                        <BindingCondition Binding="{Binding IsSelectable}" Value="True" />
+                                        <BindingCondition Binding="{Binding IsReadView}" Value="True" />
+                                    </MultiTrigger.Conditions>
+                                    <Setter Property="InputTransparent" Value="False" />
+                                </MultiTrigger>
                             </elements:SelectableLabel.Triggers>
-
                         </elements:SelectableLabel>
                         <StackLayout.GestureRecognizers>
-                            <PinchGestureRecognizer PinchUpdated="PinchGestureRecognizer_PinchUpdated" />
                             <TapGestureRecognizer Tapped="TapGestureRecognizer_Tapped" />
+                            <PinchGestureRecognizer PinchUpdated="PinchGestureRecognizer_PinchUpdated" />
                         </StackLayout.GestureRecognizers>
                     </StackLayout>
                 </ScrollView>
@@ -228,6 +220,30 @@
                         <MultiTrigger TargetType="Button">
                             <MultiTrigger.Conditions>
                                 <BindingCondition  Binding="{Binding HymnInputType}" Value="{x:Static utils:InputType.Numpad}" />
+                                <BindingCondition Binding="{Binding IsReadView}" Value="True" />
+                            </MultiTrigger.Conditions>
+                            <Setter Property="IsVisible" Value="True" />
+                        </MultiTrigger>
+                    </Button.Triggers>
+                </Button>
+                <Button
+                    Style="{StaticResource Button-FAB}"
+                    x:Name="tbHomeVoice"
+                    Clicked="btnHome_Clicked"
+                    IsVisible="False"
+                    AbsoluteLayout.LayoutFlags="PositionProportional"  
+                    AbsoluteLayout.LayoutBounds="{OnPlatform Android='.95,.96,60,60', iOS='.95,.96,60,60'}" >
+                    <Button.ImageSource>
+                        <FontImageSource
+                            FontFamily="FAS"
+                            Color="{StaticResource PrimaryText}"
+                            Size="Medium"
+                            Glyph="{x:Static fontawesome:FontAwesomeIcons.Microphone}"/>
+                    </Button.ImageSource>
+                    <Button.Triggers>
+                        <MultiTrigger TargetType="Button">
+                            <MultiTrigger.Conditions>
+                                <BindingCondition Binding="{Binding HymnInputType}" Value="{x:Static utils:InputType.Voice}" />
                                 <BindingCondition Binding="{Binding IsReadView}" Value="True" />
                             </MultiTrigger.Conditions>
                             <Setter Property="IsVisible" Value="True" />
@@ -327,11 +343,30 @@
                     Direction="Column"
                     BackgroundColor="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}"
                     IsVisible="{Binding IsLoadingLyrics}">
-                    <ActivityIndicator
-                        Color="{StaticResource Primary}"
-                        WidthRequest="40"
-                        HeightRequest="40"
-                        IsRunning="{Binding IsLoadingLyrics}"/>
+                    <Grid
+                        WidthRequest="110"
+                        HeightRequest="110"
+                        HorizontalOptions="Center">
+                        <Ellipse
+                            x:Name="setupLogoPulse"
+                            WidthRequest="96"
+                            HeightRequest="96"
+                            Fill="{StaticResource Primary}"
+                            Opacity="0.2"
+                            HorizontalOptions="Center"
+                            VerticalOptions="Center"/>
+                        <Label
+                            x:Name="setupLogo"
+                            Text="{x:Static logo:IconFont.Logo}"
+                            FontFamily="LOGO"
+                            TextColor="{StaticResource Primary}"
+                            FontSize="64"
+                            HorizontalOptions="Center"
+                            VerticalOptions="Center"
+                            HorizontalTextAlignment="Center"
+                            VerticalTextAlignment="Center"
+                            LineHeight="1"/>
+                    </Grid>
                     <Label
                         Text="Setting up..."
                         TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
@@ -395,6 +430,9 @@
                     <DataTrigger TargetType="VerticalStackLayout" Binding="{Binding IsDownloadOverlayVisible}" Value="True">
                         <Setter Property="IsVisible" Value="False" />
                     </DataTrigger>
+                    <DataTrigger TargetType="VerticalStackLayout" Binding="{Binding ShowAudioNotFoundNotice}" Value="True">
+                        <Setter Property="IsVisible" Value="False" />
+                    </DataTrigger>
                 </VerticalStackLayout.Triggers>
                 <StackLayout
                     Orientation="Horizontal"
@@ -406,9 +444,6 @@
                     <StackLayout.Triggers>
                         <DataTrigger TargetType="StackLayout" Binding="{Binding ActiveColor}" Value="{StaticResource PrimaryText}">
                             <Setter Property="BackgroundColor" Value="{StaticResource Gray}"/>
-                        </DataTrigger>
-                        <DataTrigger TargetType="StackLayout" Binding="{Binding ShowAudioNotFoundNotice}" Value="True">
-                            <Setter Property="IsVisible" Value="False"/>
                         </DataTrigger>
                         <DataTrigger TargetType="StackLayout" Binding="{Binding ShowAudioInternetNotice}" Value="True">
                             <Setter Property="IsVisible" Value="False"/>
@@ -466,23 +501,6 @@
                     Padding="0,3"
                     Margin="0,0,0,8"
                     IsVisible="{Binding ShowAudioInternetNotice}">
-                    <Label.Triggers>
-                        <DataTrigger TargetType="Label" Binding="{Binding ActiveColor}" Value="{StaticResource PrimaryText}">
-                            <Setter Property="BackgroundColor" Value="{StaticResource Gray}" />
-                        </DataTrigger>
-                    </Label.Triggers>
-                </Label>
-                <Label
-                    Text="Audio not available for this hymn."
-                    FontSize="11"
-                    FontAttributes="Bold"
-                    HorizontalTextAlignment="Center"
-                    HorizontalOptions="Fill"
-                    TextColor="{StaticResource Primary}"
-                    BackgroundColor="{StaticResource PrimaryText}"
-                    Padding="0,3"
-                    Margin="0"
-                    IsVisible="{Binding ShowAudioNotFoundNotice}">
                     <Label.Triggers>
                         <DataTrigger TargetType="Label" Binding="{Binding ActiveColor}" Value="{StaticResource PrimaryText}">
                             <Setter Property="BackgroundColor" Value="{StaticResource Gray}" />

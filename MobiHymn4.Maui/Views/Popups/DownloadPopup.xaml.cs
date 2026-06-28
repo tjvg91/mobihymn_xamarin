@@ -27,11 +27,6 @@ namespace MobiHymn4.Views.Popups
         public DownloadPopup ()
 		{
 			InitializeComponent ();
-            var mainDispalyInfo = DeviceDisplay.MainDisplayInfo;
-            var width = Math.Min((mainDispalyInfo.Width / mainDispalyInfo.Density) - (mainDispalyInfo.Width * 0.1), 400);
-            var height = DeviceInfo.Idiom == DeviceIdiom.Tablet ? 320 : 280;
-            Size = new Size(width, height);
-
             model = BindingContext as DownloadViewModel;
 
             globalInstance.InitFinished += GlobalInstance_InitFinished;
@@ -41,6 +36,9 @@ namespace MobiHymn4.Views.Popups
 
         private void DownloadPopup_Opened(object sender, EventArgs e)
         {
+            var display = DeviceDisplay.MainDisplayInfo;
+            Size = new Size(display.Width / display.Density, display.Height / display.Density);
+
             if (model?.DownloadStatus == DownloadStatus.Success)
             {
                 model.Detach();

@@ -4,11 +4,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FontAwesome;
-using MobiHymn4.Elements;
-using MobiHymn4.Models;
 using MobiHymn4.Services;
 using MobiHymn4.Utils;
-using MobiHymn4.ViewModels;
 using CommunityToolkit.Maui.Views;
 
 using Microsoft.Maui.Controls;
@@ -20,35 +17,23 @@ namespace MobiHymn4.Views
     public partial class SettingsPage : ContentPage
     {
         private Globals globalInstance = Globals.Instance;
-        private SettingsViewModel model;
-        private bool syncDetailsBuildQueued;
-        private bool syncDetailsBuilt;
-
-        CancellationTokenSource source = new CancellationTokenSource();
 
         public SettingsPage()
         {
             InitializeComponent();
-            model = BindingContext as SettingsViewModel;
             entResyncHymn.HandlerChanged += (_, _) => ApplyResyncInputAccent();
-            UpdateResyncIcon();
-            if (globalInstance.IsFetchingSyncDetails) RotateBusy();
-            globalInstance.IsFetchingSyncDetailsChanged += GlobalInstance_IsFetchingSyncDetailsChanged;
-            if (model != null)
-                model.PropertyChanged += Model_PropertyChanged;
+            UpdateResyncIcons();
         }
 
-        private void UpdateResyncIcon()
+        private void UpdateResyncIcons()
         {
             var iconColor = Application.Current?.RequestedTheme == AppTheme.Dark
                 ? (Color)Application.Current.Resources["Primary"]
                 : (Color)Application.Current.Resources["PrimaryText"];
 
-            if (swResync != null)
-                swResync.Source = CreateSyncIcon(iconColor);
-
-            if (btnResyncSingle != null)
-                btnResyncSingle.Source = CreateSyncIcon(iconColor);
+            btnResyncAll.Source = CreateSyncIcon(iconColor);
+            btnResyncMissing.Source = CreateSyncIcon(iconColor);
+            btnResyncCustom.Source = CreateSyncIcon(iconColor);
         }
 
         private static FontImageSource CreateSyncIcon(Color color) => new()
@@ -59,18 +44,12 @@ namespace MobiHymn4.Views
             Color = color,
         };
 
-        private void GlobalInstance_IsFetchingSyncDetailsChanged(object sender, EventArgs e)
-        {
-            if (!(bool)sender)
-                source.Cancel();
-        }
-
         protected override void OnAppearing()
         {
             base.OnAppearing();
-            UpdateResyncIcon();
+            UpdateResyncIcons();
             ApplyResyncInputAccent();
-            QueueSyncDetailsBuild();
+            _ = globalInstance.RefreshMissingHymnCountAsync();
         }
 
         private void ApplyResyncInputAccent()
@@ -87,71 +66,6 @@ namespace MobiHymn4.Views
                 : ((Color)Application.Current.Resources["Gray"]).ToPlatform();
             editText.BackgroundTintList = Android.Content.Res.ColorStateList.ValueOf(lineColor);
 #endif
-        }
-
-        private void Model_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
-        {
-            if (e.PropertyName == nameof(SettingsViewModel.ShowSyncs))
-            {
-                syncDetailsBuilt = false;
-                syncDetailsHost.Children.Clear();
-                QueueSyncDetailsBuild();
-            }
-        }
-
-        private void QueueSyncDetailsBuild()
-        {
-            if (syncDetailsBuilt || syncDetailsBuildQueued || model?.ShowSyncs != true)
-                return;
-
-            syncDetailsBuildQueued = true;
-            Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(200), BuildSyncDetails);
-        }
-
-        private void BuildSyncDetails()
-        {
-            syncDetailsBuildQueued = false;
-
-            if (syncDetailsBuilt || model?.ShowSyncs != true)
-                return;
-
-            model.EnsureResyncInitialized();
-            syncDetailsBuilt = true;
-            syncDetailsHost.IsVisible = true;
-            syncDetailsHost.Children.Clear();
-
-            syncDetailsHost.Children.Add(new Label
-            {
-                Text = "Hymn Updates:",
-                TextColor = Application.Current.UserAppTheme == AppTheme.Dark
-                    ? (Color)Application.Current.Resources["White"]
-                    : (Color)Application.Current.Resources["PrimaryText"]
-            });
-
-            AddTimelineIfVisible(model.ShowCreate, model.ResyncCreateList);
-            AddTimelineIfVisible(model.ShowUpdate, model.ResyncUpdateList);
-            AddTimelineIfVisible(model.ShowDelete, model.ResyncDeleteList);
-
-            var footer = new HorizontalStackLayout { HorizontalOptions = LayoutOptions.End };
-            footer.Children.Add(new Button
-            {
-                Text = "Sync",
-                Padding = new Thickness(30, 10),
-                Command = new Command(() => btnResync_Clicked(this, EventArgs.Empty))
-            });
-            syncDetailsHost.Children.Add(footer);
-        }
-
-        private void AddTimelineIfVisible(bool isVisible, Timeline item)
-        {
-            if (!isVisible || item == null)
-                return;
-
-            syncDetailsHost.Children.Add(new TimelineItem
-            {
-                Item = item,
-                Margin = 10
-            });
         }
 
         void swDarkMode_Toggled(System.Object sender, Microsoft.Maui.Controls.ToggledEventArgs e)
@@ -177,12 +91,57 @@ namespace MobiHymn4.Views
             globalInstance.IsOrientationLocked = e.Value;
         }
 
-        async void btnResyncSingle_Clicked(object sender, EventArgs e)
+        async void btnResyncAll_Clicked(object sender, EventArgs e)
+        {
+            if (!await EnsureConnectedAsync())
+                return;
+
+            var sure = await DisplayAlert(
+                "Resync All",
+                "This will re-download all hymns and may take a while. Continue?",
+                "Yes",
+                "No");
+            if (!sure)
+                return;
+
+            await ShowDownloadPopupAndRun(RunForceSyncAsync);
+        }
+
+        async void btnResyncMissing_Clicked(object sender, EventArgs e)
+        {
+            if (!await EnsureConnectedAsync())
+                return;
+
+            if (globalInstance.IsFetchingSyncDetails || globalInstance.MissingHymnCount == 0)
+                await globalInstance.RefreshMissingHymnCountAsync();
+
+            if (globalInstance.MissingHymnCount == 0)
+            {
+                await DisplayAlert("Resync Missing", "All available hymns are already downloaded.", "OK");
+                return;
+            }
+
+            var count = globalInstance.MissingHymnCount;
+            var numbers = Globals.FormatMissingHymnNumberList(globalInstance.MissingHymnNumbers, maxListed: 16);
+            var sure = await DisplayAlert(
+                "Resync Missing",
+                count == 1
+                    ? $"Download hymn {numbers} that is available on the server but not on this device?"
+                    : $"Download {count} hymns ({numbers}) that are available on the server but not on this device?",
+                "Yes",
+                "No");
+            if (!sure)
+                return;
+
+            await ShowDownloadPopupAndRun(RunSyncMissingAsync);
+        }
+
+        async void btnResyncCustom_Clicked(object sender, EventArgs e)
         {
             var input = entResyncHymn?.Text?.Trim();
             if (string.IsNullOrEmpty(input))
             {
-                await DisplayAlert("Resync Hymn", "Enter one or more hymn numbers to re-sync.", "OK");
+                await DisplayAlert("Resync Custom", "Enter one or more hymn numbers to re-sync.", "OK");
                 return;
             }
 
@@ -190,93 +149,129 @@ namespace MobiHymn4.Views
             if (numbers.Count == 0)
             {
                 await DisplayAlert(
-                    "Resync Hymn",
-                    "Enter valid hymn numbers separated by commas (e.g. 132, 77s, 801).",
+                    "Resync Custom",
+                    "Enter valid hymn numbers (e.g. 123, 77, 55-100).",
                     "OK");
                 return;
             }
 
-            if (Connectivity.NetworkAccess == NetworkAccess.None)
-            {
-                Globals.ShowToastPopup(Application.Current.UserAppTheme == AppTheme.Light ?
-                    "no-internet-light" : "no-internet-dark", "Please connect to download resources");
+            if (!await EnsureConnectedAsync())
                 return;
-            }
 
-            var label = numbers.Count == 1
-                ? $"Re-download lyrics for hymn #{numbers[0]} from the server?"
-                : $"Re-download lyrics for {numbers.Count} hymns ({string.Join(", ", numbers)}) from the server?";
+            var label = $"Re-download lyrics for {input} from the server?";
 
-            var sure = await DisplayAlert("Re-sync hymn(s)?", label, "Yes", "No");
+            var sure = await DisplayAlert("Resync Custom", label, "Yes", "No");
             if (!sure)
                 return;
 
-            var downloadPopup = DownloadPopupPresenter.CreateAndTrack();
-            downloadPopup.Todo = () => _ = RunResyncSelectedAsync(input);
-            Navigation.ShowPopup(downloadPopup);
-            await Task.Yield();
-            await RunResyncSelectedAsync(input);
+            var hymnInput = input;
+            await ShowDownloadPopupAndRun(() => RunResyncCustomAsync(hymnInput));
         }
 
-        async Task RunResyncSelectedAsync(string hymnNumbersInput)
+        async Task<bool> EnsureConnectedAsync()
         {
+            if (HttpHelper.IsConnected())
+                return true;
+
+            Globals.ShowToastPopup(
+                Application.Current.UserAppTheme == AppTheme.Light ? "no-internet-light" : "no-internet-dark",
+                "Please connect to download resources");
+            return false;
+        }
+
+        async Task ShowDownloadPopupAndRun(Func<Task> action)
+        {
+            DismissResyncKeyboard();
+            // Android crashes if a popup opens while the alert dialog is still closing.
+            await Task.Delay(250);
+
+            var downloadPopup = DownloadPopupPresenter.CreateAndTrack();
+            var work = action();
+
+            // Do not await ShowPopupAsync — on Android it completes only when the popup closes,
+            // which would block the download/sync work from ever starting.
+            if (Window != null)
+            {
+                _ = this.ShowPopupAsync(downloadPopup).ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        if (DownloadPopupPresenter.IsPopupOpen)
+                            DownloadPopupPresenter.ClearActivePopup();
+                        System.Diagnostics.Debug.WriteLine(
+                            $"ShowDownloadPopup failed: {t.Exception?.GetBaseException().Message}");
+                    }
+                }, TaskScheduler.Default);
+            }
+            else if (!DownloadPopupPresenter.TryShowOnPage(this))
+            {
+                DownloadPopupPresenter.ShowWithRetry(this);
+            }
+
+            await Task.Yield();
+
             try
             {
-                await globalInstance.ResyncSelectedHymns(hymnNumbersInput);
+                await work;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Download action failed: {ex.Message}");
+                globalInstance.OnDownloadError(ex.Message);
+            }
+        }
+
+        void DismissResyncKeyboard()
+        {
+            entResyncHymn?.Unfocus();
+#if ANDROID
+            if (Platform.CurrentActivity?.CurrentFocus is Android.Views.View focusedView)
+            {
+                var imm = (Android.Views.InputMethods.InputMethodManager?)
+                    Platform.CurrentActivity.GetSystemService(Android.Content.Context.InputMethodService);
+                imm?.HideSoftInputFromWindow(focusedView.WindowToken, 0);
+                focusedView.ClearFocus();
+            }
+#endif
+        }
+
+        async Task RunResyncCustomAsync(string hymnNumbersInput)
+        {
+            if (!globalInstance.TryBeginDownloadOperation())
+            {
+                globalInstance.OnDownloadError("Another download is already in progress. Please wait and try again.");
+                return;
+            }
+
+            try
+            {
+                if (await globalInstance.ResyncSelectedHymns(hymnNumbersInput))
+                {
+                    await MainThread.InvokeOnMainThreadAsync(() =>
+                    {
+                        if (entResyncHymn != null)
+                            entResyncHymn.Text = string.Empty;
+                    });
+                }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"ResyncSelectedHymns failed: {ex.Message}");
                 globalInstance.OnDownloadError(ex.Message);
             }
-        }
-
-        async void swResync_Clicked(System.Object sender, System.EventArgs e)
-        {
-            if (Connectivity.NetworkAccess == NetworkAccess.None)
-                Globals.ShowToastPopup(Application.Current.UserAppTheme == AppTheme.Light ?
-                                "no-internet-light" : "no-internet-dark", "Please connect to download resources");
-            else
+            finally
             {
-                var sure = await DisplayAlert("Sync?", "This will sync all hymns and take time. Are you sure you want to continue?",
-                                "Yes", "No");
-
-                if (sure)
-                {
-                    var downloadPopup = DownloadPopupPresenter.CreateAndTrack();
-                    downloadPopup.Todo = () => _ = RunForceSyncAsync();
-                    Navigation.ShowPopup(downloadPopup);
-                    await Task.Yield();
-                    await RunForceSyncAsync();
-                }
-            }
-        }
-
-        async void btnResync_Clicked(System.Object sender, System.EventArgs e)
-        {
-            if (Connectivity.NetworkAccess == NetworkAccess.None)
-                Globals.ShowToastPopup(Application.Current.UserAppTheme == AppTheme.Light ?
-                                "no-internet-light" : "no-internet-dark", "Please connect to download resources");
-            else
-            {
-                var sure = await DisplayAlert("Sync?", "Are you sure you want to sync?",
-                                "Yes", "No");
-
-                if(sure)
-                {
-                    var downloadPopup = DownloadPopupPresenter.CreateAndTrack();
-                    downloadPopup.Todo = () => _ = RunSyncAsync();
-                    Navigation.ShowPopup(downloadPopup);
-                    await Task.Yield();
-                    await RunSyncAsync();
-                }
+                globalInstance.EndDownloadOperation();
             }
         }
 
         async Task RunForceSyncAsync()
         {
             if (!globalInstance.TryBeginDownloadOperation())
+            {
+                globalInstance.OnDownloadError("Another download is already in progress. Please wait and try again.");
                 return;
+            }
 
             try
             {
@@ -294,31 +289,39 @@ namespace MobiHymn4.Views
             }
         }
 
-        async Task RunSyncAsync()
+        async Task RunSyncMissingAsync()
         {
+            if (!globalInstance.TryBeginDownloadOperation())
+            {
+                globalInstance.OnDownloadError("Another download is already in progress. Please wait and try again.");
+                return;
+            }
+
             try
             {
-                if (await globalInstance.ResyncHymns())
+                var countBefore = globalInstance.HymnList?.Count ?? 0;
+                if (await globalInstance.DownloadMissingReadHymns())
+                {
+                    var added = (globalInstance.HymnList?.Count ?? 0) - countBefore;
+                    if (added == 0)
+                    {
+                        globalInstance.OnDownloadError("All available hymns are already downloaded.");
+                        _ = globalInstance.RefreshMissingHymnCountAsync();
+                        return;
+                    }
+
                     await globalInstance.FinishAfterDownloadAsync(isUserSync: true);
+                }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"SyncHymns failed: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"DownloadMissingReadHymns failed: {ex.Message}");
                 globalInstance.OnDownloadError(ex.Message);
             }
-        }
-
-        async void RotateBusy()
-        {
-            while (!source.IsCancellationRequested)
+            finally
             {
-                for (int i = 1; i < 7; i++)
-                {
-                    if (swResync.Rotation >= 360f) swResync.Rotation = 0;
-                    await swResync.RotateTo(i * (360 / 6), 500, Easing.Linear);
-                }
+                globalInstance.EndDownloadOperation();
             }
         }
     }
 }
-
