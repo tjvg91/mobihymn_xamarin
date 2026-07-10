@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:MobiHymn4.ViewModels"
+    x:Class="MobiHymn4.Views.ProfileSetupPage"
+    Title="{Binding Title}">
+    <ContentPage.BindingContext>
+        <vm:ProfileSetupViewModel/>
+    </ContentPage.BindingContext>
+
+    <ScrollView>
+        <VerticalStackLayout Padding="24,20,24,28" Spacing="20">
+            <VerticalStackLayout Spacing="6">
+                <Label Text="Set up your profile" Style="{StaticResource Title}" FontAttributes="Bold" FontSize="22"/>
+                <Label
+                    Text="Tell your group who you are and how you serve."
+                    Style="{StaticResource Subtitle}"
+                    LineBreakMode="WordWrap"/>
+            </VerticalStackLayout>
+
+            <VerticalStackLayout Spacing="14">
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="Email" Style="{StaticResource Title}"/>
+                    <Border
+                        Style="{StaticResource InputBorder}"
+                        BackgroundColor="{AppThemeBinding Light=#F0F0F0, Dark=#2A2A2A}"
+                        Opacity="0.9">
+                        <Entry
+                            Style="{StaticResource FormEntry}"
+                            Text="{Binding Email}"
+                            IsEnabled="False"
+                            TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                    </Border>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="First name" Style="{StaticResource Title}"/>
+                    <Border Style="{StaticResource InputBorder}">
+                        <Entry Style="{StaticResource FormEntry}" Text="{Binding FirstName}" Placeholder="First name"/>
+                    </Border>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="Last name" Style="{StaticResource Title}"/>
+                    <Border Style="{StaticResource InputBorder}">
+                        <Entry Style="{StaticResource FormEntry}" Text="{Binding LastName}" Placeholder="Last name"/>
+                    </Border>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="Nickname (optional)" Style="{StaticResource Title}"/>
+                    <Label Text="Shown to your group instead of your full name." Style="{StaticResource Subtitle}" LineBreakMode="WordWrap"/>
+                    <Border Style="{StaticResource InputBorder}">
+                        <Entry Style="{StaticResource FormEntry}" Text="{Binding Nickname}" Placeholder="Nickname"/>
+                    </Border>
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+
+            <VerticalStackLayout Spacing="8">
+                <Label Text="Your roles" Style="{StaticResource Title}"/>
+                <Label Text="Select every role that applies to you." Style="{StaticResource Subtitle}" LineBreakMode="WordWrap"/>
+                <FlexLayout
+                    BindableLayout.ItemsSource="{Binding RoleOptions}"
+                    Wrap="Wrap"
+                    Direction="Row"
+                    JustifyContent="Start"
+                    AlignItems="Start">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:RoleChipItem">
+                            <Border
+                                Margin="0,0,8,8"
+                                Padding="12,8"
+                                StrokeShape="RoundRectangle 16"
+                                StrokeThickness="1"
+                                BackgroundColor="{AppThemeBinding Light=White, Dark=#333333}"
+                                Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}">
+                                <Border.Triggers>
+                                    <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True">
+                                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}"/>
+                                        <Setter Property="Stroke" Value="{StaticResource Primary}"/>
+                                    </DataTrigger>
+                                    <DataTrigger TargetType="Border" Binding="{Binding IsDisabled}" Value="True">
+                                        <Setter Property="Opacity" Value="0.45"/>
+                                    </DataTrigger>
+                                </Border.Triggers>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="RoleChip_Tapped"/>
+                                </Border.GestureRecognizers>
+                                <Label
+                                    Text="{Binding Name}"
+                                    FontSize="14"
+                                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding IsSelected}" Value="True">
+                                            <Setter Property="TextColor" Value="{StaticResource PrimaryText}"/>
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+                            </Border>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </FlexLayout>
+            </VerticalStackLayout>
+
+            <Label
+                Text="{Binding StatusMessage}"
+                Style="{StaticResource Subsubtitle}"
+                TextColor="{StaticResource Red}"
+                IsVisible="{Binding HasStatusMessage}"
+                LineBreakMode="WordWrap"/>
+
+            <Button Text="Save profile" Command="{Binding SaveCommand}"/>
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" Color="{StaticResource Primary}"/>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

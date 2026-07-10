@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:MobiHymn4.ViewModels"
+    xmlns:models="clr-namespace:MobiHymn4.Models"
+    x:Class="MobiHymn4.Views.GroupsPage"
+    Title="{Binding Title}">
+    <ContentPage.BindingContext>
+        <vm:GroupsViewModel/>
+    </ContentPage.BindingContext>
+    <ContentPage.Resources>
+        <Style TargetType="BoxView">
+            <Setter Property="HeightRequest" Value="1" />
+            <Setter Property="HorizontalOptions" Value="FillAndExpand"/>
+            <Setter Property="Background" Value="{AppThemeBinding Dark={StaticResource Gray}, Light={StaticResource GrayLight}}" />
+        </Style>
+    </ContentPage.Resources>
+
+    <Grid RowDefinitions="Auto,*,Auto" Padding="0,10,0,0">
+        <VerticalStackLayout Grid.Row="0" Padding="15,12" Spacing="14">
+            <VerticalStackLayout Spacing="4">
+                <Label Text="Your groups" Style="{StaticResource Title}" FontAttributes="Bold"/>
+                <Label
+                    Text="Create a group for your church or join with an invite code."
+                    Style="{StaticResource Subtitle}"
+                    LineBreakMode="WordWrap"/>
+            </VerticalStackLayout>
+
+            <Button Text="Create group" Command="{Binding CreateGroupCommand}"/>
+
+            <VerticalStackLayout Spacing="6">
+                <Label Text="Join with code" Style="{StaticResource Title}"/>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                    <Border Style="{StaticResource InputBorder}">
+                        <Entry
+                            Style="{StaticResource FormEntry}"
+                            Text="{Binding JoinCode}"
+                            Placeholder="Enter join code"
+                            CharacterSpacing="2"
+                            MaxLength="8"/>
+                    </Border>
+                    <Button Grid.Column="1" Text="Join" Command="{Binding JoinGroupCommand}" Padding="16,0"/>
+                </Grid>
+            </VerticalStackLayout>
+
+            <Label
+                Text="{Binding StatusMessage}"
+                Style="{StaticResource Subsubtitle}"
+                IsVisible="{Binding HasStatusMessage}"
+                LineBreakMode="WordWrap"/>
+        </VerticalStackLayout>
+
+        <CollectionView
+            Grid.Row="1"
+            ItemsSource="{Binding Groups}"
+            SelectionMode="None"
+            Margin="0,8,0,0">
+            <CollectionView.EmptyView>
+                <Label
+                    Text="You are not in any groups yet."
+                    Style="{StaticResource Subtitle}"
+                    Margin="15,20"
+                    HorizontalTextAlignment="Center"/>
+            </CollectionView.EmptyView>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="models:WorshipGroup">
+                    <SwipeView>
+                        <SwipeView.RightItems>
+                            <SwipeItems Mode="Reveal">
+                                <SwipeItemView Invoked="GroupLeave_Invoked">
+                                    <Grid WidthRequest="72" BackgroundColor="#C62828">
+                                        <Label
+                                            Text="Leave"
+                                            FontSize="13"
+                                            FontAttributes="Bold"
+                                            HorizontalOptions="Center"
+                                            VerticalOptions="Center"
+                                            TextColor="White"/>
+                                    </Grid>
+                                </SwipeItemView>
+                            </SwipeItems>
+                        </SwipeView.RightItems>
+                        <Grid Padding="15,12" ColumnDefinitions="*,Auto">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="GroupRow_Tapped"/>
+                            </Grid.GestureRecognizers>
+                            <VerticalStackLayout Spacing="4" VerticalOptions="Center">
+                                <Label Text="{Binding Name}" Style="{StaticResource Title}"/>
+                                <Label Text="{Binding JoinCode, StringFormat='Code: {0}'}" Style="{StaticResource Subsubtitle}"/>
+                            </VerticalStackLayout>
+                            <Label
+                                Grid.Column="1"
+                                FontFamily="FAS"
+                                Text="&#xf054;"
+                                FontSize="14"
+                                TextColor="{StaticResource Primary}"
+                                VerticalOptions="Center"/>
+                        </Grid>
+                    </SwipeView>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <ActivityIndicator
+            Grid.Row="2"
+            IsRunning="{Binding IsBusy}"
+            IsVisible="{Binding IsBusy}"
+            Color="{StaticResource Primary}"
+            Margin="0,8"/>
+    </Grid>
+</ContentPage>

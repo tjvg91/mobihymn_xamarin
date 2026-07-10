@@ -51,6 +51,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "525477034225-ho6c65uc787h83lbd7eg8r3mi5fk32cc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.tjapps.mobihymn",
+            "certificate_hash": "ef0878349f4774e13a2bf83c4ff667295dfddf2e"
+          }
+        },
+        {
           "client_id": "525477034225-6kjt4atrp816c7c9dbe5gs2fklka4fen.apps.googleusercontent.com",
           "client_type": 3
         }

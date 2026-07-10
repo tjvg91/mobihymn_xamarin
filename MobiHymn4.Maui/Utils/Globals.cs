@@ -15,6 +15,7 @@ using MvvmHelpers;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.IO;
+using Microsoft.Maui.Storage;
 
 namespace MobiHymn4.Utils
 {
@@ -60,6 +61,9 @@ namespace MobiHymn4.Utils
 
         [JsonIgnore]
         private readonly SemaphoreSlim settingsSaveLock = new SemaphoreSlim(1, 1);
+
+        [JsonIgnore]
+        private Task settingsReadyTask;
 
         [JsonIgnore]
         private bool initComplete;
@@ -375,6 +379,8 @@ namespace MobiHymn4.Utils
                 if (activeHymn == null || !activeHymn.Equals(value))
                 {
                     activeHymn = value;
+                    if (!string.IsNullOrWhiteSpace(value.Number))
+                        Preferences.Set(PreferencesVar.LAST_HYMN_NUMBER, value.Number);
                     var newHymn = new ShortHymn
                     {
                         Number = value.Number,
@@ -400,6 +406,7 @@ namespace MobiHymn4.Utils
                 {
                     activeAlignment = value;
                     OnAlignmentChanged(activeAlignment);
+                    PersistReaderPreferences();
                     SaveSettings();
                 }
             }
@@ -424,6 +431,7 @@ namespace MobiHymn4.Utils
 
                     ActiveThemeText = ThemeList.Find(theme => theme.Background.Equals(value))?.Foreground ?? PrimaryText;
                     OnActiveReadThemeChanged(value);
+                    PersistReaderPreferences();
                     SaveSettings();
                 }
             }
@@ -445,7 +453,10 @@ namespace MobiHymn4.Utils
             OnActiveFontSizeChanged(activeFontSize);
 
             if (saveSettings)
+            {
+                PersistReaderPreferences();
                 SaveSettings();
+            }
         }
 
         private string activeFont = DeviceInfo.Platform == DevicePlatform.Android ? "Roboto" : "SFPro";
@@ -458,6 +469,7 @@ namespace MobiHymn4.Utils
                 {
                     activeFont = value;
                     OnActiveFontChanged(value);
+                    PersistReaderPreferences();
                     SaveSettings();
                 }
             }
@@ -475,6 +487,7 @@ namespace MobiHymn4.Utils
 
                 activeLetterSpacing = clamped;
                 OnActiveLetterSpacingChanged(activeLetterSpacing);
+                PersistReaderPreferences();
                 SaveSettings();
             }
         }
@@ -490,6 +503,7 @@ namespace MobiHymn4.Utils
 
                 activeLineSpacing = value;
                 OnActiveLineSpacingChanged(activeLineSpacing);
+                PersistReaderPreferences();
                 SaveSettings();
             }
         }
@@ -764,7 +778,8 @@ namespace MobiHymn4.Utils
             if ((HymnList == null || HymnList.Count == 0) && await httpHelper.HymnListFileExists())
                 HymnList = await httpHelper.ReadHymns();
 
-            if (await LoadSettings())
+            await EnsureSettingsLoadedAsync().ConfigureAwait(false);
+            if (settingsHydratedFromDisk)
                 RestoreActiveHymnFromList(rebindOnly: true);
         }
 
@@ -1067,8 +1082,22 @@ namespace MobiHymn4.Utils
                 startIndex);
         }
 
+        public async Task EnsureSettingsLoadedAsync()
+        {
+            if (settingsReadyTask != null)
+            {
+                await settingsReadyTask.ConfigureAwait(false);
+                return;
+            }
+
+            settingsReadyTask = LoadSettings();
+            await settingsReadyTask.ConfigureAwait(false);
+        }
+
         public async void Init()
         {
+            await EnsureSettingsLoadedAsync().ConfigureAwait(false);
+
             if (!TryBeginDownloadOperation())
                 return;
 
@@ -1140,8 +1169,10 @@ namespace MobiHymn4.Utils
             if (HymnList?.Count > 0)
                 HymnList = SortHymnList(HymnList);
 
+            await EnsureSettingsLoadedAsync().ConfigureAwait(false);
+
             var settingsFileExists = SettingsFileExists();
-            var settingsLoaded = await LoadSettings();
+            var settingsLoaded = await LoadSettings().ConfigureAwait(false);
 
             if (settingsLoaded)
                 RestoreActiveHymnFromList(rebindOnly: true);
@@ -1154,7 +1185,7 @@ namespace MobiHymn4.Utils
                 RestoreActiveHymnFromList(rebindOnly: true);
 
             RefreshBookmarkFirstLines();
-            if ((settingsLoaded || !settingsFileExists) && settingsHydratedFromDisk)
+            if ((settingsLoaded || !settingsFileExists) && settingsHydratedFromDisk && !WouldSaveEmptyOverExistingUserData())
                 SaveSettings();
             RefreshIncompleteDownloadState();
             if (isUserSync)
@@ -1247,9 +1278,14 @@ namespace MobiHymn4.Utils
             if (HymnList == null || HymnList.Count == 0)
                 return;
 
-            var hymn = (activeHymn == null || string.IsNullOrEmpty(activeHymn.Number))
+            var number = activeHymn?.Number;
+            if (string.IsNullOrEmpty(number))
+                number = Preferences.Get(PreferencesVar.LAST_HYMN_NUMBER, string.Empty);
+
+            var hymn = string.IsNullOrEmpty(number)
                 ? HymnList[0]
-                : HymnList.FirstOrDefault(h => h?.Number == activeHymn.Number) ?? HymnList[0];
+                : HymnList.FirstOrDefault(h => string.Equals(h?.Number, number, StringComparison.OrdinalIgnoreCase))
+                  ?? HymnList[0];
 
             if (rebindOnly)
             {
@@ -1362,6 +1398,9 @@ namespace MobiHymn4.Utils
             if (!settingsHydratedFromDisk && SettingsFileExists())
                 return;
 
+            if (WouldSaveEmptyOverExistingUserData())
+                return;
+
             try
             {
                 await settingsSaveLock.WaitAsync();
@@ -1369,6 +1408,9 @@ namespace MobiHymn4.Utils
                     return;
 
                 if (!settingsHydratedFromDisk && SettingsFileExists())
+                    return;
+
+                if (WouldSaveEmptyOverExistingUserData())
                     return;
 
                 var settings = JsonConvert.SerializeObject(Globals.Instance);
@@ -1401,11 +1443,16 @@ namespace MobiHymn4.Utils
 
             try
             {
+                AppStorage.MigrateLegacyStorageIfNeeded();
+
                 var filePath = AppStorage.GetPath(folderRootName, settingsName);
                 if (!File.Exists(filePath))
                 {
+                    RestoreReaderPreferences();
                     settingsHydratedFromDisk = true;
-                    return false;
+                    if (HasStoredReaderPreferences())
+                        ApplyLoadedSettingsToRuntime();
+                    return HasStoredReaderPreferences();
                 }
 
                 var settings = await File.ReadAllTextAsync(filePath);
@@ -1428,7 +1475,9 @@ namespace MobiHymn4.Utils
                     }
                 }
 
-                if (loadedAny)
+                RestoreReaderPreferences();
+
+                if (loadedAny || HasStoredReaderPreferences())
                 {
                     settingsHydratedFromDisk = true;
                     ApplyLoadedSettingsToRuntime();
@@ -1439,7 +1488,7 @@ namespace MobiHymn4.Utils
                 if (BookmarkList != null)
                     RaiseOnMainThread(() => BookmarksChanged?.Invoke(BookmarkList, EventArgs.Empty));
 
-                return loadedAny;
+                return loadedAny || HasStoredReaderPreferences();
             }
             catch (Exception ex)
             {
@@ -1509,6 +1558,32 @@ namespace MobiHymn4.Utils
                 null => false,
                 _ => Convert.ToBoolean(value)
             };
+
+        bool WouldSaveEmptyOverExistingUserData()
+        {
+            if (!SettingsFileExists() || !HasEmptyUserData())
+                return false;
+
+            try
+            {
+                var json = File.ReadAllText(AppStorage.GetPath(folderRootName, settingsName));
+                if (string.IsNullOrWhiteSpace(json))
+                    return false;
+
+                return json.Contains(nameof(BookmarkList), StringComparison.Ordinal)
+                    || json.Contains(nameof(HistoryList), StringComparison.Ordinal)
+                    || json.Contains(nameof(ActiveHymn), StringComparison.Ordinal);
+            }
+            catch
+            {
+                return true;
+            }
+        }
+
+        bool HasEmptyUserData() =>
+            (BookmarkList == null || BookmarkList.Count == 0)
+            && (HistoryList == null || HistoryList.Count == 0)
+            && activeHymn == null;
 
         bool ApplySettingsEntry(KeyValuePair<string, object> entry)
         {
@@ -1586,13 +1661,87 @@ namespace MobiHymn4.Utils
 
                 var colorString = value?.ToString();
                 if (!string.IsNullOrWhiteSpace(colorString))
-                    return Color.FromArgb(colorString);
+                {
+                    if (colorString.StartsWith("#", StringComparison.Ordinal))
+                        return Color.FromArgb(colorString);
+
+                    if (colorString.StartsWith("{", StringComparison.Ordinal))
+                    {
+                        var parsed = JObject.Parse(colorString).ToColor();
+                        if (parsed is Color savedColor)
+                            return savedColor;
+                    }
+                }
             }
             catch (Exception)
             {
             }
 
             return Colors.White;
+        }
+
+        static string ColorToStorageHex(Color color)
+        {
+            var a = (byte)Math.Round(color.Alpha * 255);
+            var r = (byte)Math.Round(color.Red * 255);
+            var g = (byte)Math.Round(color.Green * 255);
+            var b = (byte)Math.Round(color.Blue * 255);
+            return $"#{a:X2}{r:X2}{g:X2}{b:X2}";
+        }
+
+        static bool HasStoredReaderPreferences() =>
+            Preferences.ContainsKey(PreferencesVar.ACTIVE_READ_THEME)
+            || Preferences.ContainsKey(PreferencesVar.ACTIVE_FONT)
+            || Preferences.ContainsKey(PreferencesVar.ACTIVE_FONT_SIZE)
+            || Preferences.ContainsKey(PreferencesVar.ACTIVE_LETTER_SPACING)
+            || Preferences.ContainsKey(PreferencesVar.ACTIVE_LINE_SPACING)
+            || Preferences.ContainsKey(PreferencesVar.ACTIVE_ALIGNMENT);
+
+        void PersistReaderPreferences()
+        {
+            Preferences.Set(PreferencesVar.ACTIVE_READ_THEME, ColorToStorageHex(activeReadTheme));
+            Preferences.Set(PreferencesVar.ACTIVE_FONT, activeFont ?? string.Empty);
+            Preferences.Set(PreferencesVar.ACTIVE_FONT_SIZE, activeFontSize);
+            Preferences.Set(PreferencesVar.ACTIVE_LETTER_SPACING, activeLetterSpacing);
+            Preferences.Set(PreferencesVar.ACTIVE_LINE_SPACING, activeLineSpacing);
+            Preferences.Set(PreferencesVar.ACTIVE_ALIGNMENT, (int)activeAlignment);
+        }
+
+        void RestoreReaderPreferences()
+        {
+            var themeHex = Preferences.Get(PreferencesVar.ACTIVE_READ_THEME, string.Empty);
+            if (!string.IsNullOrWhiteSpace(themeHex))
+            {
+                try
+                {
+                    activeReadTheme = Color.FromArgb(themeHex);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"RestoreReaderPreferences theme failed: {ex.Message}");
+                }
+            }
+
+            var font = Preferences.Get(PreferencesVar.ACTIVE_FONT, string.Empty);
+            if (!string.IsNullOrWhiteSpace(font))
+                activeFont = font;
+
+            if (Preferences.ContainsKey(PreferencesVar.ACTIVE_FONT_SIZE))
+                activeFontSize = Preferences.Get(PreferencesVar.ACTIVE_FONT_SIZE, activeFontSize);
+
+            if (Preferences.ContainsKey(PreferencesVar.ACTIVE_LETTER_SPACING))
+                activeLetterSpacing = Math.Clamp(
+                    Preferences.Get(PreferencesVar.ACTIVE_LETTER_SPACING, activeLetterSpacing),
+                    0,
+                    1);
+
+            if (Preferences.ContainsKey(PreferencesVar.ACTIVE_LINE_SPACING))
+                activeLineSpacing = Preferences.Get(PreferencesVar.ACTIVE_LINE_SPACING, activeLineSpacing);
+
+            if (Preferences.ContainsKey(PreferencesVar.ACTIVE_ALIGNMENT))
+                activeAlignment = (TextAlignment)Preferences.Get(
+                    PreferencesVar.ACTIVE_ALIGNMENT,
+                    (int)activeAlignment);
         }
         public void ForceBookmarkChangedEvent()
         {

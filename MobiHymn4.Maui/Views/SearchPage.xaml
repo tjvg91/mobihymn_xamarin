@@ -179,6 +179,12 @@
         <!--Custom View Cells-->
             <CollectionView.ItemTemplate>
                 <DataTemplate>
+                    <SwipeView>
+                        <SwipeView.RightItems>
+                            <SwipeItems Mode="Reveal">
+                                <SwipeItem Text="Board" BackgroundColor="{StaticResource Primary}" Invoked="AddToBoard_Invoked"/>
+                            </SwipeItems>
+                        </SwipeView.RightItems>
                     <StackLayout Padding="10">
                         <StackLayout.GestureRecognizers>
                             <TapGestureRecognizer
@@ -191,6 +197,7 @@
                             Style="{StaticResource Subtitle}"
                         />
                     </StackLayout>
+                    </SwipeView>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
       </CollectionView>

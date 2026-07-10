@@ -38,6 +38,7 @@
     </Shell.TitleView>
 
     <ContentPage.ToolbarItems>
+        <ToolbarItem x:Name="tbAddBoard" Clicked="tbAddBoard_Clicked"/>
         <ToolbarItem x:Name="tbSearch" Clicked="tbSearch_Clicked"/>
         <ToolbarItem x:Name="tbSettings" Clicked="tbSettings_Clicked"/>
     </ContentPage.ToolbarItems>

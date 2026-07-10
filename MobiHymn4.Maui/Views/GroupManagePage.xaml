@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:MobiHymn4.ViewModels"
+    xmlns:models="clr-namespace:MobiHymn4.Models"
+    xmlns:elements="clr-namespace:MobiHymn4.Elements"
+    x:Class="MobiHymn4.Views.GroupManagePage"
+    Title="{Binding Title}">
+    <ContentPage.BindingContext>
+        <vm:GroupManageViewModel/>
+    </ContentPage.BindingContext>
+    <ContentPage.Resources>
+        <Style TargetType="BoxView">
+            <Setter Property="HeightRequest" Value="1" />
+            <Setter Property="HorizontalOptions" Value="FillAndExpand"/>
+            <Setter Property="Background" Value="{AppThemeBinding Dark={StaticResource Gray}, Light={StaticResource GrayLight}}" />
+        </Style>
+    </ContentPage.Resources>
+
+    <Grid RowDefinitions="Auto,*,Auto" Padding="0,10,0,0">
+        <VerticalStackLayout Grid.Row="0" Padding="15,12" Spacing="14">
+            <VerticalStackLayout Spacing="4">
+                <Label Text="{Binding GroupName}" Style="{StaticResource Title}" FontAttributes="Bold" FontSize="20"/>
+                <Label Text="{Binding JoinCode, StringFormat='Join code: {0}'}" Style="{StaticResource Subtitle}"/>
+            </VerticalStackLayout>
+
+            <VerticalStackLayout Spacing="6">
+                <Label Text="Invite by email" Style="{StaticResource Title}"/>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                    <Border Style="{StaticResource InputBorder}">
+                        <Entry
+                            Style="{StaticResource FormEntry}"
+                            Text="{Binding InviteEmail}"
+                            Keyboard="Email"
+                            Placeholder="email@example.com"/>
+                    </Border>
+                    <Button Grid.Column="1" Text="Invite" Command="{Binding InviteCommand}" Padding="16,0"/>
+                </Grid>
+            </VerticalStackLayout>
+
+            <Label
+                Text="{Binding StatusMessage}"
+                Style="{StaticResource Subsubtitle}"
+                IsVisible="{Binding HasStatusMessage}"
+                LineBreakMode="WordWrap"/>
+        </VerticalStackLayout>
+
+        <VerticalStackLayout Grid.Row="1" Spacing="0">
+            <Label Text="Members" Style="{StaticResource Title}" Margin="15,8,15,4"/>
+            <CollectionView ItemsSource="{Binding Members}" SelectionMode="None">
+                <CollectionView.EmptyView>
+                    <Label Text="No members found." Style="{StaticResource Subtitle}" Margin="15,20"/>
+                </CollectionView.EmptyView>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="models:GroupMember">
+                        <Grid Padding="15,10" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                            <elements:RoleAvatarView
+                                Grid.Column="0"
+                                Roles="{Binding Roles}"
+                                Size="44"
+                                VerticalOptions="Center"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                <Label Text="{Binding DisplayName}" Style="{StaticResource Title}"/>
+                                <Label Text="{Binding Email}" Style="{StaticResource Subsubtitle}"/>
+                            </VerticalStackLayout>
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </VerticalStackLayout>
+
+        <ActivityIndicator
+            Grid.Row="2"
+            IsRunning="{Binding IsBusy}"
+            IsVisible="{Binding IsBusy}"
+            Color="{StaticResource Primary}"
+            Margin="0,8"/>
+
+        <VerticalStackLayout Grid.Row="2" Padding="15,12" Spacing="10">
+            <Button
+                Text="Leave group"
+                Style="{StaticResource Button-Outline-Reverse}"
+                TextColor="{StaticResource Red}"
+                BorderColor="{StaticResource Red}"
+                Command="{Binding LeaveGroupCommand}"/>
+            <ActivityIndicator
+                IsRunning="{Binding IsBusy}"
+                IsVisible="{Binding IsBusy}"
+                Color="{StaticResource Primary}"/>
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>

@@ -1,0 +1,75 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function hasLeadershipRole(uid) {
+      return userDoc(uid).roles.hasAny(['pastor', 'worshipLeader', 'projector', 'accompaniment']);
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isVerified() && request.auth.uid == userId;
+    }
+
+    function isGroupMember(groupId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+    }
+
+    function memberHasLeadershipRole(groupId) {
+      return get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.roles
+        .hasAny(['pastor', 'worshipLeader', 'projector', 'accompaniment']);
+    }
+
+    function canEditGroup(groupId) {
+      return isVerified()
+        && isGroupMember(groupId)
+        && (hasLeadershipRole(request.auth.uid) || memberHasLeadershipRole(groupId));
+    }
+
+    match /groups/{groupId} {
+      // Verified users may read group metadata to join by ID or join code.
+      // Boards and other subcollections still require membership.
+      allow read: if isGroupMember(groupId) || isVerified();
+      allow create: if isVerified() && hasLeadershipRole(request.auth.uid);
+      allow update: if isVerified()
+        && isGroupMember(groupId)
+        && hasLeadershipRole(request.auth.uid);
+
+      match /members/{memberId} {
+        allow read: if isGroupMember(groupId);
+        allow create: if isVerified();
+        allow update, delete: if canEditGroup(groupId)
+          || (isVerified() && request.auth.uid == memberId);
+      }
+
+      match /boards/{dateKey} {
+        allow read: if isGroupMember(groupId);
+        allow write: if canEditGroup(groupId);
+      }
+
+      match /sectionTemplate/{docId} {
+        allow read: if isGroupMember(groupId);
+        allow write: if canEditGroup(groupId);
+      }
+    }
+
+    match /invites/{inviteId} {
+      allow read: if isVerified();
+      allow create: if isVerified() && hasLeadershipRole(request.auth.uid);
+      allow update: if isVerified();
+    }
+  }
+}

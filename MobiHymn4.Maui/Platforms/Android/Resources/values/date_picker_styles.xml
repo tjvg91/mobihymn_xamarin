@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <style name="ThemeOverlay.MobiHymn.DatePicker.Light" parent="ThemeOverlay.MaterialComponents.MaterialCalendar">
+    <item name="colorPrimary">@color/colorPrimary</item>
+    <item name="colorOnPrimary">@android:color/white</item>
+    <item name="colorSurface">@android:color/white</item>
+    <item name="colorOnSurface">@color/primary_text_on_yellow</item>
+    <item name="materialCalendarStyle">@style/Widget.MobiHymn.MaterialCalendar.Light</item>
+    <item name="buttonBarPositiveButtonStyle">@style/Widget.MobiHymn.DatePickerDialogButton.Light</item>
+    <item name="buttonBarNegativeButtonStyle">@style/Widget.MobiHymn.DatePickerDialogButton.Light</item>
+  </style>
+
+  <style name="ThemeOverlay.MobiHymn.DatePicker.Dark" parent="ThemeOverlay.MaterialComponents.MaterialCalendar">
+    <item name="colorPrimary">@color/colorPrimary</item>
+    <item name="colorOnPrimary">@color/primary_text_on_yellow</item>
+    <item name="colorSurface">@color/date_picker_surface_dark</item>
+    <item name="colorOnSurface">@android:color/white</item>
+    <item name="materialCalendarStyle">@style/Widget.MobiHymn.MaterialCalendar.Dark</item>
+    <item name="buttonBarPositiveButtonStyle">@style/Widget.MobiHymn.DatePickerDialogButton.Dark</item>
+    <item name="buttonBarNegativeButtonStyle">@style/Widget.MobiHymn.DatePickerDialogButton.Dark</item>
+  </style>
+
+  <style name="Widget.MobiHymn.MaterialCalendar.Light" parent="Widget.MaterialComponents.MaterialCalendar">
+    <item name="daySelectedStyle">@style/Widget.MobiHymn.CalendarDay.Selected</item>
+    <item name="dayTodayStyle">@style/Widget.MobiHymn.CalendarDay.Today</item>
+  </style>
+
+  <style name="Widget.MobiHymn.MaterialCalendar.Dark" parent="Widget.MaterialComponents.MaterialCalendar">
+    <item name="daySelectedStyle">@style/Widget.MobiHymn.CalendarDay.Selected</item>
+    <item name="dayTodayStyle">@style/Widget.MobiHymn.CalendarDay.Today.Dark</item>
+    <item name="yearSelectedStyle">@style/Widget.MobiHymn.CalendarYear.Selected</item>
+  </style>
+
+  <style name="Widget.MobiHymn.CalendarDay.Selected" parent="Widget.MaterialComponents.MaterialCalendar.Day.Selected">
+    <item name="itemFillColor">@color/colorPrimary</item>
+    <item name="itemTextColor">@color/primary_text_on_yellow</item>
+    <item name="itemStrokeColor">@color/colorPrimary</item>
+  </style>
+
+  <style name="Widget.MobiHymn.CalendarDay.Today" parent="Widget.MaterialComponents.MaterialCalendar.Day.Today">
+    <item name="itemTextColor">@color/colorPrimary</item>
+  </style>
+
+  <style name="Widget.MobiHymn.CalendarDay.Today.Dark" parent="Widget.MaterialComponents.MaterialCalendar.Day.Today">
+    <item name="itemTextColor">@color/colorPrimary</item>
+  </style>
+
+  <style name="Widget.MobiHymn.CalendarYear.Selected" parent="Widget.MaterialComponents.MaterialCalendar.Year.Selected">
+    <item name="itemFillColor">@color/colorPrimary</item>
+    <item name="itemTextColor">@color/primary_text_on_yellow</item>
+    <item name="itemStrokeColor">@color/colorPrimary</item>
+  </style>
+
+  <style name="Widget.MobiHymn.DatePickerDialogButton.Light" parent="Widget.MaterialComponents.Button.TextButton.Dialog">
+    <item name="android:textColor">@color/date_picker_button_light</item>
+  </style>
+
+  <style name="Widget.MobiHymn.DatePickerDialogButton.Dark" parent="Widget.MaterialComponents.Button.TextButton.Dialog">
+    <item name="android:textColor">@color/date_picker_button_dark</item>
+  </style>
+</resources>

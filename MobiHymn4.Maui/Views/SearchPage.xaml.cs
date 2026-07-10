@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
+using MobiHymn4.Services;
 using MobiHymn4.Models;
 using MobiHymn4.ViewModels;
 using MobiHymn4.Utils;
@@ -26,6 +27,7 @@ namespace MobiHymn4.Views
     {
         SearchViewModel model;
         Globals globalInstance = Globals.Instance;
+        readonly IAddToBoardService addToBoardService = ServiceHelper.Get<IAddToBoardService>();
         CancellationTokenSource voiceListenCts;
 
         public SearchPage ()
@@ -62,6 +64,14 @@ namespace MobiHymn4.Views
         async void tbHome_Clicked(System.Object sender, System.EventArgs e)
         {
             await Shell.Current.GoToAsync($"//{Routes.READ}");
+        }
+
+        async void AddToBoard_Invoked(object sender, EventArgs e)
+        {
+            if (sender is not SwipeItem swipe || swipe.BindingContext is not ShortHymn hymn)
+                return;
+
+            await addToBoardService.TryAddHymnAsync(hymn.Number, this);
         }
 
         async void MyListView_ChildAdded(System.Object sender, Microsoft.Maui.Controls.ElementEventArgs e)

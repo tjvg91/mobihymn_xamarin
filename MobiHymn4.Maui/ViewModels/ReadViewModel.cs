@@ -55,9 +55,6 @@ namespace MobiHymn4.ViewModels
                 globalInstance.BookmarksChanged += GlobalInstance_BookmarksChanged;
                 globalInstance.SettingsLoaded += GlobalInstance_SettingsLoaded;
 
-                LetterSpacing = 0;
-                LineSpacing = 1;
-
                 GroupKeys = ModifyBookmarks(globalInstance.BookmarkList ?? new ObservableRangeCollection<ShortHymn>()).Select((grp, count) => new GroupDisplay
                 {
                     Name = grp.Key,
@@ -88,8 +85,6 @@ namespace MobiHymn4.ViewModels
                 ActiveFont = DeviceInfo.Platform == DevicePlatform.Android ? "Roboto" : "SFPro";
                 ActiveAlignment = TextAlignment.Start;
                 HymnInputType = globalInstance.HymnInputType;
-                LetterSpacing = 0;
-                LineSpacing = 1;
                 GroupKeys = new ObservableRangeCollection<GroupDisplay>();
                 DrawerHeight = GetDrawerHeight();
             }
@@ -249,7 +244,18 @@ namespace MobiHymn4.ViewModels
 
         public bool ShowLyricsContent => HasLyrics && !globalInstance.IsDownloadRecoveryPending;
 
-        public bool ShowNavBar => IsReadView && ShowLyricsContent && !IsSettingsOpen;
+        public bool ShowNavBar => IsReadView && ShowLyricsContent && !IsSettingsOpen && !IsBoardPaneOpen;
+
+        private bool isBoardPaneOpen;
+        public bool IsBoardPaneOpen
+        {
+            get => isBoardPaneOpen;
+            set
+            {
+                if (SetProperty(ref isBoardPaneOpen, value, nameof(IsBoardPaneOpen)))
+                    OnPropertyChanged(nameof(ShowNavBar));
+            }
+        }
 
         private bool isSettingsOpen;
         public bool IsSettingsOpen

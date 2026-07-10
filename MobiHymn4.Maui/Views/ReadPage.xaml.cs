@@ -18,6 +18,7 @@ using MobiHymn4.Views.Popups;
 
 
 using MobiHymn4.Models;
+using MobiHymn4.Services;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Maui.ApplicationModel;
@@ -38,6 +39,7 @@ namespace MobiHymn4.Views
         private Globals globalInstance = Globals.Instance;
         bool introChecked;
         bool initStartQueued;
+        bool? boardToolbarSignedIn;
         bool settingsOverlayBuilt;
         bool settingsOverlayBuildQueued;
         Border settingsCard;
@@ -60,11 +62,21 @@ namespace MobiHymn4.Views
         Label fontRobotoLabel, fontNotoLabel, fontChelseaLabel, fontUnifrakturLabel, fontStyleScriptLabel;
         Label fontCookieLabel, fontFrostyLabel, fontKissLabel, fontMelonLabel, fontTeacherLabel;
 
+        readonly IAuthService authService = ServiceHelper.Get<IAuthService>();
+        readonly IGroupDashboardService dashboardService = ServiceHelper.Get<IGroupDashboardService>();
+        readonly BoardNavigationContext boardNavigation = ServiceHelper.Get<BoardNavigationContext>();
+
         public ReadPage()
         {
             try
             {
                 InitializeComponent();
+                authService.AuthStateChanged += (_, _) => MainThread.BeginInvokeOnMainThread(UpdateBoardChrome);
+                dashboardService.IsOpenChanged += (_, _) => MainThread.BeginInvokeOnMainThread(UpdateBoardChrome);
+                boardNavigation.Changed += (_, _) => MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    UpdateBoardNavArrows();
+                });
             }
             catch (Exception ex)
             {
@@ -72,6 +84,9 @@ namespace MobiHymn4.Views
                 System.Diagnostics.Debug.WriteLine($"ReadPage XAML initialization failed: {ex}");
 
                 Title = "Read Error";
+                var errorTextColor = Application.Current?.RequestedTheme == AppTheme.Dark
+                    ? Colors.White
+                    : Colors.Black;
                 Content = new VerticalStackLayout
                 {
                     Padding = new Thickness(20),
@@ -82,6 +97,7 @@ namespace MobiHymn4.Views
                         {
                             Text = "Unable to open hymn reader.",
                             FontSize = 18,
+                            TextColor = errorTextColor,
                             HorizontalTextAlignment = TextAlignment.Center
                         },
                         new Label
@@ -89,6 +105,7 @@ namespace MobiHymn4.Views
                             Text = $"{initializationException.GetType().Name}: {initializationException.Message}",
                             FontSize = 12,
                             Margin = new Thickness(0, 12, 0, 0),
+                            TextColor = errorTextColor,
                             HorizontalTextAlignment = TextAlignment.Center
                         }
                     }
@@ -102,6 +119,7 @@ namespace MobiHymn4.Views
                 model.PropertyChanged += Model_PropertyChanged;
                 model.OnHymnChanged += Model_OnHymnChanged;
                 globalInstance.SettingsLoaded += GlobalInstance_SettingsLoaded;
+                globalInstance.InitFinished += GlobalInstance_InitFinished;
                 model.ConnectivityChanged += (_, _) =>
                 {
                     if (HasInternetConnection())
@@ -149,11 +167,14 @@ namespace MobiHymn4.Views
             if (settingsOverlayBuilt)
                 UpdateSelectedStates();
             ShowIntroIfNeeded();
+            if (!Preferences.Get(PreferencesVar.IS_NEW, true))
+                CommunitySignInPresenter.ScheduleShow(this);
             ShowDownloadPopupIfNeeded();
             QueueInitStarted();
             ScheduleDownloadPopupRetries();
-            model?.RefreshFromActiveHymn();
+            ApplyBoardOrActiveHymnState();
 
+            UpdateBoardChrome();
             UpdateSetupLogoPulse();
             QueueSettingsOverlayBuild();
         }
@@ -230,6 +251,7 @@ namespace MobiHymn4.Views
         {
             Preferences.Set(PreferencesVar.IS_NEW, false);
             globalInstance.Init();
+            CommunitySignInPresenter.ScheduleShow(this);
         }
 
         void ShowDownloadPopupIfNeeded()
@@ -267,6 +289,8 @@ namespace MobiHymn4.Views
                 UpdateSelectionToolbar();
             else if (e.PropertyName == nameof(ReadViewModel.IsLoadingLyrics))
                 UpdateSetupLogoPulse();
+            else if (e.PropertyName == nameof(ReadViewModel.IsReadView))
+                UpdateBoardNavArrows();
         }
 
         void UpdateSelectionToolbar()
@@ -281,7 +305,7 @@ namespace MobiHymn4.Views
                 return;
             }
 
-            EnsureToolbarItemAfterSearch(tbSelection);
+            EnsureSelectionToolbarItem(tbSelection);
             tbSelection.IconImageSource = new FontImageSource
             {
                 FontFamily = "FAS",
@@ -293,13 +317,12 @@ namespace MobiHymn4.Views
             };
         }
 
-        void EnsureToolbarItemAfterSearch(ToolbarItem item)
+        void EnsureSelectionToolbarItem(ToolbarItem item)
         {
             if (ToolbarItems.Contains(item))
                 return;
 
-            var searchIndex = ToolbarItems.IndexOf(tbSearch);
-            ToolbarItems.Insert(searchIndex >= 0 ? searchIndex + 1 : 0, item);
+            ToolbarItems.Insert(0, item);
         }
 
         void tbSelection_Clicked(object sender, EventArgs e)
@@ -518,6 +541,111 @@ namespace MobiHymn4.Views
         async void tbSearch_Clicked(System.Object sender, System.EventArgs e)
         {
             await Shell.Current.GoToAsync($"//{Routes.SEARCH}");
+        }
+
+        void tbBoard_Clicked(object sender, EventArgs e)
+        {
+            dashboardService.Toggle();
+            UpdateBoardChrome();
+        }
+
+        void UpdateBoardChrome()
+        {
+            if (model != null)
+                model.IsBoardPaneOpen = dashboardService.IsOpen;
+
+            if (tbBoard == null)
+                return;
+
+            // Only mutate the toolbar when the signed-in state actually changes.
+            // Rebuilding it on every open/close causes the icon to flicker and
+            // stalls the shell while it re-measures the nav bar.
+            var signedIn = authService.IsSignedIn;
+            if (boardToolbarSignedIn != signedIn)
+            {
+                boardToolbarSignedIn = signedIn;
+                var present = ToolbarItems.Contains(tbBoard);
+                if (signedIn && !present)
+                    ToolbarItems.Add(tbBoard);
+                else if (!signedIn && present)
+                    ToolbarItems.Remove(tbBoard);
+            }
+
+            UpdateBoardTitleView();
+            UpdateBoardNavArrows();
+        }
+
+        void UpdateBoardNavArrows()
+        {
+            if (boardNavPrev == null || boardNavNext == null)
+                return;
+
+            var showChrome = boardNavigation.IsActive && model?.IsReadView == true;
+            boardNavPrev.IsVisible = showChrome && boardNavigation.CurrentIndex > 0;
+            boardNavNext.IsVisible = showChrome
+                && boardNavigation.CurrentIndex < boardNavigation.OrderedHymnNumbers.Count - 1;
+        }
+
+        async void BoardNavPrev_Tapped(object sender, TappedEventArgs e) =>
+            await NavigateBoardHymnAsync(-1);
+
+        async void BoardNavNext_Tapped(object sender, TappedEventArgs e) =>
+            await NavigateBoardHymnAsync(1);
+
+        async void BoardNav_SwipedLeft(object sender, SwipedEventArgs e)
+        {
+            if (!boardNavigation.IsActive)
+                return;
+
+            await NavigateBoardHymnAsync(-1);
+        }
+
+        async void BoardNav_SwipedRight(object sender, SwipedEventArgs e)
+        {
+            if (!boardNavigation.IsActive)
+                return;
+
+            await NavigateBoardHymnAsync(1);
+        }
+
+        void UpdateBoardTitleView()
+        {
+            Shell.SetTitleView(this, null);
+        }
+
+        static Color GetNavBarIconColor() =>
+            Application.Current?.Resources.TryGetValue("PrimaryText", out var color) == true && color is Color c
+                ? c
+                : Colors.Black;
+
+        async Task NavigateBoardHymnAsync(int delta)
+        {
+            if (!boardNavigation.IsActive)
+                return;
+
+            var nextIndex = boardNavigation.CurrentIndex + delta;
+            if (nextIndex < 0 || nextIndex >= boardNavigation.OrderedHymnNumbers.Count)
+                return;
+
+            boardNavigation.SetCurrentIndex(nextIndex);
+            var number = boardNavigation.OrderedHymnNumbers[nextIndex];
+            var hymn = FindHymnByNumber(number);
+            if (hymn != null)
+                globalInstance.ActiveHymn = hymn;
+            UpdateBoardNavArrows();
+            await Task.CompletedTask;
+        }
+
+        static Hymn FindHymnByNumber(string number)
+        {
+            if (string.IsNullOrWhiteSpace(number))
+                return null;
+
+            var list = Globals.Instance.HymnList;
+            if (list == null)
+                return null;
+
+            return list.FirstOrDefault(h => string.Equals(h?.Number, number, StringComparison.OrdinalIgnoreCase));
         }
 
         async void tbShare_Clicked(object sender, EventArgs e)
@@ -970,8 +1098,32 @@ namespace MobiHymn4.Views
             UpdateLineSpacingSelection();
         }
 
+        void ApplyBoardOrActiveHymnState()
+        {
+            if (boardNavigation.IsActive && boardNavigation.TryApplyCurrentHymnToReader())
+            {
+                // Board list position is authoritative when browsing a group hymn list.
+            }
+            else
+            {
+                boardNavigation.SyncCurrentIndexFromHymnNumber(globalInstance.ActiveHymn?.Number);
+            }
+
+            model?.RefreshFromActiveHymn();
+            UpdateBoardNavArrows();
+        }
+
+        void GlobalInstance_InitFinished(object sender, EventArgs e)
+        {
+            if (sender is string tag && tag == "sync")
+                return;
+
+            MainThread.BeginInvokeOnMainThread(ApplyBoardOrActiveHymnState);
+        }
+
         void GlobalInstance_SettingsLoaded(object sender, EventArgs e)
         {
+            ApplyBoardOrActiveHymnState();
             model?.RefreshReaderSettings();
             if (settingsOverlayBuilt)
                 UpdateSelectedStates();

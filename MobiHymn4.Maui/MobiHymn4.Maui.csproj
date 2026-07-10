@@ -21,6 +21,10 @@
     <AndroidManifest Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">Platforms\Android\AndroidManifest.xml</AndroidManifest>
   </PropertyGroup>
 
+  <PropertyGroup Condition="$(TargetFramework.Contains('-android'))">
+    <AndroidUninstallApplicationBeforeInstall>false</AndroidUninstallApplicationBeforeInstall>
+  </PropertyGroup>
+
   <ItemGroup>
     <MauiIcon Include="Resources\AppIcon\appicon.png" />
     <MauiSplashScreen Include="Resources\Splash\splash.png" Color="#2D2D2D" BaseSize="432,432" />
@@ -35,6 +39,9 @@
     <PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="8.0.100" />
     <PackageReference Include="CommunityToolkit.Maui" Version="8.0.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Plugin.Firebase.Auth" Version="3.1.1" />
+    <PackageReference Include="Plugin.Firebase.Core" Version="3.1.1" />
+    <PackageReference Include="Plugin.Firebase.Firestore" Version="3.1.1" />
     <PackageReference Include="Refractored.MvvmHelpers" Version="1.6.2" />
     <PackageReference Include="Melanchall.DryWetMidi" Version="7.0.0" />
     <PackageReference Include="HtmlAgilityPack" Version="1.11.49" />
@@ -43,6 +50,16 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
     <PackageReference Include="FirebaseDatabase.net" Version="4.2.0" />
     <PackageReference Include="SkiaSharp.Extended.UI.Maui" Version="2.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+    <PackageReference Include="Xamarin.GooglePlayServices.Auth" Version="121.2.0.2" />
+    <PackageReference Include="Xamarin.AndroidX.Activity" Version="1.9.2.1" />
+    <PackageReference Include="Xamarin.AndroidX.Activity.Ktx" Version="1.9.2.1" />
+    <PackageReference Include="Xamarin.AndroidX.Fragment.Ktx" Version="1.8.3.1" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core.Ktx" Version="2.8.5.1" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Runtime.Ktx" Version="2.8.5.1" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModel.Ktx" Version="2.8.5.1" />
   </ItemGroup>
 
   <ItemGroup Condition="$(TargetFramework.Contains('-android'))">

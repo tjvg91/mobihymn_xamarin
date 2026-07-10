@@ -4,6 +4,7 @@ using System.Windows.Input;
 
 using MvvmHelpers;
 using MobiHymn4.Models;
+using MobiHymn4.Services;
 using MobiHymn4.Utils;
 using Microsoft.Maui.Controls;
 
@@ -165,6 +166,7 @@ namespace MobiHymn4.ViewModels
             {
                 return bookmarkSelected ?? (bookmarkSelected = new Microsoft.Maui.Controls.Command<ShortHymn>(async (shortHymn) =>
                 {
+                    BoardNavigationContext.ClearExternalNavigation();
                     globalInstance.ActiveHymn = globalInstance.HymnList[shortHymn.Number];
 
                     if (Shell.Current?.Navigation?.NavigationStack?.Count > 1)

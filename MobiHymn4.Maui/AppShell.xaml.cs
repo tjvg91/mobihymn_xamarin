@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading.Tasks;
+using MobiHymn4.Models;
+using MobiHymn4.Services;
 using MobiHymn4.Utils;
 using MobiHymn4.ViewModels;
 using MobiHymn4.Views;
@@ -15,10 +18,15 @@ namespace MobiHymn4
     public partial class AppShell : Microsoft.Maui.Controls.Shell
     {
         private Globals globalInstance = Globals.Instance;
+        readonly IAuthService auth;
+        readonly IProfileService profileService;
 
         public AppShell()
         {
             InitializeComponent();
+
+            auth = ServiceHelper.Get<IAuthService>();
+            profileService = ServiceHelper.Get<IProfileService>();
 
             Routing.RegisterRoute(Routes.HOME, typeof(NumSearchPage));
             Routing.RegisterRoute(Routes.READ, typeof(ReadPage));
@@ -28,13 +36,74 @@ namespace MobiHymn4
             Routing.RegisterRoute(Routes.BOOKMARKS_LIST.Split('?')[0], typeof(BookmarksItemsPage));
             Routing.RegisterRoute(Routes.SETTINGS, typeof(SettingsPage));
             Routing.RegisterRoute(Routes.ABOUT, typeof(AboutPage));
+            Routing.RegisterRoute(Routes.LOGIN, typeof(LoginPage));
+            Routing.RegisterRoute(Routes.VERIFY_EMAIL, typeof(VerifyEmailPage));
+            Routing.RegisterRoute(Routes.PROFILE_SETUP, typeof(ProfileSetupPage));
+            Routing.RegisterRoute(Routes.ACCOUNT, typeof(AccountPage));
+            Routing.RegisterRoute(Routes.GROUPS, typeof(GroupsPage));
+            Routing.RegisterRoute(Routes.GROUP_MANAGE, typeof(GroupManagePage));
 
             CurrentItem = NavRead;
 
             globalInstance.ResyncDetails.CollectionChanged += ResyncDetails_CollectionChanged;
             Navigating += AppShell_Navigating;
             Loaded += AppShell_Loaded;
+            Loaded += (_, _) => UpdateFlyoutHeader();
             Loaded += (_, _) => _ = WarmFlyoutPagesAsync();
+            auth.AuthStateChanged += (_, _) => MainThread.BeginInvokeOnMainThread(UpdateFlyoutHeader);
+            profileService.ProfileChanged += (_, _) => MainThread.BeginInvokeOnMainThread(UpdateFlyoutHeader);
+        }
+
+        void UpdateFlyoutHeader()
+        {
+            var signedIn = auth.IsSignedIn;
+            flyoutBrandHeader.IsVisible = !signedIn;
+            flyoutUserHeader.IsVisible = signedIn;
+            flyoutSignOutFooter.IsVisible = signedIn;
+            NavAccount.FlyoutItemIsVisible = signedIn;
+
+            if (!signedIn)
+                return;
+
+            var profile = profileService.CurrentProfile;
+            flyoutAvatar.Roles = profile?.Roles?.ToList() ?? new List<UserRole>();
+            flyoutUserName.Text = !string.IsNullOrWhiteSpace(profile?.DisplayName)
+                ? profile.DisplayName
+                : auth.CurrentEmail ?? "Account";
+        }
+
+        async void FlyoutUserHeader_Tapped(object sender, EventArgs e)
+        {
+            if (!auth.IsSignedIn)
+                return;
+
+            FlyoutIsPresented = false;
+            await GoToAsync($"//{Routes.ACCOUNT}");
+        }
+
+        async void FlyoutEditProfile_Tapped(object sender, EventArgs e)
+        {
+            if (!auth.IsSignedIn)
+                return;
+
+            FlyoutIsPresented = false;
+            await GoToAsync(Routes.PROFILE_SETUP);
+        }
+
+        async void FlyoutSignOut_Tapped(object sender, EventArgs e)
+        {
+            if (!auth.IsSignedIn)
+                return;
+
+            FlyoutIsPresented = false;
+            try
+            {
+                await AuthNavigationHelper.SignOutAndNavigateAsync();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"FlyoutSignOut failed: {ex.Message}");
+            }
         }
 
         void AppShell_Loaded(object? sender, EventArgs e)

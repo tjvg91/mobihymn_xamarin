@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:MobiHymn4.ViewModels"
+    x:Class="MobiHymn4.Views.VerifyEmailPage"
+    Title="{Binding Title}">
+    <ContentPage.BindingContext>
+        <vm:VerifyEmailViewModel/>
+    </ContentPage.BindingContext>
+
+    <ScrollView>
+        <VerticalStackLayout Padding="24,20,24,28" Spacing="20">
+            <VerticalStackLayout Spacing="6">
+                <Label Text="Check your email" Style="{StaticResource Title}" FontAttributes="Bold" FontSize="22"/>
+                <Label Style="{StaticResource Subtitle}" LineBreakMode="WordWrap">
+                    <Label.FormattedText>
+                        <FormattedString>
+                            <Span Text="We sent a verification link to "/>
+                            <Span Text="{Binding Email}" FontAttributes="Bold"/>
+                            <Span Text=". Open it, then return here and refresh."/>
+                        </FormattedString>
+                    </Label.FormattedText>
+                </Label>
+                <Label
+                    Text="&#x26A0; Can't find it? Check your spam or junk folder."
+                    Style="{StaticResource Subsubtitle}"
+                    LineBreakMode="WordWrap"
+                    Margin="0,4,0,0"/>
+            </VerticalStackLayout>
+
+            <Label
+                Text="{Binding StatusMessage}"
+                Style="{StaticResource Subsubtitle}"
+                TextColor="{StaticResource Green}"
+                IsVisible="{Binding HasStatusMessage}"
+                LineBreakMode="WordWrap"/>
+
+            <VerticalStackLayout Spacing="10">
+                <Button Text="Resend verification email" Command="{Binding ResendCommand}"/>
+                <Button Text="Refresh verification status" Style="{StaticResource Button-Outline}" Command="{Binding RefreshCommand}"/>
+            </VerticalStackLayout>
+
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" Color="{StaticResource Primary}"/>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

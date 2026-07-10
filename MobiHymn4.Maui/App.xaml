@@ -25,6 +25,31 @@
             <Color x:Key="Purple">#7237C5</Color>
             <Color x:Key="Pink">#FF0073</Color>
 
+            <Style x:Key="InputBorder" TargetType="Border">
+                <Setter Property="Padding" Value="8,4"/>
+                <Setter Property="StrokeThickness" Value="1.5"/>
+                <Setter Property="StrokeShape" Value="RoundRectangle 6"/>
+                <Setter Property="BackgroundColor" Value="Transparent"/>
+                <Setter Property="Stroke">
+                    <Setter.Value>
+                        <AppThemeBinding>
+                            <AppThemeBinding.Light>
+                                <SolidColorBrush Color="#d0d0d0"/>
+                            </AppThemeBinding.Light>
+                            <AppThemeBinding.Dark>
+                                <SolidColorBrush Color="#888888"/>
+                            </AppThemeBinding.Dark>
+                        </AppThemeBinding>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="FormEntry" TargetType="Entry">
+                <Setter Property="BackgroundColor" Value="Transparent"/>
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=#FFFFFF}"/>
+                <Setter Property="PlaceholderColor" Value="{AppThemeBinding Light={StaticResource Gray}, Dark=#888888}"/>
+            </Style>
+
             <Style TargetType="Button">
                 <Setter Property="VisualStateManager.VisualStateGroups">
                     <VisualStateGroupList>

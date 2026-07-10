@@ -2,6 +2,7 @@
 <Shell xmlns="http://schemas.microsoft.com/dotnet/2021/maui" 
        xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
        xmlns:local="clr-namespace:MobiHymn4.Views"
+       xmlns:elements="clr-namespace:MobiHymn4.Elements"
        xmlns:fontawesome="clr-namespace:FontAwesome"
        xmlns:utils="clr-namespace:MobiHymn4.Utils"
        xmlns:logo="clr-namespace:LogoIcon"
@@ -160,7 +161,12 @@
             Direction="Column"
             BackgroundColor="Transparent"
             HorizontalOptions="FillAndExpand">
-            <StackLayout Orientation="Vertical" VerticalOptions="FillAndExpand" HorizontalOptions="Center" Spacing="0">
+            <StackLayout
+                x:Name="flyoutBrandHeader"
+                Orientation="Vertical"
+                VerticalOptions="FillAndExpand"
+                HorizontalOptions="Center"
+                Spacing="0">
                 <Border
                     WidthRequest="70"
                     HeightRequest="70"
@@ -201,8 +207,46 @@
                         </FormattedString>
                     </Label.FormattedText>
                 </Label>
-                
             </StackLayout>
+
+            <VerticalStackLayout
+                x:Name="flyoutUserHeader"
+                IsVisible="False"
+                Spacing="10"
+                HorizontalOptions="Center"
+                Padding="16,0">
+                <elements:RoleAvatarView x:Name="flyoutAvatar" Size="64">
+                    <elements:RoleAvatarView.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="FlyoutUserHeader_Tapped"/>
+                    </elements:RoleAvatarView.GestureRecognizers>
+                </elements:RoleAvatarView>
+                <HorizontalStackLayout Spacing="8" HorizontalOptions="Center">
+                    <Label
+                        x:Name="flyoutUserName"
+                        HorizontalOptions="Center"
+                        HorizontalTextAlignment="Center"
+                        FontSize="18"
+                        FontAttributes="Bold"
+                        LineBreakMode="TailTruncation"
+                        MaxLines="2"
+                        VerticalOptions="Center"
+                        TextColor="{AppThemeBinding Dark=White, Light={StaticResource PrimaryText}}">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="FlyoutUserHeader_Tapped"/>
+                        </Label.GestureRecognizers>
+                    </Label>
+                    <Label
+                        FontFamily="FAS"
+                        Text="{x:Static fontawesome:FontAwesomeIcons.Pencil}"
+                        FontSize="14"
+                        VerticalOptions="Center"
+                        TextColor="{StaticResource Primary}">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="FlyoutEditProfile_Tapped"/>
+                        </Label.GestureRecognizers>
+                    </Label>
+                </HorizontalStackLayout>
+            </VerticalStackLayout>
         </FlexLayout>
 
     </Shell.FlyoutHeader>
@@ -219,12 +263,43 @@
     <FlyoutItem Title="Bookmarks" Icon="{x:Static fontawesome:FontAwesomeIcons.Heart}">
         <ShellContent Route="{x:Static utils:Routes.BOOKMARKS_GROUP}" ContentTemplate="{DataTemplate local:BookmarksGroupPage}" />
     </FlyoutItem>
+    <FlyoutItem x:Name="NavAccount" Title="Account" Icon="{x:Static fontawesome:FontAwesomeIcons.User}" FlyoutItemIsVisible="False">
+        <ShellContent Route="{x:Static utils:Routes.ACCOUNT}" ContentTemplate="{DataTemplate local:AccountPage}"/>
+    </FlyoutItem>
     <FlyoutItem Title="About" Icon="{x:Static fontawesome:FontAwesomeIcons.CircleInfo}">
         <ShellContent Route="{x:Static utils:Routes.ABOUT}" ContentTemplate="{DataTemplate local:AboutPage}" />
     </FlyoutItem>
     <FlyoutItem Title="Settings" Icon="{x:Static fontawesome:FontAwesomeIcons.Cogs}" x:Name="NavSettings">
         <ShellContent Route="{x:Static utils:Routes.SETTINGS}" ContentTemplate="{DataTemplate local:SettingsPage}" />
     </FlyoutItem>
+
+    <Shell.FlyoutFooter>
+        <Grid
+            x:Name="flyoutSignOutFooter"
+            IsVisible="False"
+            Padding="15,20"
+            ColumnDefinitions="40,*"
+            ColumnSpacing="12"
+            BackgroundColor="Transparent">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Tapped="FlyoutSignOut_Tapped"/>
+            </Grid.GestureRecognizers>
+            <Label
+                Grid.Column="0"
+                FontFamily="FAS"
+                Text="{x:Static fontawesome:FontAwesomeIcons.RightFromBracket}"
+                FontSize="16"
+                HorizontalOptions="Center"
+                VerticalOptions="Center"
+                TextColor="{AppThemeBinding Dark=White, Light={StaticResource PrimaryText}}"/>
+            <Label
+                Grid.Column="1"
+                Text="Sign out"
+                FontSize="14"
+                VerticalOptions="Center"
+                TextColor="{AppThemeBinding Dark=White, Light={StaticResource PrimaryText}}"/>
+        </Grid>
+    </Shell.FlyoutFooter>
 
     <!--
         TabBar lets you define content that won't show up in a flyout menu. When this content is active

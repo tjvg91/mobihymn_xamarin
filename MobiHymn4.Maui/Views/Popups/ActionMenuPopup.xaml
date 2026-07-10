@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<toolkit:Popup
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    x:Class="MobiHymn4.Views.Popups.ActionMenuPopup"
+    Color="Transparent"
+    CanBeDismissedByTappingOutsideOfPopup="True">
+
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill">
+        <ContentView
+            x:Name="overlay"
+            BackgroundColor="#8C000000"
+            HorizontalOptions="Fill"
+            VerticalOptions="Fill">
+            <ContentView.GestureRecognizers>
+                <TapGestureRecognizer Tapped="Overlay_Tapped"/>
+            </ContentView.GestureRecognizers>
+        </ContentView>
+
+        <Border
+            Padding="20,16,20,12"
+            StrokeThickness="1"
+            Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+            BackgroundColor="{AppThemeBinding Light=White, Dark=#333333}"
+            StrokeShape="RoundRectangle 16"
+            WidthRequest="320"
+            MaximumWidthRequest="400"
+            Margin="24,0"
+            HorizontalOptions="Center"
+            VerticalOptions="Center">
+            <Border.Shadow>
+                <Shadow Brush="Black" Offset="0,6" Radius="24" Opacity="0.35"/>
+            </Border.Shadow>
+
+            <VerticalStackLayout Spacing="0">
+                <Label
+                    x:Name="lblTitle"
+                    FontSize="16"
+                    Margin="0,0,0,12"
+                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+
+                <VerticalStackLayout x:Name="optionsStack" Spacing="0"/>
+
+                <Button
+                    x:Name="btnCancel"
+                    Text="Cancel"
+                    Style="{x:Null}"
+                    BackgroundColor="Transparent"
+                    BorderWidth="0"
+                    Padding="0,14,0,4"
+                    HorizontalOptions="End"
+                    FontAttributes="Bold"
+                    FontSize="15"
+                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                    Clicked="Cancel_Clicked"/>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</toolkit:Popup>

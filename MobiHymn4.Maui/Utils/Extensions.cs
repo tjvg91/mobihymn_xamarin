@@ -47,19 +47,21 @@ namespace MobiHymn4.Utils
 
         public static Color? ToColor(this JObject jObject)
         {
-            double ReadChannel(string upper, string lower)
+            double ReadChannel(params string[] names)
             {
-                if (jObject[upper] != null)
-                    return double.Parse(jObject[upper] + "");
-                if (jObject[lower] != null)
-                    return double.Parse(jObject[lower] + "");
+                foreach (var name in names)
+                {
+                    if (jObject[name] != null)
+                        return double.Parse(jObject[name] + "");
+                }
+
                 return -1;
             }
 
-            var r = ReadChannel("R", "r");
-            var g = ReadChannel("G", "g");
-            var b = ReadChannel("B", "b");
-            var a = ReadChannel("A", "a");
+            var r = ReadChannel("R", "r", "Red", "red");
+            var g = ReadChannel("G", "g", "Green", "green");
+            var b = ReadChannel("B", "b", "Blue", "blue");
+            var a = ReadChannel("A", "a", "Alpha", "alpha");
 
             if (r >= 0 && g >= 0 && b >= 0)
             {

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Windows.Input;
 
 using MobiHymn4.Models;
+using MobiHymn4.Services;
 using MobiHymn4.Utils;
 
 using MvvmHelpers;
@@ -67,6 +68,7 @@ namespace MobiHymn4.ViewModels
             {
                 return historyItemSelected ?? (historyItemSelected = new Microsoft.Maui.Controls.Command<ShortHymn>(async (shortHymn) =>
                 {
+                    BoardNavigationContext.ClearExternalNavigation();
                     globalInstance.ActiveHymn = (from x in globalInstance.HymnList
                                                 where x.Number == shortHymn.Number
                                                 select x).First();

@@ -1,0 +1,205 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows.Input;
+using FontAwesome;
+using MobiHymn4.Models;
+using MobiHymn4.Services;
+using MobiHymn4.Utils;
+using Microsoft.Maui.Controls;
+using Microsoft.Maui.Graphics;
+using MvvmHelpers;
+
+namespace MobiHymn4.ViewModels;
+
+public class AccountViewModel : BaseViewModel
+{
+    readonly IAuthService auth;
+    readonly IProfileService profileService;
+
+    string statusMessage = string.Empty;
+    bool notificationsMuted;
+    bool isEmailVerified;
+
+    public AccountViewModel()
+    {
+        auth = ServiceHelper.Get<IAuthService>();
+        profileService = ServiceHelper.Get<IProfileService>();
+        Title = "Account";
+
+        profileService.ProfileChanged += (_, _) => LoadFromProfile();
+        auth.AuthStateChanged += (_, _) => LoadFromProfile();
+
+        OpenGroupsCommand = new Command(async () => await Shell.Current.GoToAsync(Routes.GROUPS));
+        EditProfileCommand = new Command(async () => await Shell.Current.GoToAsync(Routes.PROFILE_SETUP));
+        ResendVerificationCommand = new Command(async () => await ResendVerificationAsync(), () => !IsBusy);
+        RefreshVerificationCommand = new Command(async () => await RefreshVerificationAsync(), () => !IsBusy);
+
+        LoadFromProfile();
+    }
+
+    public string DisplayName { get; private set; } = string.Empty;
+    public string Email { get; private set; } = string.Empty;
+    public string RolesSummary { get; private set; } = string.Empty;
+    public IList<UserRole> Roles { get; private set; } = new List<UserRole>();
+
+    public bool IsEmailVerified
+    {
+        get => isEmailVerified;
+        private set
+        {
+            if (SetProperty(ref isEmailVerified, value))
+            {
+                OnPropertyChanged(nameof(VerificationStatusText));
+                OnPropertyChanged(nameof(VerificationBadgeText));
+                OnPropertyChanged(nameof(VerificationIconGlyph));
+                OnPropertyChanged(nameof(VerificationColor));
+                OnPropertyChanged(nameof(ShowVerificationActions));
+            }
+        }
+    }
+
+    public string VerificationStatusText =>
+        IsEmailVerified
+            ? "Your email address is verified."
+            : "Verify your email to unlock community features.";
+
+    public string VerificationBadgeText => IsEmailVerified ? "Verified" : "Unverified";
+
+    public string VerificationIconGlyph =>
+        IsEmailVerified ? FontAwesomeIcons.CircleCheck : FontAwesomeIcons.TriangleExclamation;
+
+    public Color VerificationColor =>
+        IsEmailVerified ? Color.FromArgb("#2E7D32") : Color.FromArgb("#F59E0B");
+
+    public bool ShowVerificationActions => !IsEmailVerified;
+
+    public bool NotificationsMuted
+    {
+        get => notificationsMuted;
+        set => SetProperty(ref notificationsMuted, value);
+    }
+
+    public string StatusMessage
+    {
+        get => statusMessage;
+        set
+        {
+            if (SetProperty(ref statusMessage, value))
+                OnPropertyChanged(nameof(HasStatusMessage));
+        }
+    }
+
+    public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
+
+    public ICommand OpenGroupsCommand { get; }
+    public ICommand EditProfileCommand { get; }
+    public ICommand ResendVerificationCommand { get; }
+    public ICommand RefreshVerificationCommand { get; }
+
+    public async Task RefreshOnAppearAsync()
+    {
+        try
+        {
+            await auth.RefreshEmailVerificationStatusAsync();
+        }
+        catch
+        {
+        }
+
+        LoadFromProfile();
+    }
+
+    public async Task OnNotificationsToggledAsync(bool muted)
+    {
+        if (profileService.CurrentProfile?.NotificationsMuted == muted)
+            return;
+
+        try
+        {
+            IsBusy = true;
+            NotificationsMuted = muted;
+            await profileService.SetNotificationsMutedAsync(muted);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = ex.Message;
+            NotificationsMuted = profileService.CurrentProfile?.NotificationsMuted ?? false;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    async Task ResendVerificationAsync()
+    {
+        try
+        {
+            IsBusy = true;
+            RefreshVerificationCommands();
+            StatusMessage = string.Empty;
+            await auth.SendEmailVerificationAsync();
+            StatusMessage = "Verification email sent. Check your inbox.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+            RefreshVerificationCommands();
+        }
+    }
+
+    async Task RefreshVerificationAsync()
+    {
+        try
+        {
+            IsBusy = true;
+            RefreshVerificationCommands();
+            StatusMessage = string.Empty;
+            await auth.RefreshEmailVerificationStatusAsync();
+            LoadFromProfile();
+
+            StatusMessage = IsEmailVerified
+                ? "Email verified."
+                : "Email not verified yet. Open the link in your inbox, then refresh again.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+            RefreshVerificationCommands();
+        }
+    }
+
+    void LoadFromProfile()
+    {
+        var profile = profileService.CurrentProfile;
+        DisplayName = profile?.DisplayName ?? auth.CurrentEmail;
+        Email = profile?.Email ?? auth.CurrentEmail;
+        Roles = profile?.Roles?.ToList() ?? new List<UserRole>();
+        RolesSummary = Roles.Count == 0
+            ? "No roles selected"
+            : string.Join(", ", Roles.Select(r => r.ToDisplayName()));
+        NotificationsMuted = profile?.NotificationsMuted ?? false;
+        IsEmailVerified = auth.IsEmailVerified;
+
+        OnPropertyChanged(nameof(DisplayName));
+        OnPropertyChanged(nameof(Email));
+        OnPropertyChanged(nameof(Roles));
+        OnPropertyChanged(nameof(RolesSummary));
+    }
+
+    void RefreshVerificationCommands()
+    {
+        (ResendVerificationCommand as Command)?.ChangeCanExecute();
+        (RefreshVerificationCommand as Command)?.ChangeCanExecute();
+    }
+}

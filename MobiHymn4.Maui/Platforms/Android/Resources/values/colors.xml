@@ -6,5 +6,9 @@
     <color name="colorPrimaryDark">#2D2D2D</color>
     <color name="colorAccent">#F5D200</color>
     <color name="color_action_bar">#F5D200</color>
+    <color name="primary_text_on_yellow">#2D2D2D</color>
+    <color name="date_picker_button_light">#2D2D2D</color>
+    <color name="date_picker_button_dark">#D0D0D0</color>
+    <color name="date_picker_surface_dark">#333333</color>
 </resources>
 

@@ -47,7 +47,7 @@ public partial class App : Application
         {
             MainThread.BeginInvokeOnMainThread(async () =>
             {
-                await globalInstance.LoadSettings();
+                await globalInstance.EnsureSettingsLoadedAsync();
                 DeviceDisplay.KeepScreenOn = globalInstance.KeepAwake;
             });
 
@@ -115,8 +115,27 @@ public partial class App : Application
 
     async Task InitFirebaseAsync()
     {
-        await fbHelper.LoginWithEmailPassword("tim.gandionco@gmail.com", "TLmSIsnw231");
-        await globalInstance.RefreshMissingHymnCountAsync();
+        try
+        {
+            var auth = ServiceHelper.Get<IAuthService>();
+            var profile = ServiceHelper.Get<IProfileService>();
+            var groups = ServiceHelper.Get<IGroupService>();
+
+            if (auth.IsSignedIn)
+            {
+                await profile.RefreshCurrentProfileAsync();
+                var joinedGroups = await groups.AcceptPendingInvitesAsync();
+                foreach (var group in joinedGroups)
+                    GroupJoinWelcomePresenter.ScheduleShow(group);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"InitFirebaseAsync auth: {ex.Message}");
+        }
+
+            await globalInstance.RefreshMissingHymnCountAsync();
+            CommunitySignInPresenter.ScheduleShow();
     }
 
     async Task CheckForAppUpdateAsync()
@@ -228,6 +247,8 @@ public partial class App : Application
         if (globalInstance.ActiveHymn == null || globalInstance.HymnList == null || globalInstance.HymnList.Count == 0)
             return;
 
+        ServiceHelper.Get<BoardNavigationContext>().TryApplyCurrentHymnToReader();
+
 #if ANDROID
         var pending = MobiHymn4.MainActivity.PendingHymnNumber;
         if (!string.IsNullOrEmpty(pending))
@@ -248,6 +269,7 @@ public partial class App : Application
         if (hymn == null)
             return;
 
+        BoardNavigationContext.ClearExternalNavigation();
         globals.ActiveHymn = hymn;
         MainThread.BeginInvokeOnMainThread(async () =>
         {

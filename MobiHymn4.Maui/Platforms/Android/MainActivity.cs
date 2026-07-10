@@ -6,6 +6,7 @@ using AndroidX.AppCompat.App;
 using MobiHymn4.Utils;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
+using Plugin.Firebase.Core.Platforms.Android;
 
 namespace MobiHymn4;
 
@@ -21,14 +22,21 @@ namespace MobiHymn4;
     DataHost = "hymn")]
 public class MainActivity : MauiAppCompatActivity
 {
+    public static MainActivity Instance { get; private set; }
+    public event Action<int, Result, Intent> ActivityResult;
+
     public static string PendingHymnNumber { get; private set; }
 
     public static void ConsumePendingHymnNumber() => PendingHymnNumber = null;
 
     protected override void OnCreate(Bundle savedInstanceState)
     {
+        Instance = this;
         AppCompatDelegate.DefaultNightMode = AppCompatDelegate.ModeNightNo;
         base.OnCreate(savedInstanceState);
+
+        CrossFirebase.Initialize(this);
+        Platforms.Android.GoogleSignInService.Initialize();
 
         if (OperatingSystem.IsAndroidVersionAtLeast(33))
             _ = RequestNotificationPermissionAsync();
@@ -43,6 +51,12 @@ public class MainActivity : MauiAppCompatActivity
         Intent = intent;
         HandleNotificationIntent(intent);
         HandleDeepLinkIntent(intent, alreadyLoaded: true);
+    }
+
+    protected override void OnActivityResult(int requestCode, Result resultCode, Intent data)
+    {
+        base.OnActivityResult(requestCode, resultCode, data);
+        ActivityResult?.Invoke(requestCode, resultCode, data);
     }
 
     static void HandleDeepLinkIntent(Intent? intent, bool alreadyLoaded)
