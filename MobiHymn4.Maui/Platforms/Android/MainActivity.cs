@@ -40,6 +40,9 @@ public class MainActivity : MauiAppCompatActivity
         CrossFirebase.Initialize(this);
         Platforms.Android.GoogleSignInService.Initialize();
 
+        HandleFirebaseMessagingIntent(Intent);
+        CreateBoardNotificationChannel();
+
         backPressedCallback = new AppBackPressedCallback(this);
         OnBackPressedDispatcher.AddCallback(this, backPressedCallback);
 
@@ -89,8 +92,47 @@ public class MainActivity : MauiAppCompatActivity
     {
         base.OnNewIntent(intent);
         Intent = intent;
+        HandleFirebaseMessagingIntent(intent);
         HandleNotificationIntent(intent);
         HandleDeepLinkIntent(intent, alreadyLoaded: true);
+    }
+
+    static void HandleFirebaseMessagingIntent(Intent intent)
+    {
+        try
+        {
+            Plugin.Firebase.CloudMessaging.FirebaseCloudMessagingImplementation.OnNewIntent(intent);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"FCM OnNewIntent failed: {ex.Message}");
+        }
+    }
+
+    void CreateBoardNotificationChannel()
+    {
+        if (!OperatingSystem.IsAndroidVersionAtLeast(26))
+            return;
+
+        try
+        {
+            var channelId = $"{PackageName}.board";
+            var channel = new NotificationChannel(
+                channelId,
+                "Worship board",
+                NotificationImportance.Default)
+            {
+                Description = "Updates when your group hymn list changes",
+            };
+
+            var manager = (NotificationManager)GetSystemService(NotificationService);
+            manager?.CreateNotificationChannel(channel);
+            Plugin.Firebase.CloudMessaging.FirebaseCloudMessagingImplementation.ChannelId = channelId;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Board notification channel failed: {ex.Message}");
+        }
     }
 
     protected override void OnActivityResult(int requestCode, Result resultCode, Intent data)

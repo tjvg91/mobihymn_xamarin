@@ -19,7 +19,7 @@ public class AccountViewModel : BaseViewModel
     readonly IProfileService profileService;
 
     string statusMessage = string.Empty;
-    bool notificationsMuted;
+    bool notificationsEnabled;
     bool isEmailVerified;
 
     public AccountViewModel()
@@ -75,11 +75,26 @@ public class AccountViewModel : BaseViewModel
 
     public bool ShowVerificationActions => !IsEmailVerified;
 
-    public bool NotificationsMuted
+    public bool NotificationsEnabled
     {
-        get => notificationsMuted;
-        set => SetProperty(ref notificationsMuted, value);
+        get => notificationsEnabled;
+        set
+        {
+            if (SetProperty(ref notificationsEnabled, value))
+            {
+                OnPropertyChanged(nameof(NotificationsToggleTitle));
+                OnPropertyChanged(nameof(NotificationsToggleSubtitle));
+            }
+        }
     }
+
+    public string NotificationsToggleTitle =>
+        NotificationsEnabled ? "Board notifications" : "Board notifications muted";
+
+    public string NotificationsToggleSubtitle =>
+        NotificationsEnabled
+            ? "You will get alerts when your group’s hymn list changes. Turn off to mute."
+            : "Notifications are off. Turn on to hear when your group’s hymn list changes.";
 
     public string StatusMessage
     {
@@ -111,21 +126,23 @@ public class AccountViewModel : BaseViewModel
         LoadFromProfile();
     }
 
-    public async Task OnNotificationsToggledAsync(bool muted)
+    public async Task OnNotificationsEnabledToggledAsync(bool enabled)
     {
-        if (profileService.CurrentProfile?.NotificationsMuted == muted)
+        var muted = !enabled;
+        if (profileService.CurrentProfile?.NotificationsMuted == muted
+            && profileService.CurrentProfile.NotificationsPreferenceSet)
             return;
 
         try
         {
             IsBusy = true;
-            NotificationsMuted = muted;
+            NotificationsEnabled = enabled;
             await profileService.SetNotificationsMutedAsync(muted);
         }
         catch (Exception ex)
         {
             StatusMessage = ex.Message;
-            NotificationsMuted = profileService.CurrentProfile?.NotificationsMuted ?? false;
+            NotificationsEnabled = !(profileService.CurrentProfile?.NotificationsMuted ?? true);
         }
         finally
         {
@@ -188,13 +205,21 @@ public class AccountViewModel : BaseViewModel
         RolesSummary = Roles.Count == 0
             ? "No roles selected"
             : string.Join(", ", Roles.Select(r => r.ToDisplayName()));
-        NotificationsMuted = profile?.NotificationsMuted ?? false;
+
+        var muted = profile == null
+            ? true
+            : profile.NotificationsPreferenceSet
+                ? profile.NotificationsMuted
+                : RolePermissions.GetDefaultNotificationsMuted(profile.Roles);
+        NotificationsEnabled = !muted;
         IsEmailVerified = auth.IsEmailVerified;
 
         OnPropertyChanged(nameof(DisplayName));
         OnPropertyChanged(nameof(Email));
         OnPropertyChanged(nameof(Roles));
         OnPropertyChanged(nameof(RolesSummary));
+        OnPropertyChanged(nameof(NotificationsToggleTitle));
+        OnPropertyChanged(nameof(NotificationsToggleSubtitle));
     }
 
     void RefreshVerificationCommands()

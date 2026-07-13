@@ -129,15 +129,15 @@
 
             <Grid Padding="15,12" ColumnDefinitions="*,Auto" ColumnSpacing="12">
                 <VerticalStackLayout Spacing="4">
-                    <Label Text="Mute notifications" Style="{StaticResource Title}"/>
+                    <Label Text="{Binding NotificationsToggleTitle}" Style="{StaticResource Title}"/>
                     <Label
-                        Text="Pause push notifications from your worship groups."
+                        Text="{Binding NotificationsToggleSubtitle}"
                         Style="{StaticResource Subtitle}"
                         LineBreakMode="WordWrap"/>
                 </VerticalStackLayout>
                 <Switch
                     Grid.Column="1"
-                    IsToggled="{Binding NotificationsMuted}"
+                    IsToggled="{Binding NotificationsEnabled}"
                     VerticalOptions="Center"
                     ThumbColor="{StaticResource Primary}"
                     OnColor="{StaticResource PrimaryLight}"

@@ -49,6 +49,23 @@ public static class RolePermissions
     public static bool HasLeadershipRole(IEnumerable<UserRole> roles) =>
         roles != null && roles.Any(r => r != UserRole.Congregant);
 
+    /// <summary>
+    /// Board hymn notes are for ministry roles; congregant-only users do not see them.
+    /// </summary>
+    public static bool CanViewBoardNotes(IEnumerable<UserRole> roles) =>
+        HasLeadershipRole(roles);
+
+    /// <summary>
+    /// Projector and accompaniment get notifications on by default; everyone else starts muted.
+    /// </summary>
+    public static bool GetDefaultNotificationsMuted(IEnumerable<UserRole> roles)
+    {
+        if (roles == null)
+            return true;
+
+        return !roles.Any(r => r is UserRole.Projector or UserRole.Accompaniment);
+    }
+
     public static UserRole GetPrimaryRole(IEnumerable<UserRole> roles)
     {
         if (roles == null || !roles.Any())

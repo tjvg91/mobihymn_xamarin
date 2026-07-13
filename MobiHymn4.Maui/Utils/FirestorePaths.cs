@@ -9,4 +9,5 @@ public static class FirestorePaths
     public const string Boards = "boards";
     public const string SectionTemplate = "sectionTemplate";
     public const string Notifications = "notifications";
+    public const string FcmTokens = "fcmTokens";
 }

@@ -127,6 +127,14 @@ public class BoardHymnEntry : INotifyPropertyChanged
 
     public bool HasNotes => !string.IsNullOrWhiteSpace(Notes);
 
+    bool showNotes;
+    /// <summary>UI-only: whether notes are visible for the current viewer's role.</summary>
+    public bool ShowNotes
+    {
+        get => showNotes;
+        set => SetField(ref showNotes, value);
+    }
+
     /// <summary>UI-only: first line of the hymn, resolved from the local hymn list. Not persisted.</summary>
     string firstLine = string.Empty;
     public string FirstLine

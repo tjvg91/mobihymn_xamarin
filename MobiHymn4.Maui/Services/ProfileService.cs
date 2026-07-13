@@ -54,6 +54,8 @@ public sealed class ProfileService : IProfileService
         if (profile == null || string.IsNullOrWhiteSpace(profile.Uid))
             throw new InvalidOperationException("Profile is missing a user id.");
 
+        profile.ApplyDefaultNotificationPreferenceIfNeeded();
+
         var doc = FirestoreMappers.ToFirestore(profile);
         await firebase.Firestore
             .GetCollection(FirestorePaths.Users)
@@ -73,10 +75,13 @@ public sealed class ProfileService : IProfileService
             return;
 
         CurrentProfile.NotificationsMuted = muted;
+        CurrentProfile.NotificationsPreferenceSet = true;
         await firebase.Firestore
             .GetCollection(FirestorePaths.Users)
             .GetDocument(CurrentProfile.Uid)
-            .UpdateDataAsync(("notificationsMuted", muted));
+            .UpdateDataAsync(
+                ("notificationsMuted", muted),
+                ("notificationsPreferenceSet", true));
         ProfileChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -90,7 +95,32 @@ public sealed class ProfileService : IProfileService
         }
 
         CurrentProfile = await LoadProfileAsync(auth.CurrentUserId);
+        await EnsureRoleBasedNotificationDefaultAsync();
         ProfileChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    async Task EnsureRoleBasedNotificationDefaultAsync()
+    {
+        var profile = CurrentProfile;
+        if (profile == null || profile.NotificationsPreferenceSet)
+            return;
+
+        var desired = RolePermissions.GetDefaultNotificationsMuted(profile.Roles);
+        if (profile.NotificationsMuted == desired)
+            return;
+
+        profile.NotificationsMuted = desired;
+        try
+        {
+            await firebase.Firestore
+                .GetCollection(FirestorePaths.Users)
+                .GetDocument(profile.Uid)
+                .UpdateDataAsync(("notificationsMuted", desired));
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"EnsureRoleBasedNotificationDefaultAsync failed: {ex.Message}");
+        }
     }
 
     async Task RefreshCurrentProfileSafeAsync()

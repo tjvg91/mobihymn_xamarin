@@ -90,4 +90,13 @@ public interface IGroupDashboardService
     void Close();
     void Toggle();
     void MarkNotificationsRead();
+    void SetUnreadNotifications(bool hasUnread);
+}
+
+public interface IBoardNotificationService
+{
+    Task StartAsync();
+    Task StopAsync();
+    Task RegisterTokenAsync();
+    Task MarkAllReadAsync();
 }

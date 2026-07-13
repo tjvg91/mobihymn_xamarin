@@ -509,7 +509,7 @@
                                                         ColumnSpacing="5"
                                                         Margin="0,4,0,0"
                                                         HorizontalOptions="Fill"
-                                                        IsVisible="{Binding HasNotes}">
+                                                        IsVisible="{Binding ShowNotes}">
                                                         <Label
                                                             Grid.Column="0"
                                                             Text="&#xf249;"

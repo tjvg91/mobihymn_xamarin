@@ -578,11 +578,34 @@ namespace MobiHymn4.Views
                         ToolbarItems.Add(tbBoard);
                     else if (!signedIn && boardPresent)
                         ToolbarItems.Remove(tbBoard);
+
+                    UpdateBoardToolbarIcon();
                 }
+            }
+            else
+            {
+                UpdateBoardToolbarIcon();
             }
 
             UpdateBoardTitleView();
             UpdateBoardNavArrows();
+        }
+
+        void UpdateBoardToolbarIcon()
+        {
+            if (tbBoard == null || !authService.IsSignedIn)
+                return;
+
+            var unread = dashboardService.HasUnreadNotifications;
+            tbBoard.IconImageSource = new FontImageSource
+            {
+                FontFamily = "FAS",
+                Glyph = unread ? "\uf0a2" : "\uf46d", // bell vs chalkboard
+                Size = 17,
+                Color = unread
+                    ? Color.FromArgb("#C62828")
+                    : GetNavBarIconColor(),
+            };
         }
 
         /// <summary>

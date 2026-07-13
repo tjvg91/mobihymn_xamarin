@@ -21,6 +21,15 @@ service cloud.firestore {
       allow read: if isSignedIn() && request.auth.uid == userId;
       allow create: if isSignedIn() && request.auth.uid == userId;
       allow update: if isVerified() && request.auth.uid == userId;
+
+      match /fcmTokens/{tokenId} {
+        allow read, write: if isVerified() && request.auth.uid == userId;
+      }
+
+      match /notifications/{notificationId} {
+        allow read, update: if isVerified() && request.auth.uid == userId;
+        allow create, delete: if false;
+      }
     }
 
     function isGroupMember(groupId) {

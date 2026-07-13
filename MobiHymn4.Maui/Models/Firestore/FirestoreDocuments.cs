@@ -30,6 +30,9 @@ public sealed class UserFirestoreDocument : IFirestoreObject
     [FirestoreProperty("notificationsMuted")]
     public bool NotificationsMuted { get; set; }
 
+    [FirestoreProperty("notificationsPreferenceSet")]
+    public bool NotificationsPreferenceSet { get; set; }
+
     [FirestoreProperty("groupIds")]
     public IList<string> GroupIds { get; set; } = new List<string>();
 }
@@ -185,4 +188,43 @@ public sealed class BoardSectionTemplateFirestoreDocument : IFirestoreObject
 
     [FirestoreProperty("updatedBy")]
     public string UpdatedBy { get; set; }
+}
+
+public sealed class FcmTokenFirestoreDocument : IFirestoreObject
+{
+    [FirestoreDocumentId]
+    public string Id { get; set; }
+
+    [FirestoreProperty("token")]
+    public string Token { get; set; }
+
+    [FirestoreProperty("platform")]
+    public string Platform { get; set; }
+
+    [FirestoreProperty("updatedAt")]
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+public sealed class BoardNotificationFirestoreDocument : IFirestoreObject
+{
+    [FirestoreDocumentId]
+    public string Id { get; set; }
+
+    [FirestoreProperty("type")]
+    public string Type { get; set; }
+
+    [FirestoreProperty("groupId")]
+    public string GroupId { get; set; }
+
+    [FirestoreProperty("listId")]
+    public string ListId { get; set; }
+
+    [FirestoreProperty("groupName")]
+    public string GroupName { get; set; }
+
+    [FirestoreProperty("read")]
+    public bool Read { get; set; }
+
+    [FirestoreProperty("createdAt")]
+    public DateTimeOffset CreatedAt { get; set; }
 }

@@ -51,6 +51,6 @@ public partial class AccountPage : ContentPage
     async void NotificationsSwitch_Toggled(object sender, ToggledEventArgs e)
     {
         if (BindingContext is AccountViewModel vm)
-            await vm.OnNotificationsToggledAsync(e.Value);
+            await vm.OnNotificationsEnabledToggledAsync(e.Value);
     }
 }

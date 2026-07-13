@@ -1078,6 +1078,7 @@ public partial class GroupDashboardPane : ContentView
         }
 
         currentSection = null;
+        var canViewNotes = RolePermissions.CanViewBoardNotes(profileService.CurrentProfile?.Roles);
         foreach (var item in hymns)
         {
             item.ShowDragHandle = canEdit && item.IsNotEditing;
@@ -1087,6 +1088,7 @@ public partial class GroupDashboardPane : ContentView
                 currentSection = item;
                 item.SectionHymnCount = counts.GetValueOrDefault(item.Id, 0);
                 item.IsRowVisible = true;
+                item.ShowNotes = false;
                 var name = item.SectionName?.Trim() ?? string.Empty;
                 item.IsSectionSaved = !string.IsNullOrEmpty(name) && savedSectionNames.Contains(name);
                 item.ShowSectionSaveAction = canEdit && item.IsNotEditing && !item.IsSectionSaved;
@@ -1095,6 +1097,7 @@ public partial class GroupDashboardPane : ContentView
             }
 
             item.IsRowVisible = currentSection == null || !currentSection.IsCollapsed;
+            item.ShowNotes = canViewNotes && item.HasNotes;
             item.ShowSectionSaveAction = false;
             item.ShowSectionUnsaveAction = false;
         }

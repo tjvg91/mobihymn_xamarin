@@ -96,6 +96,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<BoardNavigationContext>();
         builder.Services.AddSingleton<IAddToBoardService, AddToBoardService>();
         builder.Services.AddSingleton<IGroupDashboardService, GroupDashboardService>();
+        builder.Services.AddSingleton<IBoardNotificationService, BoardNotificationService>();
 #if ANDROID
         builder.Services.AddSingleton<IVoiceRecognitionService, AndroidVoiceRecognitionService>();
         builder.Services.AddSingleton<IDownloadNotificationService, DownloadNotificationService>();
@@ -116,6 +117,7 @@ public static class MauiProgram
 #if ANDROID
         app.Services.GetService<IDownloadNotificationService>();
 #endif
+        _ = app.Services.GetService<IBoardNotificationService>()?.StartAsync();
 
         return app;
     }

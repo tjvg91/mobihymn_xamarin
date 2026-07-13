@@ -174,5 +174,7 @@ public sealed class GroupDashboardService : IGroupDashboardService
 
     public void MarkNotificationsRead() => HasUnreadNotifications = false;
 
+    public void SetUnreadNotifications(bool hasUnread) => HasUnreadNotifications = hasUnread;
+
     public void NotifyBoardUpdated() => HasUnreadNotifications = !IsOpen;
 }

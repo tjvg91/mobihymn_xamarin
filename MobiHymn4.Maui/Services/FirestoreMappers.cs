@@ -23,6 +23,7 @@ public static class FirestoreMappers
             LastName = doc.LastName ?? string.Empty,
             Nickname = doc.Nickname ?? string.Empty,
             NotificationsMuted = doc.NotificationsMuted,
+            NotificationsPreferenceSet = doc.NotificationsPreferenceSet,
             Roles = doc.Roles?.Select(r => UserRoleExtensions.Parse(r)).Where(r => r.HasValue).Select(r => r.Value).ToList() ?? new List<UserRole>(),
             GroupIds = doc.GroupIds?.ToList() ?? new List<string>(),
         };
@@ -39,6 +40,7 @@ public static class FirestoreMappers
             Nickname = profile.Nickname,
             DisplayName = profile.DisplayName,
             NotificationsMuted = profile.NotificationsMuted,
+            NotificationsPreferenceSet = profile.NotificationsPreferenceSet,
             Roles = profile.Roles?.Select(r => r.ToStorageKey()).ToList() ?? new List<string>(),
             GroupIds = profile.GroupIds?.ToList() ?? new List<string>(),
         };

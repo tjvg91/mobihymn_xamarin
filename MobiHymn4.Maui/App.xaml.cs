@@ -38,7 +38,7 @@ public partial class App : Application
 
         globalInstance.RefreshIncompleteDownloadState();
 
-        // TODO: Wire Plugin.Firebase.CloudMessaging token and notification handlers.
+        _ = ServiceHelper.Get<IBoardNotificationService>().StartAsync();
     }
 
     protected override void OnStart()
