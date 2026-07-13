@@ -29,7 +29,7 @@ public class BoardHymnEntry : INotifyPropertyChanged
     public bool IsHymn => !IsSection;
     public bool HasSectionName => !string.IsNullOrWhiteSpace(SectionName);
 
-    public string ChevronGlyph => IsCollapsed ? "\uf054" : "\uf078";
+    public string ChevronGlyph => IsCollapsed ? "\uf077" : "\uf078";
 
     int sectionHymnCount;
     public int SectionHymnCount
@@ -103,6 +103,22 @@ public class BoardHymnEntry : INotifyPropertyChanged
         set => SetField(ref isDragOver, value);
     }
 
+    bool showDropLineAbove;
+    /// <summary>UI-only: insertion line above this row while dragging.</summary>
+    public bool ShowDropLineAbove
+    {
+        get => showDropLineAbove;
+        set => SetField(ref showDropLineAbove, value);
+    }
+
+    bool showDropLineBelow;
+    /// <summary>UI-only: insertion line below this row while dragging.</summary>
+    public bool ShowDropLineBelow
+    {
+        get => showDropLineBelow;
+        set => SetField(ref showDropLineBelow, value);
+    }
+
     public string SectionHymnCountText => SectionHymnCount.ToString();
     public string Notes { get; set; } = string.Empty;
     public string AddedBy { get; set; } = string.Empty;
@@ -112,7 +128,16 @@ public class BoardHymnEntry : INotifyPropertyChanged
     public bool HasNotes => !string.IsNullOrWhiteSpace(Notes);
 
     /// <summary>UI-only: first line of the hymn, resolved from the local hymn list. Not persisted.</summary>
-    public string FirstLine { get; set; } = string.Empty;
+    string firstLine = string.Empty;
+    public string FirstLine
+    {
+        get => firstLine;
+        set
+        {
+            if (SetField(ref firstLine, value ?? string.Empty))
+                OnPropertyChanged(nameof(HasFirstLine));
+        }
+    }
 
     public bool HasFirstLine => !string.IsNullOrWhiteSpace(FirstLine);
 

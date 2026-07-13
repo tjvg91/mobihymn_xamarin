@@ -115,7 +115,13 @@ public sealed class BoardService : IBoardService
             CreatedBy = auth.CurrentUserId,
             UpdatedAt = now,
             UpdatedBy = auth.CurrentUserId,
+            Hymns = new List<BoardHymnEntry>(),
         };
+
+        // Seed only template (saved) sections — never copy list-only sections from another day.
+        var template = await GetSectionTemplateAsync(groupId);
+        if (ShouldShowSavedSections(template))
+            MergeSavedSectionsIfNeeded(list, template);
 
         await SaveHymnListAsync(groupId, list);
         return list;
@@ -316,15 +322,18 @@ public sealed class BoardService : IBoardService
             throw new InvalidOperationException("That hymn is already on the board.");
 
         var profile = profileService.CurrentProfile;
-        list.Hymns.Add(new BoardHymnEntry
+        // Place new hymns before the first section so they are unsectioned by default.
+        var firstSectionIndex = list.Hymns.FindIndex(h => h.IsSection);
+        var insertAt = firstSectionIndex < 0 ? list.Hymns.Count : firstSectionIndex;
+        list.Hymns.Insert(insertAt, new BoardHymnEntry
         {
             HymnNumber = normalized,
-            SortOrder = list.Hymns.Count,
             Notes = notes ?? string.Empty,
             AddedBy = profile.Uid,
             AddedByName = profile.DisplayName,
             UpdatedAt = DateTime.UtcNow,
         });
+        Renumber(list.Hymns);
 
         await SaveHymnListAsync(groupId, list);
     }

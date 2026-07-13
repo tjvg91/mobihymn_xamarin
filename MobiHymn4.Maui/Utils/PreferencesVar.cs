@@ -19,6 +19,7 @@ namespace MobiHymn4.Utils
         public const string ACTIVE_LETTER_SPACING = "activeLetterSpacing";
         public const string ACTIVE_LINE_SPACING = "activeLineSpacing";
         public const string ACTIVE_ALIGNMENT = "activeAlignment";
+        public const string READER_SETTINGS = "readerSettings";
         public const string GROUP_WELCOME_SEEN_IDS = "groupWelcomeSeenIds";
         public const string COMMUNITY_PROMPT_DISMISSED = "communityPromptDismissed";
     }

@@ -44,7 +44,7 @@
                         CharacterSpacing="1.2"
                         TextTransform="Uppercase"
                         TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
-                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="4">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
                         <Label
                             x:Name="lblGroupName"
                             Grid.Column="0"
@@ -69,21 +69,6 @@
                             TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}">
                             <Label.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="GroupMenu_Tapped"/>
-                            </Label.GestureRecognizers>
-                        </Label>
-                        <Label
-                            x:Name="btnBoardOptions"
-                            Grid.Column="2"
-                            Text="&#xf142;"
-                            FontFamily="FAS"
-                            FontSize="17"
-                            VerticalOptions="Center"
-                            HorizontalOptions="End"
-                            WidthRequest="32"
-                            HorizontalTextAlignment="Center"
-                            TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}">
-                            <Label.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="BoardOptions_Tapped"/>
                             </Label.GestureRecognizers>
                         </Label>
                     </Grid>
@@ -212,12 +197,20 @@
 
                     <!-- Active hymn list detail -->
                     <Grid x:Name="listDetail" IsVisible="False" RowDefinitions="Auto,*" RowSpacing="12">
-                        <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                        <Grid
+                            Grid.Row="0"
+                            ColumnDefinitions="Auto,*,Auto"
+                            ColumnSpacing="8"
+                            Padding="0,2">
                             <Label
                                 Grid.Column="0"
                                 Text="&#xf053;"
                                 FontFamily="FAS"
-                                FontSize="14"
+                                FontSize="16"
+                                WidthRequest="36"
+                                HeightRequest="36"
+                                HorizontalTextAlignment="Center"
+                                VerticalTextAlignment="Center"
                                 VerticalOptions="Center"
                                 TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}">
                                 <Label.GestureRecognizers>
@@ -232,7 +225,29 @@
                                 VerticalOptions="Center"
                                 LineBreakMode="TailTruncation"
                                 MaxLines="1"
-                                TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+                                TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}">
+                                <Label.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="BackToLists_Tapped"/>
+                                </Label.GestureRecognizers>
+                            </Label>
+                            <Label
+                                x:Name="btnBoardOptions"
+                                Grid.Column="2"
+                                Text="&#xf142;"
+                                FontFamily="FAS"
+                                FontSize="17"
+                                VerticalOptions="Center"
+                                HorizontalOptions="End"
+                                WidthRequest="32"
+                                HeightRequest="36"
+                                HorizontalTextAlignment="Center"
+                                VerticalTextAlignment="Center"
+                                IsVisible="False"
+                                TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}">
+                                <Label.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="BoardOptions_Tapped"/>
+                                </Label.GestureRecognizers>
+                            </Label>
                         </Grid>
 
                         <Grid Grid.Row="1">
@@ -240,7 +255,7 @@
                                 x:Name="hymnList"
                                 VerticalOptions="Fill"
                                 SelectionMode="Single"
-                                ItemSizingStrategy="MeasureFirstItem"
+                                ItemSizingStrategy="MeasureAllItems"
                                 SelectionChanged="HymnList_SelectionChanged">
                         <CollectionView.ItemsLayout>
                             <LinearItemsLayout Orientation="Vertical" />
@@ -267,9 +282,27 @@
                         </CollectionView.EmptyView>
                         <CollectionView.ItemTemplate>
                             <DataTemplate x:DataType="models:BoardHymnEntry">
-                                <SwipeView
+                                <Grid
                                     Margin="0,0,0,8"
+                                    RowDefinitions="Auto,*,Auto"
                                     HorizontalOptions="Fill">
+                                    <Grid.Triggers>
+                                        <DataTrigger TargetType="Grid" Binding="{Binding IsSection}" Value="True">
+                                            <Setter Property="Margin" Value="0,0,0,2"/>
+                                        </DataTrigger>
+                                    </Grid.Triggers>
+                                    <BoxView
+                                        Grid.Row="0"
+                                        HeightRequest="3"
+                                        CornerRadius="1.5"
+                                        Margin="8,0,8,2"
+                                        Color="{StaticResource Primary}"
+                                        HorizontalOptions="Fill"
+                                        IsVisible="{Binding ShowDropLineAbove}"
+                                        InputTransparent="True"/>
+                                    <SwipeView
+                                        Grid.Row="1"
+                                        HorizontalOptions="Fill">
                                     <VisualStateManager.VisualStateGroups>
                                         <VisualStateGroup Name="CommonStates">
                                             <VisualState Name="Selected">
@@ -279,11 +312,6 @@
                                             </VisualState>
                                         </VisualStateGroup>
                                     </VisualStateManager.VisualStateGroups>
-                                    <SwipeView.Triggers>
-                                        <DataTrigger TargetType="SwipeView" Binding="{Binding IsSection}" Value="True">
-                                            <Setter Property="Margin" Value="0,0,0,2"/>
-                                        </DataTrigger>
-                                    </SwipeView.Triggers>
                                     <SwipeView.RightItems>
                                         <SwipeItems Mode="Reveal">
                                             <SwipeItemView Invoked="SaveSection_Invoked" IsVisible="{Binding ShowSectionSaveAction}">
@@ -347,7 +375,10 @@
                                             </DataTrigger>
                                         </Border.Triggers>
                                         <Border.GestureRecognizers>
-                                            <DragGestureRecognizer CanDrag="True" DragStarting="BoardEntry_DragStarting"/>
+                                            <DragGestureRecognizer
+                                                CanDrag="True"
+                                                DragStarting="BoardEntry_DragStarting"
+                                                DropCompleted="BoardEntry_DropCompleted"/>
                                             <DropGestureRecognizer AllowDrop="True" DragOver="BoardEntry_DragOver" DragLeave="BoardEntry_DragLeave" Drop="BoardEntry_Drop"/>
                                         </Border.GestureRecognizers>
                                         <VerticalStackLayout Spacing="8" HorizontalOptions="Fill">
@@ -360,15 +391,14 @@
                                                     IsVisible="{Binding IsSection}">
                                                     <Label
                                                         Grid.Column="0"
-                                                        Text="{Binding ChevronGlyph}"
+                                                        Text="&#xf58e;"
                                                         FontFamily="FAS"
-                                                        FontSize="11"
+                                                        FontSize="14"
+                                                        WidthRequest="24"
+                                                        HorizontalTextAlignment="Center"
                                                         VerticalOptions="Center"
-                                                        TextColor="{StaticResource Primary}">
-                                                        <Label.GestureRecognizers>
-                                                            <TapGestureRecognizer Tapped="SectionHeader_Tapped"/>
-                                                        </Label.GestureRecognizers>
-                                                    </Label>
+                                                        TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"
+                                                        IsVisible="{Binding ShowDragHandle}"/>
                                                     <Label
                                                         Grid.Column="1"
                                                         Text="{Binding SectionName}"
@@ -398,14 +428,17 @@
                                                     </Border>
                                                     <Label
                                                         Grid.Column="3"
-                                                        Text="&#xf58e;"
+                                                        Text="{Binding ChevronGlyph}"
                                                         FontFamily="FAS"
-                                                        FontSize="14"
+                                                        FontSize="11"
                                                         WidthRequest="24"
                                                         HorizontalTextAlignment="Center"
                                                         VerticalOptions="Center"
-                                                        TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"
-                                                        IsVisible="{Binding ShowDragHandle}"/>
+                                                        TextColor="{StaticResource Primary}">
+                                                        <Label.GestureRecognizers>
+                                                            <TapGestureRecognizer Tapped="SectionHeader_Tapped"/>
+                                                        </Label.GestureRecognizers>
+                                                    </Label>
                                                 </Grid>
                                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" IsVisible="{Binding IsHymn}">
                                                     <Label
@@ -421,20 +454,41 @@
                                                         IsVisible="{Binding ShowDragHandle}"
                                                         InputTransparent="True"/>
                                                     <VerticalStackLayout Grid.Column="1" Spacing="3" InputTransparent="True">
-                                                    <Label
-                                                        Text="{Binding HymnNumber, StringFormat='Hymn #{0}'}"
-                                                        FontAttributes="Bold"
-                                                        FontSize="15"
-                                                        LineBreakMode="TailTruncation"
-                                                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+                                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                                        <Label
+                                                            Grid.Column="0"
+                                                            Text="{Binding HymnNumber, StringFormat='Hymn #{0}'}"
+                                                            FontAttributes="Bold"
+                                                            FontSize="15"
+                                                            LineBreakMode="TailTruncation"
+                                                            VerticalOptions="Center"
+                                                            TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+                                                        <HorizontalStackLayout
+                                                            Grid.Column="1"
+                                                            Spacing="5"
+                                                            VerticalOptions="Center"
+                                                            HorizontalOptions="End">
+                                                            <Label
+                                                                Text="&#xf017;"
+                                                                FontFamily="FAS"
+                                                                FontSize="11"
+                                                                VerticalOptions="Center"
+                                                                TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                                            <Label
+                                                                Text="{Binding AddedAtText}"
+                                                                FontSize="12"
+                                                                VerticalOptions="Center"
+                                                                TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                                        </HorizontalStackLayout>
+                                                    </Grid>
                                                     <Label
                                                         Text="{Binding FirstLine}"
                                                         IsVisible="{Binding HasFirstLine}"
                                                         FontSize="13"
                                                         LineBreakMode="TailTruncation"
                                                         MaxLines="2"
-                                                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
-                                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="5" Margin="0,8,0,0" HorizontalOptions="Fill">
+                                                        TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="5" Margin="0,8,0,0" HorizontalOptions="Fill">
                                                         <Label
                                                             Grid.Column="0"
                                                             Text="&#xf007;"
@@ -449,29 +503,31 @@
                                                             VerticalOptions="Center"
                                                             LineBreakMode="TailTruncation"
                                                             TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                                    </Grid>
+                                                    <Grid
+                                                        ColumnDefinitions="Auto,*"
+                                                        ColumnSpacing="5"
+                                                        Margin="0,4,0,0"
+                                                        HorizontalOptions="Fill"
+                                                        IsVisible="{Binding HasNotes}">
                                                         <Label
-                                                            Grid.Column="2"
-                                                            Text="&#xf017;"
+                                                            Grid.Column="0"
+                                                            Text="&#xf249;"
                                                             FontFamily="FAS"
                                                             FontSize="11"
-                                                            VerticalOptions="Center"
+                                                            VerticalOptions="Start"
+                                                            Margin="0,2,0,0"
                                                             TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
                                                         <Label
-                                                            Grid.Column="3"
-                                                            Text="{Binding AddedAtText}"
+                                                            Grid.Column="1"
+                                                            Text="{Binding Notes}"
+                                                            FontAttributes="Italic"
                                                             FontSize="12"
-                                                            VerticalOptions="Center"
+                                                            Opacity="0.6"
+                                                            LineBreakMode="WordWrap"
+                                                            HorizontalOptions="Fill"
                                                             TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
                                                     </Grid>
-                                                    <Label
-                                                        Text="{Binding Notes}"
-                                                        IsVisible="{Binding HasNotes}"
-                                                        FontAttributes="Italic"
-                                                        FontSize="12"
-                                                        Opacity="0.6"
-                                                        LineBreakMode="WordWrap"
-                                                        HorizontalOptions="Fill"
-                                                        TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
                                                     </VerticalStackLayout>
                                                 </Grid>
                                             </VerticalStackLayout>
@@ -610,7 +666,17 @@
                                             </VerticalStackLayout>
                                         </VerticalStackLayout>
                                     </Border>
-                                </SwipeView>
+                                    </SwipeView>
+                                    <BoxView
+                                        Grid.Row="2"
+                                        HeightRequest="3"
+                                        CornerRadius="1.5"
+                                        Margin="8,2,8,0"
+                                        Color="{StaticResource Primary}"
+                                        HorizontalOptions="Fill"
+                                        IsVisible="{Binding ShowDropLineBelow}"
+                                        InputTransparent="True"/>
+                                </Grid>
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
                     </CollectionView>
@@ -1066,6 +1132,7 @@
                                 Color="{StaticResource Primary}"
                                 HorizontalOptions="Center"/>
                             <Label
+                                x:Name="lblBoardLoader"
                                 Text="Loading board..."
                                 FontSize="13"
                                 HorizontalTextAlignment="Center"

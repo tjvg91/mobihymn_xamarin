@@ -98,6 +98,8 @@ public partial class GroupDashboardPane : ContentView
         auth.AuthStateChanged += (_, _) => MainThread.BeginInvokeOnMainThread(RefreshState);
         profileService.ProfileChanged += (_, _) => MainThread.BeginInvokeOnMainThread(RefreshState);
         boardContext.Changed += (_, _) => MainThread.BeginInvokeOnMainThread(() => _ = OnBoardContextChangedAsync());
+        Globals.Instance.InitFinished += (_, _) => MainThread.BeginInvokeOnMainThread(RefreshHymnFirstLines);
+        Globals.Instance.SettingsLoaded += (_, _) => MainThread.BeginInvokeOnMainThread(RefreshHymnFirstLines);
     }
 
     public async Task SyncOpenStateAsync()
@@ -505,6 +507,12 @@ public partial class GroupDashboardPane : ContentView
         var show = boardLoadingCount > 0;
         if (boardLoader != null)
             boardLoader.IsVisible = show;
+        if (lblBoardLoader != null)
+        {
+            lblBoardLoader.Text = currentView == GroupDashboardView.HymnListDetail
+                ? "Loading hymns..."
+                : "Loading board...";
+        }
         if (addFabStack != null)
             addFabStack.IsVisible = !show && canEdit && currentView == GroupDashboardView.HymnListDetail
                 && !addHymnPanelExpanded && !addSectionPanelExpanded;
@@ -526,12 +534,13 @@ public partial class GroupDashboardPane : ContentView
 
     void UpdateBoardViewMode()
     {
+        var loading = boardLoadingCount > 0;
         if (listsOverview != null)
-            listsOverview.IsVisible = currentView == GroupDashboardView.HymnLists;
+            listsOverview.IsVisible = !loading && currentView == GroupDashboardView.HymnLists;
         if (listDetail != null)
-            listDetail.IsVisible = currentView == GroupDashboardView.HymnListDetail;
+            listDetail.IsVisible = !loading && currentView == GroupDashboardView.HymnListDetail;
         if (membersView != null)
-            membersView.IsVisible = currentView == GroupDashboardView.Members;
+            membersView.IsVisible = !loading && currentView == GroupDashboardView.Members;
         if (lblActiveListName != null)
             lblActiveListName.Text = activeListSummary?.Name ?? string.Empty;
     }
@@ -563,7 +572,7 @@ public partial class GroupDashboardPane : ContentView
                 viewingListDetail = true;
                 UpdateBoardViewMode();
                 UpdateLayout();
-                await LoadActiveListAsync(showLoading: false);
+                await LoadActiveListAsync(showLoading: true);
                 return;
             }
         }
@@ -600,30 +609,66 @@ public partial class GroupDashboardPane : ContentView
         SyncActiveListSummaryFromHymns();
         currentView = GroupDashboardView.HymnLists;
         viewingListDetail = false;
+        activeListSummary = null;
         ResetMemberSearch();
         boardSubscription?.Dispose();
         boardSubscription = null;
         subscribedListId = null;
         hymns.Clear();
         displayHymns.Clear();
+
+        // A stuck loader would hide the overview even after switching views.
+        while (boardLoadingCount > 0)
+            SetBoardLoading(false);
+
         UpdateBoardViewMode();
         UpdateLayout();
     }
 
     void ShowListsOverview() => ShowHymnListsView();
 
-    Task OpenHymnListAsync(GroupHymnListSummary summary)
+    void BackToLists_Tapped(object sender, TappedEventArgs e)
+    {
+        suppressBoardContextReload = true;
+        try
+        {
+            boardContext.ActiveListId = string.Empty;
+        }
+        finally
+        {
+            suppressBoardContextReload = false;
+        }
+
+        ShowListsOverview();
+    }
+
+    async Task OpenHymnListAsync(
+        GroupHymnListSummary summary,
+        bool applySavedSections = true,
+        bool stripUnsavedSections = false)
     {
         if (summary == null || activeGroup == null)
-            return Task.CompletedTask;
+            return;
 
         activeListSummary = summary;
         currentView = GroupDashboardView.HymnListDetail;
         viewingListDetail = true;
-        UpdateBoardViewMode();
+
+        suppressBoardContextReload = true;
+        try
+        {
+            boardContext.ActiveListId = summary.Id;
+        }
+        finally
+        {
+            suppressBoardContextReload = false;
+        }
+
+        await LoadActiveListAsync(
+            showLoading: true,
+            applySavedSections: applySavedSections,
+            stripUnsavedSections: stripUnsavedSections);
         UpdateLayout();
-        boardContext.ActiveListId = summary.Id;
-        return Task.CompletedTask;
     }
 
     async Task LoadBoardAsync()
@@ -690,7 +735,6 @@ public partial class GroupDashboardPane : ContentView
 
                 UpdateBoardViewMode();
                 UpdateLayout();
-                SetBoardLoading(false);
 
                 await LoadActiveListAsync(version, showLoading: false);
                 _ = ApplySummariesWhenReadyAsync(summariesTask, version);
@@ -774,7 +818,11 @@ public partial class GroupDashboardPane : ContentView
         }
     }
 
-    async Task LoadActiveListAsync(int? expectedVersion = null, bool showLoading = true)
+    async Task LoadActiveListAsync(
+        int? expectedVersion = null,
+        bool showLoading = true,
+        bool applySavedSections = true,
+        bool stripUnsavedSections = false)
     {
         if (activeGroup == null || activeListSummary == null)
             return;
@@ -804,10 +852,12 @@ public partial class GroupDashboardPane : ContentView
                 subscribedGroupId = groupId;
                 subscribedListId = listId;
 
+                // Live updates keep whatever is stored; strip only applies to the first paint after create.
                 var (subscription, initial) = await boardService.SubscribeHymnListWithInitialAsync(
                     groupId,
                     listId,
-                    list => MainThread.BeginInvokeOnMainThread(() => _ = ApplyHymnListAsync(list)));
+                    list => MainThread.BeginInvokeOnMainThread(() =>
+                        _ = ApplyHymnListAsync(list, applySavedSections: applySavedSections)));
                 boardSubscription = subscription;
                 current = initial;
             }
@@ -839,12 +889,16 @@ public partial class GroupDashboardPane : ContentView
                     lblActiveListName.Text = current.Name ?? string.Empty;
             }
 
-            await ApplyHymnListAsync(current);
+            await ApplyHymnListAsync(
+                current,
+                applySavedSections: applySavedSections,
+                stripUnsavedSections: stripUnsavedSections);
 
             if (showLoading)
                 SetBoardLoading(false);
 
-            _ = EnsureSavedSectionsInBackgroundAsync(groupId, listId, current, expectedVersion);
+            if (applySavedSections)
+                _ = EnsureSavedSectionsInBackgroundAsync(groupId, listId, current, expectedVersion);
         }
         finally
         {
@@ -882,7 +936,7 @@ public partial class GroupDashboardPane : ContentView
         }
     }
 
-    async Task ApplyHymnListAsync(GroupHymnList list)
+    async Task ApplyHymnListAsync(GroupHymnList list, bool applySavedSections = true, bool stripUnsavedSections = false)
     {
         if (list == null)
         {
@@ -890,7 +944,12 @@ public partial class GroupDashboardPane : ContentView
             return;
         }
 
-        list = InjectSavedSections(list);
+        if (stripUnsavedSections)
+            StripUnsavedSections(list);
+
+        if (applySavedSections)
+            list = InjectSavedSections(list);
+
         var ordered = list.Hymns?.OrderBy(h => h.SortOrder).ToList() ?? new List<BoardHymnEntry>();
         var collapsedSectionIds = hymns
             .Where(h => h.IsSection && h.IsCollapsed)
@@ -914,6 +973,30 @@ public partial class GroupDashboardPane : ContentView
 
         list.Hymns = ordered;
         CommitHymnListState(list);
+        RefreshHymnFirstLines();
+    }
+
+    void RefreshHymnFirstLines()
+    {
+        if (hymns.Count == 0)
+            return;
+
+        // Force rebuild in case hymns finished downloading after an empty cache.
+        hymnNumberLookup = null;
+        hymnNumberLookupCount = -1;
+        var lookup = GetHymnNumberLookup();
+        if (lookup.Count == 0)
+            return;
+
+        foreach (var entry in hymns)
+        {
+            if (entry.IsSection)
+                continue;
+
+            var line = ResolveFirstLine(entry.HymnNumber, lookup);
+            if (!string.Equals(entry.FirstLine, line, StringComparison.Ordinal))
+                entry.FirstLine = line;
+        }
     }
 
     void CommitHymnListState(GroupHymnList list)
@@ -951,6 +1034,16 @@ public partial class GroupDashboardPane : ContentView
 
             if (unchanged)
             {
+                // FirstLine is UI-only and resolved after hymns download — keep it in sync.
+                for (var i = 0; i < ordered.Count; i++)
+                {
+                    if (!ordered[i].IsSection
+                        && !string.Equals(hymns[i].FirstLine, ordered[i].FirstLine, StringComparison.Ordinal))
+                    {
+                        hymns[i].FirstLine = ordered[i].FirstLine;
+                    }
+                }
+
                 RefreshSectionPresentation();
                 UpdateAddPanelsExpansion();
                 return;
@@ -1055,6 +1148,19 @@ public partial class GroupDashboardPane : ContentView
 
         dragEntry = entry;
         e.Data.Properties["EntryId"] = entry.Id;
+        ClearDropIndicators();
+        ApplyBoardDragShadow(e);
+    }
+
+    static void ApplyBoardDragShadow(DragStartingEventArgs e)
+    {
+#if ANDROID
+        if (e.PlatformArgs?.Sender is not global::Android.Views.View platformView)
+            return;
+
+        e.PlatformArgs.SetDragShadowBuilder(
+            new Platforms.Android.BoardDragShadowBuilder(platformView, e.PlatformArgs.MotionEvent));
+#endif
     }
 
     static BoardHymnEntry ResolveBoardEntry(object sender)
@@ -1080,40 +1186,153 @@ public partial class GroupDashboardPane : ContentView
         }
 
         var target = ResolveBoardEntry(sender);
-        if (target != null)
+        if (target == null)
         {
-            target.IsDragOver = true;
-            e.AcceptedOperation = DataPackageOperation.Copy;
+            e.AcceptedOperation = DataPackageOperation.None;
+            return;
         }
+
+        UpdateDropIndicator(target);
+        e.AcceptedOperation = DataPackageOperation.Copy;
     }
 
     void BoardEntry_DragLeave(object sender, DragEventArgs e)
     {
-        var target = ResolveBoardEntry(sender);
-        if (target != null)
-            target.IsDragOver = false;
+        // Full clear so a redirected indicator (e.g. end of section block) does not stick.
+        // The next DragOver restores the line while still hovering a row.
+        ClearDropIndicators();
+    }
+
+    void BoardEntry_DropCompleted(object sender, DropCompletedEventArgs e)
+    {
+        ClearDropIndicators();
+        dragEntry = null;
     }
 
     async void BoardEntry_Drop(object sender, DropEventArgs e)
     {
-        foreach (var item in hymns)
-            item.IsDragOver = false;
+        ClearDropIndicators();
 
-        if (!canEdit || dragEntry == null || activeGroup == null)
+        if (!canEdit || activeGroup == null)
             return;
 
         var target = ResolveBoardEntry(sender);
-        if (target == null)
-            return;
-
-        var source = dragEntry;
+        var source = dragEntry ?? ResolveDragSourceFromPackage(e);
         dragEntry = null;
 
-        if (source.Id == target.Id)
+        if (source == null || target == null || source.Id == target.Id)
             return;
 
         MoveEntry(source, target);
         await PersistReorderAsync(manualReorder: true);
+    }
+
+    BoardHymnEntry ResolveDragSourceFromPackage(DropEventArgs e)
+    {
+        if (e?.Data?.Properties == null)
+            return null;
+
+        if (!e.Data.Properties.TryGetValue("EntryId", out var idObj))
+            return null;
+
+        var id = idObj as string;
+        if (string.IsNullOrEmpty(id))
+            return null;
+
+        return hymns.FirstOrDefault(h => h.Id == id);
+    }
+
+    void UpdateDropIndicator(BoardHymnEntry hovered)
+    {
+        if (dragEntry == null || hovered == null || dragEntry.Id == hovered.Id)
+        {
+            ClearDropIndicators();
+            return;
+        }
+
+        var indicator = ResolveDropIndicatorTarget(dragEntry, hovered, out var below);
+        if (indicator == null)
+        {
+            ClearDropIndicators();
+            return;
+        }
+
+        foreach (var item in hymns)
+        {
+            var isTarget = ReferenceEquals(item, indicator);
+            item.IsDragOver = isTarget;
+            item.ShowDropLineAbove = isTarget && !below;
+            item.ShowDropLineBelow = isTarget && below;
+        }
+    }
+
+    BoardHymnEntry ResolveDropIndicatorTarget(BoardHymnEntry source, BoardHymnEntry target, out bool below)
+    {
+        below = false;
+        var sourceIndex = hymns.IndexOf(source);
+        var targetIndex = hymns.IndexOf(target);
+        if (sourceIndex < 0 || targetIndex < 0)
+            return null;
+
+        // Match MoveEntry / MoveSectionBlock insert side.
+        if (source.IsSection)
+        {
+            if (target.IsSection)
+            {
+                if (sourceIndex < targetIndex)
+                {
+                    below = true;
+                    return LastVisibleInSectionBlock(target) ?? target;
+                }
+
+                below = false;
+                return target;
+            }
+
+            below = sourceIndex < targetIndex;
+            return target;
+        }
+
+        if (target.IsSection)
+        {
+            if (sourceIndex < targetIndex)
+            {
+                below = true;
+                return LastVisibleInSectionBlock(target) ?? target;
+            }
+
+            // Insert as first hymn under this section header.
+            below = true;
+            return target;
+        }
+
+        below = sourceIndex < targetIndex;
+        return target;
+    }
+
+    BoardHymnEntry LastVisibleInSectionBlock(BoardHymnEntry section)
+    {
+        var block = GetSectionBlock(hymns, section);
+        for (var i = block.Count - 1; i >= 0; i--)
+        {
+            if (displayHymns.Contains(block[i]))
+                return block[i];
+        }
+
+        return section;
+    }
+
+    void ClearDropIndicators()
+    {
+        foreach (var item in hymns)
+        {
+            if (!item.IsDragOver && !item.ShowDropLineAbove && !item.ShowDropLineBelow)
+                continue;
+
+            item.IsDragOver = false;
+            item.ShowDropLineAbove = false;
+            item.ShowDropLineBelow = false;
+        }
     }
 
     void MoveEntry(BoardHymnEntry source, BoardHymnEntry target)
@@ -1276,11 +1495,36 @@ public partial class GroupDashboardPane : ContentView
         if (string.IsNullOrWhiteSpace(hymnNumber))
             return string.Empty;
 
-        if (hymnLookup != null
-            && hymnLookup.TryGetValue(hymnNumber.Trim(), out var hymn))
-            return hymn.FirstLine ?? hymn.Title ?? string.Empty;
+        var key = hymnNumber.Trim();
+        Hymn hymn = null;
+        if (hymnLookup != null)
+            hymnLookup.TryGetValue(key, out hymn);
 
-        return string.Empty;
+        if (hymn == null)
+            hymn = Globals.Instance.HymnList?[key];
+
+        if (hymn == null)
+        {
+            // Handle stored numbers like "70" matching "70s"/"70t" only when exact fails.
+            var list = Globals.Instance.HymnList;
+            if (list != null)
+                hymn = HymnNumberHelper.FindExact(key, list) ?? HymnNumberHelper.ResolveHymn(key, list);
+        }
+
+        if (hymn == null)
+            return string.Empty;
+
+        var line = hymn.FirstLine;
+        if (string.IsNullOrWhiteSpace(line) && !string.IsNullOrWhiteSpace(hymn.Lyrics))
+            line = HymnNumberHelper.ExtractLyricLines(hymn.Lyrics).FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(line))
+            line = hymn.Title;
+
+        if (string.IsNullOrWhiteSpace(line))
+            return string.Empty;
+
+        return HymnNumberHelper.CleanDisplayLine(line);
     }
 
     static string ResolveFirstLine(string hymnNumber) =>
@@ -1309,6 +1553,17 @@ public partial class GroupDashboardPane : ContentView
             .ToList() ?? new List<string>();
         savedSectionNames = savedSectionNamesOrdered.ToHashSet(StringComparer.OrdinalIgnoreCase);
         RefreshSectionPresentation();
+    }
+
+    void StripUnsavedSections(GroupHymnList list)
+    {
+        if (list?.Hymns == null || list.Hymns.Count == 0)
+            return;
+
+        list.Hymns = list.Hymns
+            .Where(h => !h.IsSection
+                || savedSectionNames.Contains(h.SectionName?.Trim() ?? string.Empty))
+            .ToList();
     }
 
     GroupHymnList InjectSavedSections(GroupHymnList list)
@@ -1612,7 +1867,34 @@ public partial class GroupDashboardPane : ContentView
         ApplyMemberListPresentation();
     }
 
-    void BackFromMembers_Tapped(object sender, EventArgs e) => ShowHymnListsView();
+    void BackFromMembers_Tapped(object sender, EventArgs e)
+    {
+        while (boardLoadingCount > 0)
+            SetBoardLoading(false);
+        ShowHymnListsView();
+    }
+
+    /// <summary>
+    /// Steps back within the board pane (members / list detail). Returns false at the lists overview.
+    /// </summary>
+    public bool TryHandleBack()
+    {
+        if (currentView == GroupDashboardView.Members)
+        {
+            while (boardLoadingCount > 0)
+                SetBoardLoading(false);
+            ShowHymnListsView();
+            return true;
+        }
+
+        if (currentView == GroupDashboardView.HymnListDetail)
+        {
+            BackToLists_Tapped(this, null);
+            return true;
+        }
+
+        return false;
+    }
 
     void MembersFlatView_Tapped(object sender, EventArgs e) => SetMembersGroupByRole(false);
 
@@ -1994,12 +2276,6 @@ public partial class GroupDashboardPane : ContentView
         }
     }
 
-    void BackToLists_Tapped(object sender, EventArgs e)
-    {
-        boardContext.ActiveListId = string.Empty;
-        ShowListsOverview();
-    }
-
     async void CreateHymnList_Tapped(object sender, EventArgs e)
     {
         if (!canEdit || activeGroup == null)
@@ -2031,7 +2307,8 @@ public partial class GroupDashboardPane : ContentView
                 CanManage = canEdit,
             };
             hymnLists.Insert(0, summary);
-            await OpenHymnListAsync(summary);
+            // New lists only show saved (template) sections — never "This list only" leftovers.
+            await OpenHymnListAsync(summary, applySavedSections: true, stripUnsavedSections: true);
         }
         catch (Exception ex)
         {

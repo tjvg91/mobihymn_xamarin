@@ -1177,10 +1177,7 @@ namespace MobiHymn4.Utils
             if (settingsLoaded)
                 RestoreActiveHymnFromList(rebindOnly: true);
             else if (!settingsFileExists && HymnList?.Count > 0 && activeHymn == null)
-            {
                 ActiveHymn = HymnList[0];
-                activeReadTheme = Colors.White;
-            }
             else
                 RestoreActiveHymnFromList(rebindOnly: true);
 
@@ -1413,7 +1410,10 @@ namespace MobiHymn4.Utils
                 if (WouldSaveEmptyOverExistingUserData())
                     return;
 
-                var settings = JsonConvert.SerializeObject(Globals.Instance);
+                // Preferences first — survives redeploys even if file write fails.
+                PersistReaderPreferences();
+
+                var settings = JsonConvert.SerializeObject(BuildSettingsPayload());
                 var folderPath = AppStorage.GetPath(folderRootName);
                 Directory.CreateDirectory(folderPath);
                 var filePath = Path.Combine(folderPath, settingsName);
@@ -1446,41 +1446,42 @@ namespace MobiHymn4.Utils
                 AppStorage.MigrateLegacyStorageIfNeeded();
 
                 var filePath = AppStorage.GetPath(folderRootName, settingsName);
-                if (!File.Exists(filePath))
+                var loadedAny = false;
+
+                if (File.Exists(filePath))
                 {
-                    RestoreReaderPreferences();
-                    settingsHydratedFromDisk = true;
-                    if (HasStoredReaderPreferences())
-                        ApplyLoadedSettingsToRuntime();
-                    return HasStoredReaderPreferences();
-                }
+                    var settings = await File.ReadAllTextAsync(filePath);
+                    var json = await Task.Run(() => JsonConvert.DeserializeObject<Dictionary<string, object>>(settings));
+                    if (json?.Count > 0)
+                        loadedAny = LoadSettingsEntries(json);
 
-                var settings = await File.ReadAllTextAsync(filePath);
-                var json = await Task.Run(() => JsonConvert.DeserializeObject<Dictionary<string, object>>(settings));
-                if (json == null || json.Count == 0)
-                    return false;
-
-                var loadedAny = LoadSettingsEntries(json);
-
-                if (!loadedAny)
-                {
-                    var backupPath = filePath + ".bak";
-                    if (File.Exists(backupPath))
+                    if (!loadedAny)
                     {
-                        var backupSettings = await File.ReadAllTextAsync(backupPath);
-                        var backupJson = await Task.Run(() =>
-                            JsonConvert.DeserializeObject<Dictionary<string, object>>(backupSettings));
-                        if (backupJson?.Count > 0)
-                            loadedAny = LoadSettingsEntries(backupJson);
+                        var backupPath = filePath + ".bak";
+                        if (File.Exists(backupPath))
+                        {
+                            var backupSettings = await File.ReadAllTextAsync(backupPath);
+                            var backupJson = await Task.Run(() =>
+                                JsonConvert.DeserializeObject<Dictionary<string, object>>(backupSettings));
+                            if (backupJson?.Count > 0)
+                                loadedAny = LoadSettingsEntries(backupJson);
+                        }
                     }
                 }
 
+                // Preferences win for reader chrome (theme/font/spacing) — same path as last hymn.
                 RestoreReaderPreferences();
+                PersistReaderPreferences();
 
-                if (loadedAny || HasStoredReaderPreferences())
+                var restored = loadedAny || HasStoredReaderPreferences() || activeHymn != null;
+                if (restored)
                 {
                     settingsHydratedFromDisk = true;
                     ApplyLoadedSettingsToRuntime();
+                }
+                else
+                {
+                    settingsHydratedFromDisk = true;
                 }
 
                 NormalizeBookmarkGroups();
@@ -1488,7 +1489,7 @@ namespace MobiHymn4.Utils
                 if (BookmarkList != null)
                     RaiseOnMainThread(() => BookmarksChanged?.Invoke(BookmarkList, EventArgs.Empty));
 
-                return loadedAny || HasStoredReaderPreferences();
+                return restored;
             }
             catch (Exception ex)
             {
@@ -1656,22 +1657,27 @@ namespace MobiHymn4.Utils
                 {
                     var parsed = colorObject.ToColor();
                     if (parsed is Color savedColor)
-                        return savedColor;
+                        return NormalizeThemeColor(savedColor);
                 }
 
-                var colorString = value?.ToString();
-                if (!string.IsNullOrWhiteSpace(colorString))
+                var colorString = value?.ToString()?.Trim();
+                if (string.IsNullOrWhiteSpace(colorString))
+                    return Colors.White;
+
+                if (colorString.StartsWith("#", StringComparison.Ordinal))
+                    return NormalizeThemeColor(Color.FromArgb(colorString));
+
+                if (colorString.StartsWith("{", StringComparison.Ordinal))
                 {
-                    if (colorString.StartsWith("#", StringComparison.Ordinal))
-                        return Color.FromArgb(colorString);
-
-                    if (colorString.StartsWith("{", StringComparison.Ordinal))
-                    {
-                        var parsed = JObject.Parse(colorString).ToColor();
-                        if (parsed is Color savedColor)
-                            return savedColor;
-                    }
+                    var parsed = JObject.Parse(colorString).ToColor();
+                    if (parsed is Color savedColor)
+                        return NormalizeThemeColor(savedColor);
                 }
+
+                // Named / ToString() forms like "White" or "Color [R=…]"
+                if (Application.Current?.Resources.TryGetValue(colorString, out var resource) == true
+                    && resource is Color resourceColor)
+                    return NormalizeThemeColor(resourceColor);
             }
             catch (Exception)
             {
@@ -1680,17 +1686,73 @@ namespace MobiHymn4.Utils
             return Colors.White;
         }
 
+        Color NormalizeThemeColor(Color color)
+        {
+            if (ThemeList == null || ThemeList.Count == 0)
+                return color;
+
+            foreach (var theme in ThemeList)
+            {
+                if (theme?.Background == null)
+                    continue;
+
+                if (ColorsNearlyEqual(theme.Background, color))
+                    return theme.Background;
+            }
+
+            return color;
+        }
+
+        static bool ColorsNearlyEqual(Color left, Color right)
+        {
+            if (left == null || right == null)
+                return false;
+
+            return Math.Abs(left.Red - right.Red) <= 0.02
+                && Math.Abs(left.Green - right.Green) <= 0.02
+                && Math.Abs(left.Blue - right.Blue) <= 0.02;
+        }
+
         static string ColorToStorageHex(Color color)
         {
-            var a = (byte)Math.Round(color.Alpha * 255);
-            var r = (byte)Math.Round(color.Red * 255);
-            var g = (byte)Math.Round(color.Green * 255);
-            var b = (byte)Math.Round(color.Blue * 255);
-            return $"#{a:X2}{r:X2}{g:X2}{b:X2}";
+            var r = (byte)Math.Round(Math.Clamp(color.Red, 0, 1) * 255);
+            var g = (byte)Math.Round(Math.Clamp(color.Green, 0, 1) * 255);
+            var b = (byte)Math.Round(Math.Clamp(color.Blue, 0, 1) * 255);
+            return $"#{r:X2}{g:X2}{b:X2}";
+        }
+
+        Dictionary<string, object> BuildSettingsPayload() =>
+            new()
+            {
+                [nameof(HymnInputType)] = (int)hymnInputType,
+                [nameof(ActiveHymn)] = activeHymn,
+                [nameof(ActiveReadTheme)] = ColorToStorageHex(activeReadTheme),
+                [nameof(ActiveAlignment)] = (int)activeAlignment,
+                [nameof(HistoryList)] = HistoryList,
+                [nameof(BookmarkList)] = BookmarkList,
+                [nameof(SearchList)] = SearchList,
+                [nameof(ActiveFontSize)] = activeFontSize,
+                [nameof(ActiveFont)] = activeFont,
+                [nameof(ActiveLetterSpacing)] = activeLetterSpacing,
+                [nameof(ActiveLineSpacing)] = activeLineSpacing,
+                [nameof(DarkMode)] = darkMode,
+                [nameof(KeepAwake)] = keepAwake,
+                [nameof(IsOrientationLocked)] = isOrientationLocked,
+            };
+
+        sealed class ReaderSettingsState
+        {
+            public string Theme { get; set; }
+            public string Font { get; set; }
+            public double FontSize { get; set; } = 20;
+            public double LetterSpacing { get; set; }
+            public double LineSpacing { get; set; } = 1;
+            public int Alignment { get; set; }
         }
 
         static bool HasStoredReaderPreferences() =>
-            Preferences.ContainsKey(PreferencesVar.ACTIVE_READ_THEME)
+            !string.IsNullOrWhiteSpace(Preferences.Get(PreferencesVar.READER_SETTINGS, string.Empty))
+            || Preferences.ContainsKey(PreferencesVar.ACTIVE_READ_THEME)
             || Preferences.ContainsKey(PreferencesVar.ACTIVE_FONT)
             || Preferences.ContainsKey(PreferencesVar.ACTIVE_FONT_SIZE)
             || Preferences.ContainsKey(PreferencesVar.ACTIVE_LETTER_SPACING)
@@ -1699,22 +1761,51 @@ namespace MobiHymn4.Utils
 
         void PersistReaderPreferences()
         {
-            Preferences.Set(PreferencesVar.ACTIVE_READ_THEME, ColorToStorageHex(activeReadTheme));
-            Preferences.Set(PreferencesVar.ACTIVE_FONT, activeFont ?? string.Empty);
-            Preferences.Set(PreferencesVar.ACTIVE_FONT_SIZE, activeFontSize);
-            Preferences.Set(PreferencesVar.ACTIVE_LETTER_SPACING, activeLetterSpacing);
-            Preferences.Set(PreferencesVar.ACTIVE_LINE_SPACING, activeLineSpacing);
-            Preferences.Set(PreferencesVar.ACTIVE_ALIGNMENT, (int)activeAlignment);
+            var state = new ReaderSettingsState
+            {
+                Theme = ColorToStorageHex(activeReadTheme),
+                Font = activeFont ?? string.Empty,
+                FontSize = activeFontSize,
+                LetterSpacing = activeLetterSpacing,
+                LineSpacing = activeLineSpacing,
+                Alignment = (int)activeAlignment,
+            };
+
+            Preferences.Set(PreferencesVar.READER_SETTINGS, JsonConvert.SerializeObject(state));
+            Preferences.Set(PreferencesVar.ACTIVE_READ_THEME, state.Theme);
+            Preferences.Set(PreferencesVar.ACTIVE_FONT, state.Font);
+            Preferences.Set(PreferencesVar.ACTIVE_FONT_SIZE, state.FontSize);
+            Preferences.Set(PreferencesVar.ACTIVE_LETTER_SPACING, state.LetterSpacing);
+            Preferences.Set(PreferencesVar.ACTIVE_LINE_SPACING, state.LineSpacing);
+            Preferences.Set(PreferencesVar.ACTIVE_ALIGNMENT, state.Alignment);
         }
 
         void RestoreReaderPreferences()
         {
+            var blob = Preferences.Get(PreferencesVar.READER_SETTINGS, string.Empty);
+            if (!string.IsNullOrWhiteSpace(blob))
+            {
+                try
+                {
+                    var state = JsonConvert.DeserializeObject<ReaderSettingsState>(blob);
+                    if (state != null)
+                    {
+                        ApplyReaderSettingsState(state);
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"RestoreReaderPreferences blob failed: {ex.Message}");
+                }
+            }
+
             var themeHex = Preferences.Get(PreferencesVar.ACTIVE_READ_THEME, string.Empty);
             if (!string.IsNullOrWhiteSpace(themeHex))
             {
                 try
                 {
-                    activeReadTheme = Color.FromArgb(themeHex);
+                    activeReadTheme = NormalizeThemeColor(Color.FromArgb(themeHex));
                 }
                 catch (Exception ex)
                 {
@@ -1742,6 +1833,34 @@ namespace MobiHymn4.Utils
                 activeAlignment = (TextAlignment)Preferences.Get(
                     PreferencesVar.ACTIVE_ALIGNMENT,
                     (int)activeAlignment);
+        }
+
+        void ApplyReaderSettingsState(ReaderSettingsState state)
+        {
+            if (!string.IsNullOrWhiteSpace(state.Theme))
+            {
+                try
+                {
+                    activeReadTheme = NormalizeThemeColor(Color.FromArgb(state.Theme));
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ApplyReaderSettingsState theme failed: {ex.Message}");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(state.Font))
+                activeFont = state.Font;
+
+            if (state.FontSize > 0)
+                activeFontSize = state.FontSize;
+
+            activeLetterSpacing = Math.Clamp(state.LetterSpacing, 0, 1);
+
+            if (state.LineSpacing > 0)
+                activeLineSpacing = state.LineSpacing;
+
+            activeAlignment = (TextAlignment)state.Alignment;
         }
         public void ForceBookmarkChangedEvent()
         {

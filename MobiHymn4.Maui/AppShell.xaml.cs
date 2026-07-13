@@ -47,6 +47,7 @@ namespace MobiHymn4
 
             globalInstance.ResyncDetails.CollectionChanged += ResyncDetails_CollectionChanged;
             Navigating += AppShell_Navigating;
+            Navigated += AppShell_Navigated;
             Loaded += AppShell_Loaded;
             Loaded += (_, _) => UpdateFlyoutHeader();
             Loaded += (_, _) => _ = WarmFlyoutPagesAsync();
@@ -138,6 +139,17 @@ namespace MobiHymn4
             {
                 deferral.Complete();
             }
+        }
+
+        void AppShell_Navigated(object sender, ShellNavigatedEventArgs e)
+        {
+            // Relative pushes (login, bookmark items, etc.) use the platform nav stack.
+            var nav = Navigation;
+            if (nav?.NavigationStack?.Count > 1 || nav?.ModalStack?.Count > 0)
+                return;
+
+            var location = CurrentState?.Location?.OriginalString;
+            ShellNavigationHistory.Instance.Record(location);
         }
 
         private async Task WarmFlyoutPagesAsync()

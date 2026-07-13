@@ -161,7 +161,7 @@ public static class HymnNumberHelper
             yield return line;
     }
 
-    static IEnumerable<string> ExtractLyricLines(string lyrics)
+    public static IEnumerable<string> ExtractLyricLines(string lyrics)
     {
         var source = lyrics ?? string.Empty;
         var preMatch = PreContentRegex.Match(source);
@@ -176,7 +176,7 @@ public static class HymnNumberHelper
         }
     }
 
-    static string CleanDisplayLine(string line) =>
+    public static string CleanDisplayLine(string line) =>
         TagStripRegex.Replace(line ?? string.Empty, string.Empty).Trim();
 
     static bool LineMatches(string line, Regex regex)

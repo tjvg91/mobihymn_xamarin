@@ -554,9 +554,6 @@ namespace MobiHymn4.Views
             if (model != null)
                 model.IsBoardPaneOpen = dashboardService.IsOpen;
 
-            if (tbBoard == null)
-                return;
-
             // Only mutate the toolbar when the signed-in state actually changes.
             // Rebuilding it on every open/close causes the icon to flicker and
             // stalls the shell while it re-measures the nav bar.
@@ -564,15 +561,52 @@ namespace MobiHymn4.Views
             if (boardToolbarSignedIn != signedIn)
             {
                 boardToolbarSignedIn = signedIn;
-                var present = ToolbarItems.Contains(tbBoard);
-                if (signedIn && !present)
-                    ToolbarItems.Add(tbBoard);
-                else if (!signedIn && present)
-                    ToolbarItems.Remove(tbBoard);
+
+                if (tbSearch != null)
+                {
+                    var searchPresent = ToolbarItems.Contains(tbSearch);
+                    if (signedIn && !searchPresent)
+                        ToolbarItems.Insert(0, tbSearch);
+                    else if (!signedIn && searchPresent)
+                        ToolbarItems.Remove(tbSearch);
+                }
+
+                if (tbBoard != null)
+                {
+                    var boardPresent = ToolbarItems.Contains(tbBoard);
+                    if (signedIn && !boardPresent)
+                        ToolbarItems.Add(tbBoard);
+                    else if (!signedIn && boardPresent)
+                        ToolbarItems.Remove(tbBoard);
+                }
             }
 
             UpdateBoardTitleView();
             UpdateBoardNavArrows();
+        }
+
+        /// <summary>
+        /// Handles Android back for reader overlays (settings / board) before shell history.
+        /// </summary>
+        public bool TryHandleBack()
+        {
+            if (settingsOverlay?.IsVisible == true)
+            {
+                SettingsBackdrop_Clicked(this, EventArgs.Empty);
+                return true;
+            }
+
+            if (dashboardService.IsOpen)
+            {
+                if (groupDashboardPane?.TryHandleBack() == true)
+                    return true;
+
+                dashboardService.Close();
+                UpdateBoardChrome();
+                return true;
+            }
+
+            return false;
         }
 
         void UpdateBoardNavArrows()

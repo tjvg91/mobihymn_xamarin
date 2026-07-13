@@ -2,6 +2,7 @@ using Android.App;
 using Android.Content;
 using Android.Content.PM;
 using Android.OS;
+using AndroidX.Activity;
 using AndroidX.AppCompat.App;
 using MobiHymn4.Utils;
 using Microsoft.Maui.ApplicationModel;
@@ -24,6 +25,7 @@ public class MainActivity : MauiAppCompatActivity
 {
     public static MainActivity Instance { get; private set; }
     public event Action<int, Result, Intent> ActivityResult;
+    AppBackPressedCallback backPressedCallback;
 
     public static string PendingHymnNumber { get; private set; }
 
@@ -38,6 +40,9 @@ public class MainActivity : MauiAppCompatActivity
         CrossFirebase.Initialize(this);
         Platforms.Android.GoogleSignInService.Initialize();
 
+        backPressedCallback = new AppBackPressedCallback(this);
+        OnBackPressedDispatcher.AddCallback(this, backPressedCallback);
+
         if (OperatingSystem.IsAndroidVersionAtLeast(33))
             _ = RequestNotificationPermissionAsync();
 
@@ -45,7 +50,42 @@ public class MainActivity : MauiAppCompatActivity
         HandleDeepLinkIntent(Intent, alreadyLoaded: false);
     }
 
-    protected override void OnNewIntent(Intent? intent)
+    sealed class AppBackPressedCallback : OnBackPressedCallback
+    {
+        readonly MainActivity activity;
+
+        public AppBackPressedCallback(MainActivity activity)
+            : base(enabled: true)
+        {
+            this.activity = activity;
+        }
+
+        public override void HandleOnBackPressed()
+        {
+            // Let CommunityToolkit / MAUI dismiss blocking popups first.
+            if (DownloadPopupPresenter.IsPopupOpen)
+            {
+                Enabled = false;
+                try
+                {
+                    activity.OnBackPressedDispatcher.OnBackPressed();
+                }
+                finally
+                {
+                    Enabled = true;
+                }
+                return;
+            }
+
+            if (AppBackHandler.TryHandle())
+                return;
+
+            // Root of history — send the app to the background instead of exiting.
+            activity.MoveTaskToBack(true);
+        }
+    }
+
+    protected override void OnNewIntent(Intent intent)
     {
         base.OnNewIntent(intent);
         Intent = intent;
@@ -59,7 +99,7 @@ public class MainActivity : MauiAppCompatActivity
         ActivityResult?.Invoke(requestCode, resultCode, data);
     }
 
-    static void HandleDeepLinkIntent(Intent? intent, bool alreadyLoaded)
+    static void HandleDeepLinkIntent(Intent intent, bool alreadyLoaded)
     {
         var uri = intent?.Data;
         if (uri?.Scheme != "mobihymn" || uri.Host != "hymn")
@@ -75,7 +115,7 @@ public class MainActivity : MauiAppCompatActivity
             PendingHymnNumber = number;
     }
 
-    static void HandleNotificationIntent(Intent? intent)
+    static void HandleNotificationIntent(Intent intent)
     {
         if (intent?.GetBooleanExtra(DownloadForegroundService.ExtraShowDownloadPopup, false) != true)
             return;

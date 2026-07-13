@@ -48,6 +48,15 @@
     </ContentPage.BindingContext>
 
     <ContentPage.ToolbarItems>
+        <ToolbarItem x:Name="tbSearch" Clicked="tbSearch_Clicked">
+            <ToolbarItem.IconImageSource>
+                <FontImageSource
+                    FontFamily="FAS"
+                    Color="{StaticResource PrimaryText}"
+                    Size="17"
+                    Glyph="{x:Static fontawesome:FontAwesomeIcons.Search}"/>
+            </ToolbarItem.IconImageSource>
+        </ToolbarItem>
         <ToolbarItem
             x:Name="tbSelection"
             Clicked="tbSelection_Clicked">

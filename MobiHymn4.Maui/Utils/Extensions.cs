@@ -51,11 +51,32 @@ namespace MobiHymn4.Utils
             {
                 foreach (var name in names)
                 {
-                    if (jObject[name] != null)
-                        return double.Parse(jObject[name] + "");
+                    var token = jObject[name];
+                    if (token == null || token.Type == JTokenType.Null)
+                        continue;
+
+                    if (double.TryParse(token.ToString(), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out var value))
+                        return value;
                 }
 
                 return -1;
+            }
+
+            var hex = jObject["HexString"]?.ToString()
+                ?? jObject["hexString"]?.ToString()
+                ?? jObject["ToHex"]?.ToString();
+            if (!string.IsNullOrWhiteSpace(hex))
+            {
+                try
+                {
+                    if (!hex.StartsWith("#", StringComparison.Ordinal))
+                        hex = "#" + hex;
+                    return Color.FromArgb(hex);
+                }
+                catch
+                {
+                }
             }
 
             var r = ReadChannel("R", "r", "Red", "red");
