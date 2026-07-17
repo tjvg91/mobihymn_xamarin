@@ -8,6 +8,8 @@ namespace MobiHymn4.Utils
         public const string KEEP_AWAKE = "keepAwake";
         public const string RESYNC_VERSION = "ResyncVersion";
         public const string HYMN_INPUT_TYPE = "hymnInputType";
+        public const string HYMN_TOTAL = "hymnTotal";
+        public const string HYMN_CATALOG_HASH = "hymnCatalogHash";
     }
 }
 

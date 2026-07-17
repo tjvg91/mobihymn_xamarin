@@ -23,16 +23,14 @@ namespace MobiHymn4.Utils
 	{
 		HttpClient httpClient;
         HttpClient httpClient2;
-        readonly object downloadLock = new object();
 
-        bool isDone = true;
 		string jsonFile = "lyrics.mb";
         string backupFile = "lyrics_backup.mb";
         string checkpointFile = "download_checkpoint.json";
         string folderName = "mobihymn";
         string folderMidiName = "midi";
         string message = "Could not complete download";
-        const int SaveEveryBaseIndices = 5;
+        const int SaveEveryStreamHymns = 100;
 
         public HttpHelper()
 		{
@@ -52,11 +50,10 @@ namespace MobiHymn4.Utils
             bool skipExisting = false,
             bool updateResyncVersion = true)
 		{
-			string[] tunes = new string[] { "", "s", "t", "f" };
             HymnList hymnList;
             HymnList syncables = new HymnList();
-            int i;
-            bool resumed = false;
+            var resumed = false;
+            var nextSaveAt = SaveEveryStreamHymns;
 
             if (trackCheckpoint)
             {
@@ -65,15 +62,15 @@ namespace MobiHymn4.Utils
                     && checkpoint.ForceSync == forceSync && checkpoint.MissingOnly == skipExisting)
                 {
                     hymnList = await ReadHymns();
-                    i = Math.Max(1, checkpoint.NextBaseIndex);
-                    resumed = hymnList.Count > 0 || i > 1;
+                    resumed = hymnList.Count > 0;
                     if (resumed)
-                        progress?.Report($"Resuming download from hymn #{i}…");
+                        progress?.Report($"Resuming download ({hymnList.Count} already saved)…");
+                    else
+                        progress?.Report("Starting download…");
                 }
                 else
                 {
                     hymnList = skipExisting && origList != null ? new HymnList(origList) : new HymnList();
-                    i = 1;
                     await SaveCheckpoint(new DownloadCheckpoint
                     {
                         NextBaseIndex = 1,
@@ -86,96 +83,424 @@ namespace MobiHymn4.Utils
             else
             {
                 hymnList = skipExisting && origList != null ? new HymnList(origList) : new HymnList();
-                i = 1;
             }
 
-			isDone = false;
+            // On resume / missing-only, skip hymns already present while re-streaming.
+            var treatAsSkipExisting = skipExisting || resumed;
+            var existingNumbers = treatAsSkipExisting
+                ? new HashSet<string>(hymnList.Select(h => h.Number), StringComparer.OrdinalIgnoreCase)
+                : null;
 
-            while (!isDone)
-			{
-                if (cts.IsCancellationRequested)
-                {
-                    progress?.Report(message);
-                    if (trackCheckpoint)
-                        await PersistDownloadProgress(hymnList, i, forceSync, skipExisting);
-                    return hymnList;
-                }
+            progress?.Report("Connecting to hymn stream…");
 
-                await tunes.ForEachAsync(4, async (tune, j) =>
+            using var request = new HttpRequestMessage(HttpMethod.Get, Globals.HYMN_STREAM_URL);
+            request.Headers.Accept.ParseAdd("text/event-stream");
+            request.Headers.CacheControl = new System.Net.Http.Headers.CacheControlHeaderValue { NoCache = true };
+
+            using var response = await httpClient.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cts).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+
+            var total = Preferences.Default.Get(PreferencesVar.HYMN_TOTAL, 0);
+            var processed = 0;
+            var receivedDone = false;
+            var verb = skipExisting ? "Downloaded" : forceSync ? "Syncing" : "Downloaded";
+
+            // Separate CTS so we can abandon the SSE connection immediately after `done`
+            // instead of waiting for the server/HttpClient timeout while disposing the stream.
+            using var streamCts = CancellationTokenSource.CreateLinkedTokenSource(cts);
+            try
+            {
+                await using var stream = await response.Content.ReadAsStreamAsync(streamCts.Token).ConfigureAwait(false);
+                using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 64 * 1024);
+
+                while (!streamCts.IsCancellationRequested)
                 {
+                    string line;
                     try
                     {
-                        if (cts.IsCancellationRequested)
-                        {
-                            progress?.Report(message);
-                            lock (downloadLock) { isDone = true; }
-                            return;
-                        }
+                        line = await reader.ReadLineAsync(streamCts.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (receivedDone)
+                    {
+                        break;
+                    }
 
-                        var number = $"{i}{tune}";
+                    if (line == null)
+                        break;
 
-                        if (skipExisting && hymnList.Any(h => h.Number == number))
-                            return;
+                    if (line.Length == 0 || line.StartsWith(':') || line.StartsWith("event:", StringComparison.OrdinalIgnoreCase))
+                        continue;
 
-                        // Skip tunes already saved when resuming the same base index
-                        if (resumed && hymnList.Any(h => h.Number == number))
-                            return;
+                    if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                        continue;
 
-                        var lyrics = await GetLyricsAsync(number);
-                        Hymn newHymn;
+                    var json = line.Substring(5).TrimStart();
+                    if (string.IsNullOrWhiteSpace(json))
+                        continue;
 
-                        try
-                        {
-                            newHymn = ProcessLyrics(ref lyrics, number);
-                        }
-                        catch (Exception)
-                        {
-                            if (string.IsNullOrEmpty(lyrics) || new Regex("Error:", RegexOptions.IgnoreCase).IsMatch(lyrics))
-                            {
-                                if (j == 0)
-                                    lock (downloadLock) { isDone = true; }
-                                return;
-                            }
-                            throw;
-                        }
-
-                        lock (downloadLock)
-                        {
-                            var origHymn = origList?[newHymn.Number];
-                            if (forceSync && (origHymn == null || origHymn.Number != newHymn.Number || origHymn.Lyrics != newHymn.Lyrics ||
-                                    newHymn.FirstLine != origHymn.FirstLine))
-                                syncables.Add(newHymn);
-                            hymnList.Add(newHymn);
-                        }
-
-                        if (!excludeMidi) await DownloadMIDI(number, cts);
-
-                        string reportText = skipExisting ? "Downloaded" : forceSync ? "Syncing" : "Downloaded";
-                        progress?.Report($"{reportText} hymn #{number}...");
+                    HymnStreamEvent evt;
+                    try
+                    {
+                        evt = JsonConvert.DeserializeObject<HymnStreamEvent>(json);
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"DownloadHymns #{i}{tune}: {ex.Message}");
+                        Debug.WriteLine($"SSE parse: {ex.Message}");
+                        continue;
                     }
-                });
 
-                resumed = false;
-                i++;
+                    if (evt == null || string.IsNullOrEmpty(evt.Type))
+                        continue;
 
-                if (!isDone && trackCheckpoint && (i == 2 || i % SaveEveryBaseIndices == 0))
-                    await PersistDownloadProgress(hymnList, i, forceSync, skipExisting);
+                    if (evt.Total > 0)
+                    {
+                        total = evt.Total;
+                        Preferences.Default.Set(PreferencesVar.HYMN_TOTAL, total);
+                    }
+
+                    if (string.Equals(evt.Type, "start", StringComparison.OrdinalIgnoreCase))
+                    {
+                        progress?.Report(total > 0
+                            ? $"Downloading 0/{total}…"
+                            : "Downloading hymns…");
+                        continue;
+                    }
+
+                    if (string.Equals(evt.Type, "done", StringComparison.OrdinalIgnoreCase))
+                    {
+                        processed = evt.Processed > 0 ? evt.Processed : processed;
+                        if (evt.Total > 0)
+                            total = evt.Total;
+                        receivedDone = true;
+                        progress?.Report(total > 0
+                            ? $"Saving {processed}/{total}…"
+                            : "Saving hymns…");
+                        break;
+                    }
+
+                    if (!string.Equals(evt.Type, "hymn", StringComparison.OrdinalIgnoreCase) || evt.Hymn == null)
+                        continue;
+
+                    processed = evt.Processed > 0 ? evt.Processed : processed + 1;
+                    if (evt.Total > 0)
+                        total = evt.Total;
+
+                    var number = (evt.Hymn.Number ?? string.Empty).Trim();
+                    if (string.IsNullOrEmpty(number))
+                        continue;
+
+                    if (treatAsSkipExisting && existingNumbers != null && existingNumbers.Contains(number))
+                    {
+                        progress?.Report(total > 0
+                            ? $"{verb} {processed}/{total} (#{number})…"
+                            : $"{verb} hymn #{number}…");
+                        continue;
+                    }
+
+                    Hymn newHymn;
+                    try
+                    {
+                        newHymn = HymnFromStream(evt.Hymn);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"DownloadHymns #{number}: {ex.Message}");
+                        progress?.Report(total > 0
+                            ? $"{verb} {processed}/{total} (#{number})…"
+                            : $"{verb} hymn #{number}…");
+                        continue;
+                    }
+
+                    var origHymn = origList?[newHymn.Number];
+                    if (forceSync && (origHymn == null
+                        || origHymn.Lyrics != newHymn.Lyrics
+                        || newHymn.FirstLine != origHymn.FirstLine))
+                        syncables.Add(newHymn);
+
+                    if (origHymn != null && !string.IsNullOrEmpty(origHymn.MidiFileName))
+                        newHymn.MidiFileName = origHymn.MidiFileName;
+                    else if (treatAsSkipExisting)
+                    {
+                        var existing = hymnList[newHymn.Number];
+                        if (existing != null && !string.IsNullOrEmpty(existing.MidiFileName))
+                            newHymn.MidiFileName = existing.MidiFileName;
+                    }
+
+                    var existingIndex = hymnList.FindIndex(h =>
+                        h.Number != null && h.Number.Equals(newHymn.Number, StringComparison.OrdinalIgnoreCase));
+                    if (existingIndex >= 0)
+                        hymnList[existingIndex] = newHymn;
+                    else
+                        hymnList.Add(newHymn);
+
+                    existingNumbers?.Add(newHymn.Number);
+
+                    if (!excludeMidi)
+                        await DownloadMIDI(number, cts).ConfigureAwait(false);
+
+                    progress?.Report(total > 0
+                        ? $"{verb} {processed}/{total} (#{number})…"
+                        : $"{verb} hymn #{number}…");
+
+                    if (trackCheckpoint && processed >= nextSaveAt)
+                    {
+                        await PersistDownloadProgress(hymnList, processed, forceSync, skipExisting).ConfigureAwait(false);
+                        nextSaveAt = processed + SaveEveryStreamHymns;
+                    }
+                }
+
+                if (cts.IsCancellationRequested && !receivedDone)
+                {
+                    progress?.Report(message);
+                    if (trackCheckpoint)
+                        await PersistDownloadProgress(hymnList, Math.Max(1, processed), forceSync, skipExisting).ConfigureAwait(false);
+                    return hymnList;
+                }
+
+                if (!receivedDone && hymnList.Count == 0)
+                    throw new Exception("Hymn stream ended before any hymns were received.");
+
+                var saveTotal = total > 0 ? total : hymnList.Count;
+                var saveProcessed = processed > 0 ? processed : hymnList.Count;
+
+                // Save before disposing the SSE stream — disposing an unfinished response can hang
+                // for a long time if the server leaves the connection open after `done`.
+                if (skipExisting || !forceSync || syncables.Count > 0 || hymnList.Count > 0)
+                {
+                    progress?.Report(saveTotal > 0
+                        ? $"Saving {saveProcessed}/{saveTotal}…"
+                        : "Saving hymns…");
+                    await SaveHymns(hymnList).ConfigureAwait(false);
+                }
+
+                if (trackCheckpoint)
+                    await ClearCheckpoint().ConfigureAwait(false);
+
+                if (trackCheckpoint && updateResyncVersion)
+                    _ = UpdateResyncVersionAsync();
+
+                if (saveTotal > 0)
+                    Preferences.Default.Set(PreferencesVar.HYMN_TOTAL, saveTotal);
+
+                progress?.Report(saveTotal > 0
+                    ? $"Saved {saveProcessed}/{saveTotal}"
+                    : "Saved hymns");
+
+                // Abort the open SSE connection before Dispose awaits unread bytes.
+                try { streamCts.Cancel(); } catch { /* ignore */ }
+
+                return hymnList;
+            }
+            catch (OperationCanceledException) when (receivedDone)
+            {
+                // Expected after cancelling the stream on `done`.
+            }
+            finally
+            {
+                try { streamCts.Cancel(); } catch { /* ignore */ }
             }
 
-            if (skipExisting || !forceSync || (forceSync && syncables.Count > 0))
-                await SaveHymns(hymnList);
+            if (cts.IsCancellationRequested && !receivedDone)
+            {
+                progress?.Report(message);
+                if (trackCheckpoint)
+                    await PersistDownloadProgress(hymnList, Math.Max(1, processed), forceSync, skipExisting).ConfigureAwait(false);
+            }
 
-            if (trackCheckpoint)
-                await ClearCheckpoint();
-
-            if (trackCheckpoint && updateResyncVersion)
-                UpdateResyncVersion();
             return hymnList;
 		}
+
+        public async Task<CatalogMeta> GetCatalogMetaAsync(CancellationToken cts)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, Globals.HYMN_META_URL);
+            request.Headers.CacheControl = new System.Net.Http.Headers.CacheControlHeaderValue { NoCache = true };
+            using var response = await httpClient.SendAsync(request, cts).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStringAsync(cts).ConfigureAwait(false);
+            return JsonConvert.DeserializeObject<CatalogMeta>(json)
+                ?? throw new InvalidDataException("The server returned invalid catalog metadata.");
+        }
+
+        public async Task<CatalogDiff> GetCatalogChangesAsync(
+            HymnList localCatalog,
+            CancellationToken cts)
+        {
+            var hymns = new JArray((localCatalog ?? new HymnList()).Select(ToApiCatalogHymn));
+            var body = new JObject { ["hymns"] = hymns };
+            using var content = new StringContent(
+                body.ToString(Formatting.None),
+                Encoding.UTF8,
+                "application/json");
+            using var response = await httpClient.PostAsync(
+                Globals.HYMN_CHANGES_URL,
+                content,
+                cts).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStringAsync(cts).ConfigureAwait(false);
+            var result = JsonConvert.DeserializeObject<CatalogDiff>(json)
+                ?? throw new InvalidDataException("The server returned an invalid catalog diff.");
+            result.Normalize();
+            return result;
+        }
+
+        public async Task<HymnList> ApplyCatalogChangesAsync(
+            HymnList localCatalog,
+            CatalogDiff diff,
+            IProgress<string> progress,
+            CancellationToken cts)
+        {
+            if (diff == null)
+                throw new ArgumentNullException(nameof(diff));
+
+            if (diff.NumbersIncomplete)
+                throw new InvalidDataException(
+                    "The change list is incomplete. Use Resync All to update the full catalog.");
+
+            var updated = new HymnList(localCatalog ?? new HymnList());
+            var targetNumbers = new HashSet<string>(
+                diff.AddedOrModifiedNumbers,
+                StringComparer.OrdinalIgnoreCase);
+            var received = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var removedNumbers = diff.GetRemovedNumbers();
+            var completed = 0;
+            var total = targetNumbers.Count + removedNumbers.Count;
+
+            if (targetNumbers.Count > 0)
+            {
+                var numbersQuery = string.Join(",",
+                    targetNumbers
+                        .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                        .Select(Uri.EscapeDataString));
+                var streamUrl = $"{Globals.HYMN_STREAM_URL}&numbers={numbersQuery}";
+                using var request = new HttpRequestMessage(HttpMethod.Get, streamUrl);
+                request.Headers.Accept.ParseAdd("text/event-stream");
+                request.Headers.CacheControl = new System.Net.Http.Headers.CacheControlHeaderValue { NoCache = true };
+                using var response = await httpClient.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cts).ConfigureAwait(false);
+                response.EnsureSuccessStatusCode();
+
+                await using var stream = await response.Content.ReadAsStreamAsync(cts).ConfigureAwait(false);
+                using var reader = new StreamReader(
+                    stream,
+                    Encoding.UTF8,
+                    detectEncodingFromByteOrderMarks: true,
+                    bufferSize: 64 * 1024);
+
+                while (!cts.IsCancellationRequested && received.Count < targetNumbers.Count)
+                {
+                    var line = await reader.ReadLineAsync(cts).ConfigureAwait(false);
+                    if (line == null)
+                        break;
+                    if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var json = line.Substring(5).TrimStart();
+                    if (string.IsNullOrWhiteSpace(json))
+                        continue;
+
+                    HymnStreamEvent evt;
+                    try
+                    {
+                        evt = JsonConvert.DeserializeObject<HymnStreamEvent>(json);
+                    }
+                    catch (JsonException ex)
+                    {
+                        Debug.WriteLine($"Catalog partial sync SSE parse: {ex.Message}");
+                        continue;
+                    }
+
+                    if (string.Equals(evt?.Type, "done", StringComparison.OrdinalIgnoreCase))
+                        break;
+
+                    if (!string.Equals(evt?.Type, "hymn", StringComparison.OrdinalIgnoreCase)
+                        || evt.Hymn == null
+                        || !targetNumbers.Contains(evt.Hymn.Number ?? string.Empty))
+                        continue;
+
+                    var hymn = HymnFromStream(evt.Hymn);
+                    var existing = updated[hymn.Number];
+                    if (existing != null && !string.IsNullOrWhiteSpace(existing.MidiFileName))
+                        hymn.MidiFileName = existing.MidiFileName;
+
+                    var index = updated.FindIndex(item =>
+                        string.Equals(item?.Number, hymn.Number, StringComparison.OrdinalIgnoreCase));
+                    if (index >= 0)
+                        updated[index] = hymn;
+                    else
+                        updated.Add(hymn);
+
+                    if (received.Add(hymn.Number))
+                    {
+                        completed++;
+                        progress?.Report($"Syncing {completed}/{Math.Max(1, total)} (#{hymn.Number})…");
+                    }
+                }
+            }
+
+            var missing = targetNumbers.Except(received, StringComparer.OrdinalIgnoreCase).ToList();
+            if (missing.Count > 0)
+                throw new InvalidDataException(
+                    $"The server did not return hymn{(missing.Count == 1 ? string.Empty : "s")} {string.Join(", ", missing.Select(number => $"#{number}"))}.");
+
+            foreach (var number in removedNumbers)
+            {
+                cts.ThrowIfCancellationRequested();
+                updated.RemoveAll(hymn =>
+                    string.Equals(hymn?.Number, number, StringComparison.OrdinalIgnoreCase));
+                completed++;
+                progress?.Report($"Syncing {completed}/{Math.Max(1, total)} (removed #{number})…");
+            }
+
+            await SaveHymns(updated).ConfigureAwait(false);
+            return updated;
+        }
+
+        static JObject ToApiCatalogHymn(Hymn hymn)
+        {
+            var verses = hymn?.GetVerseReferences() ?? Enumerable.Empty<string>();
+            return new JObject
+            {
+                ["number"] = hymn?.Number ?? string.Empty,
+                ["title"] = hymn?.Name ?? string.Empty,
+                ["firstLine"] = hymn?.FirstLine ?? string.Empty,
+                ["lyrics"] = StoredLyricsToApiText(hymn?.Lyrics),
+                ["midiFileName"] = hymn?.MidiFileName ?? string.Empty,
+                ["author"] = hymn?.Author ?? string.Empty,
+                ["metre"] = hymn?.Metre ?? string.Empty,
+                ["tune"] = hymn?.Tune ?? string.Empty,
+                ["tuneComposer"] = hymn?.TuneComposer ?? string.Empty,
+                ["tuneKey"] = hymn?.TuneKey ?? string.Empty,
+                // changes.py currently compares against "verseRef" (not "verses"); sending
+                // both keeps this working even if/when the endpoint is updated to prefer "verses".
+                ["verseRef"] = new JArray(verses),
+                ["verses"] = new JArray(verses),
+                ["tags"] = new JArray(hymn?.Tags ?? Array.Empty<string>()),
+                ["year"] = hymn?.Year ?? string.Empty,
+                // The server stores "no value" as "" rather than null for every optional field
+                // above; normalizing locally-null fields the same way avoids every hymn missing
+                // one of these values from showing up as falsely "modified" on every check.
+                ["remark"] = hymn?.Remark ?? string.Empty
+            };
+        }
+
+        static string StoredLyricsToApiText(string lyrics)
+        {
+            if (string.IsNullOrWhiteSpace(lyrics))
+                return string.Empty;
+
+            var normalized = SanitizeStoredLyrics(lyrics);
+            normalized = Regex.Replace(normalized, @"<br\s*/?>", "\n", RegexOptions.IgnoreCase);
+            var document = new HtmlDocument();
+            document.LoadHtml(normalized);
+            return WebUtility.HtmlDecode(document.DocumentNode.InnerText)
+                .Replace("\r\n", "\n")
+                .Replace('\r', '\n');
+        }
 
         public async Task<List<string>> FindMissingHymnNumbersAsync(HymnList local, CancellationToken cts)
         {
@@ -315,7 +640,7 @@ namespace MobiHymn4.Utils
             if (completedAll)
             {
                 await ClearCheckpoint();
-                UpdateResyncVersion();
+                _ = UpdateResyncVersionAsync();
             }
 
             return updatedList;
@@ -455,6 +780,163 @@ namespace MobiHymn4.Utils
             return newHymn;
         }
 
+        static Hymn HymnFromStream(HymnStreamPayload payload)
+        {
+            var number = (payload.Number ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(number))
+                throw new Exception("Stream hymn missing number");
+
+            var raw = NormalizeStreamNewlines(payload.Lyrics);
+
+            var firstLine = string.IsNullOrWhiteSpace(payload.FirstLine)
+                ? raw.Split('\n').FirstOrDefault(l => !string.IsNullOrWhiteSpace(l))?.Trim() ?? number
+                : payload.FirstLine.Trim();
+
+            // Use <br> (not <pre>). HtmlCompat often ignores/messes up <br> inside <pre>,
+            // which made the whole hymn soft-wrap as one block.
+            var htmlBody = System.Net.WebUtility.HtmlEncode(raw).Replace("\n", "<br>");
+
+            return new Hymn
+            {
+                Number = number,
+                Title = number.ToTitle(),
+                Name = NullIfWhiteSpace(payload.Title),
+                FirstLine = firstLine,
+                Lyrics = htmlBody,
+                MidiFileName = NullIfWhiteSpace(payload.MidiFileName),
+                Author = NullIfWhiteSpace(payload.Author),
+                Metre = NullIfWhiteSpace(payload.Metre),
+                Tune = NullIfWhiteSpace(payload.Tune),
+                TuneComposer = NullIfWhiteSpace(payload.TuneComposer),
+                TuneKey = NullIfWhiteSpace(payload.TuneKey),
+                Verses = StringArrayFromToken(payload.Verses ?? payload.VerseRef),
+                Tags = StringArrayFromToken(payload.Tags),
+                Year = NullIfWhiteSpace(payload.Year),
+                Remark = NullIfWhiteSpace(payload.Remark)
+            };
+        }
+
+        static string NullIfWhiteSpace(string value) =>
+            string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+        static string[] StringArrayFromToken(JToken token)
+        {
+            if (token == null || token.Type == JTokenType.Null)
+                return Array.Empty<string>();
+
+            var values = token.Type == JTokenType.Array
+                ? token.Values<string>()
+                : new[] { token.Value<string>() };
+
+            return values
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        static string NormalizeStreamNewlines(string lyrics)
+        {
+            if (string.IsNullOrEmpty(lyrics))
+                return string.Empty;
+
+            return lyrics
+                .Replace("\r\n", "\n")
+                .Replace('\r', '\n')
+                .Replace('\u2028', '\n')
+                .Replace('\u2029', '\n')
+                .Replace('\uFFFD', '\'');
+        }
+
+        /// <summary>
+        /// Repairs streamed lyrics artifacts (TAGS> prefix, wrapping &lt;pre&gt; that breaks line breaks).
+        /// </summary>
+        public static string SanitizeStoredLyrics(string lyrics)
+        {
+            if (string.IsNullOrEmpty(lyrics))
+                return lyrics;
+
+            lyrics = lyrics.Replace('\uFFFD', '\'');
+
+            while (lyrics.StartsWith("TAGS>", StringComparison.OrdinalIgnoreCase))
+                lyrics = lyrics.Substring(5);
+
+            // Unwrap <pre>…</pre> from earlier stream saves so <br> tags are honored.
+            var preMatch = Regex.Match(
+                lyrics.Trim(),
+                @"^<pre[^>]*>(.*)</pre\s*>$",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            if (preMatch.Success)
+                lyrics = preMatch.Groups[1].Value;
+
+            // Normalize break tags so SearchViewModel's `<br>` splits keep working.
+            lyrics = Regex.Replace(lyrics, @"<br\s*/?>", "<br>", RegexOptions.IgnoreCase);
+            return lyrics;
+        }
+
+        class HymnStreamEvent
+        {
+            [JsonProperty("type")]
+            public string Type { get; set; }
+
+            [JsonProperty("processed")]
+            public int Processed { get; set; }
+
+            [JsonProperty("total")]
+            public int Total { get; set; }
+
+            [JsonProperty("hymn")]
+            public HymnStreamPayload Hymn { get; set; }
+        }
+
+        class HymnStreamPayload
+        {
+            [JsonProperty("number")]
+            public string Number { get; set; }
+
+            [JsonProperty("title")]
+            public string Title { get; set; }
+
+            [JsonProperty("firstLine")]
+            public string FirstLine { get; set; }
+
+            [JsonProperty("lyrics")]
+            public string Lyrics { get; set; }
+
+            [JsonProperty("midiFileName")]
+            public string MidiFileName { get; set; }
+
+            [JsonProperty("author")]
+            public string Author { get; set; }
+
+            [JsonProperty("metre")]
+            public string Metre { get; set; }
+
+            [JsonProperty("tune")]
+            public string Tune { get; set; }
+
+            [JsonProperty("tuneComposer")]
+            public string TuneComposer { get; set; }
+
+            [JsonProperty("tuneKey")]
+            public string TuneKey { get; set; }
+
+            [JsonProperty("verses")]
+            public JToken Verses { get; set; }
+
+            [JsonProperty("verseRef")]
+            public JToken VerseRef { get; set; }
+
+            [JsonProperty("tags")]
+            public JToken Tags { get; set; }
+
+            [JsonProperty("year")]
+            public string Year { get; set; }
+
+            [JsonProperty("remark")]
+            public string Remark { get; set; }
+        }
+
         async Task<string> GetLyricsAsync(string number)
         {
             var bytes = await httpClient.GetByteArrayAsync($"{Globals.HYMN_URL}{number}");
@@ -516,10 +998,27 @@ namespace MobiHymn4.Utils
 
         public async Task<bool> SaveHymns(HymnList hymnList)
         {
-            var hymnJson = JsonConvert.SerializeObject(hymnList);
             var folderPath = AppStorage.GetPath(folderName);
             Directory.CreateDirectory(folderPath);
-            await File.WriteAllTextAsync(Path.Combine(folderPath, jsonFile), hymnJson);
+
+            var finalPath = Path.Combine(folderPath, jsonFile);
+            var tempPath = finalPath + ".tmp";
+
+            // Stream serialize off the UI / download thread so the popup can keep updating,
+            // and avoid building one giant in-memory JSON string for 800+ hymns.
+            await Task.Run(() =>
+            {
+                using var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, 64 * 1024, FileOptions.SequentialScan);
+                using var writer = new StreamWriter(stream, new UTF8Encoding(false));
+                using var jsonWriter = new JsonTextWriter(writer) { Formatting = Formatting.None };
+                var serializer = JsonSerializer.CreateDefault();
+                serializer.Serialize(jsonWriter, hymnList);
+                jsonWriter.Flush();
+                writer.Flush();
+                stream.Flush(true);
+            }).ConfigureAwait(false);
+
+            File.Move(tempPath, finalPath, overwrite: true);
             return true;
         }
 
@@ -545,7 +1044,49 @@ namespace MobiHymn4.Utils
                 return new HymnList();
 
             var settings = await File.ReadAllTextAsync(filePath);
-            return await Task.Run(() => JsonConvert.DeserializeObject<HymnList>(settings) ?? new HymnList());
+            try
+            {
+                var list = await Task.Run(() => JsonConvert.DeserializeObject<HymnList>(settings) ?? new HymnList());
+                foreach (var hymn in list)
+                {
+                    if (hymn != null)
+                    {
+                        hymn.Lyrics = SanitizeStoredLyrics(hymn.Lyrics);
+                        hymn.Verses ??= Array.Empty<string>();
+                        hymn.Tags ??= Array.Empty<string>();
+
+                        if (hymn.Verses.Length == 0 && !string.IsNullOrWhiteSpace(hymn.VerseRef))
+                            hymn.Verses = new[] { hymn.VerseRef.Trim() };
+                    }
+                }
+                return list;
+            }
+            catch (JsonException ex)
+            {
+                Debug.WriteLine($"ReadHymns corrupt file ({filePath}): {ex.Message}");
+                await ClearCorruptHymnCache();
+                return new HymnList();
+            }
+        }
+
+        async Task ClearCorruptHymnCache()
+        {
+            try
+            {
+                var filePath = AppStorage.GetPath(folderName, jsonFile);
+                if (File.Exists(filePath))
+                    File.Delete(filePath);
+
+                var tempPath = filePath + ".tmp";
+                if (File.Exists(tempPath))
+                    File.Delete(tempPath);
+
+                await ClearCheckpoint();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"ClearCorruptHymnCache: {ex.Message}");
+            }
         }
 
         public async Task<DownloadCheckpoint> LoadCheckpoint()
@@ -735,7 +1276,7 @@ namespace MobiHymn4.Utils
             return profiles.Contains(ConnectionProfile.Cellular);
         }
 
-        private async void UpdateResyncVersion()
+        private async Task UpdateResyncVersionAsync()
         {
             try
             {
@@ -743,9 +1284,8 @@ namespace MobiHymn4.Utils
                 Preferences.Set(PreferencesVar.RESYNC_VERSION, newVersion.ToString());
                 Globals.Instance.ResyncDetails.Clear();
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-
             }
         }
     }

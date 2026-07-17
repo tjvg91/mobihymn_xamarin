@@ -1,0 +1,41 @@
+{
+    "changed": true,
+    "catalogHash": "8294e4530b974a964b453d89f950b1b5d7e7ef9ac3459e1b8e3459b6b8ec892e",
+    "added": {
+        "count": 839,
+        "numbers": ["3", "3s", "4", "5", "811"]
+    },
+    "removed": {
+        "count": 0,
+        "numbers": []
+    },
+    "modifiedGroups": [
+        {
+            "count": 2,
+            "numbers": ["1", "2"],
+            "props": null,
+            "changedProps": ["tags"],
+            "valueVaries": true,
+            "examples": [
+                {
+                    "number": "1",
+                    "props": {
+                        "tags": {
+                            "old": [],
+                            "new": ["Praise", "Worship", "God's Mercy", "Creation"]
+                        }
+                    }
+                },
+                {
+                    "number": "2",
+                    "props": {
+                        "tags": {
+                            "old": [],
+                            "new": ["Praise", "Worship", "God's Majesty", "Mercy"]
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}

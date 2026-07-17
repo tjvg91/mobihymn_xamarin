@@ -108,7 +108,7 @@ namespace MobiHymn4.Views
                         InitAudio();
                 };
 
-                UpdateBookmarkIcon();
+                RefreshToolbarIcons();
                 UpdatePlayIcon();
 
                 globalInstance.DownloadStarted += GlobalInstance_DownloadStarted;
@@ -139,9 +139,8 @@ namespace MobiHymn4.Views
                 return;
             }
 
-            UpdateBookmarkIcon();
+            RefreshToolbarIcons();
             UpdatePlayIcon();
-            UpdateSelectionToolbar();
             model?.UpdateInternetNotice();
             globalInstance.RefreshIncompleteDownloadState();
             model?.RefreshLoadingState();
@@ -172,11 +171,7 @@ namespace MobiHymn4.Views
         {
             if (initStartQueued ||
                 Preferences.Get(PreferencesVar.IS_NEW, true) ||
-                (globalInstance.InitComplete && !globalInstance.HasIncompleteDownloadOnDisk
-#if ANDROID
-                 && !DownloadForegroundService.IsRunning
-#endif
-                ) ||
+                (globalInstance.InitComplete && !globalInstance.HasIncompleteDownloadOnDisk) ||
                 globalInstance.InitInProgress)
                 return;
 
@@ -191,12 +186,7 @@ namespace MobiHymn4.Views
 
             initStartQueued = false;
 
-            var hasDownloadRecovery = globalInstance.HasIncompleteDownloadOnDisk ||
-#if ANDROID
-                            DownloadForegroundService.IsRunning;
-#else
-                            false;
-#endif
+            var hasDownloadRecovery = globalInstance.HasIncompleteDownloadOnDisk;
 
             if (hasDownloadRecovery &&
                 !DownloadPopupPresenter.IsPopupOpen &&
@@ -261,20 +251,45 @@ namespace MobiHymn4.Views
 
         private void Model_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(ReadViewModel.BookmarkFont))
-                UpdateBookmarkIcon();
-            else if (e.PropertyName is nameof(ReadViewModel.IsSelectable) or nameof(ReadViewModel.ShowLyricsContent))
-                UpdateSelectionToolbar();
+            if (e.PropertyName == nameof(ReadViewModel.BookmarkFont)
+                || e.PropertyName is nameof(ReadViewModel.IsSelectable) or nameof(ReadViewModel.ShowLyricsContent))
+                RefreshToolbarIcons();
             else if (e.PropertyName == nameof(ReadViewModel.IsLoadingLyrics))
                 UpdateSetupLogoPulse();
         }
 
-        void UpdateSelectionToolbar()
+        // Android can scramble FontImageSource glyphs when only one ToolbarItem icon is
+        // replaced, so always reassign the full set together.
+        void RefreshToolbarIcons()
         {
-            if (model == null || tbSelection == null)
+            if (initializationException != null)
                 return;
 
-            var showOnAndroid = DeviceInfo.Platform == DevicePlatform.Android && model.ShowLyricsContent;
+            var color = (Color)Application.Current.Resources["PrimaryText"];
+
+            if (tbSearch != null)
+                tbSearch.IconImageSource = CreateToolbarIcon(FontAwesomeIcons.Search, color);
+
+            UpdateSelectionToolbar(color);
+
+            if (tbBookmarks != null)
+                tbBookmarks.IconImageSource = CreateBookmarkIcon(model?.BookmarkFont, color);
+
+            if (tbShare != null)
+                tbShare.IconImageSource = CreateToolbarIcon(FontAwesomeIcons.Share, color);
+
+            if (tbSettings != null)
+                tbSettings.IconImageSource = CreateToolbarIcon(FontAwesomeIcons.Cog, color);
+        }
+
+        void UpdateSelectionToolbar(Color color)
+        {
+            if (tbSelection == null)
+                return;
+
+            var showOnAndroid = DeviceInfo.Platform == DevicePlatform.Android
+                && model != null
+                && model.ShowLyricsContent;
             if (!showOnAndroid)
             {
                 ToolbarItems.Remove(tbSelection);
@@ -282,15 +297,9 @@ namespace MobiHymn4.Views
             }
 
             EnsureToolbarItemAfterSearch(tbSelection);
-            tbSelection.IconImageSource = new FontImageSource
-            {
-                FontFamily = "FAS",
-                Color = (Color)Application.Current.Resources["PrimaryText"],
-                Size = 17,
-                Glyph = model.IsSelectable
-                    ? FontAwesome.FontAwesomeIcons.TextSlash
-                    : FontAwesome.FontAwesomeIcons.ICursor,
-            };
+            tbSelection.IconImageSource = CreateToolbarIcon(
+                model.IsSelectable ? FontAwesomeIcons.TextSlash : FontAwesomeIcons.ICursor,
+                color);
         }
 
         void EnsureToolbarItemAfterSearch(ToolbarItem item)
@@ -307,24 +316,24 @@ namespace MobiHymn4.Views
             model.IsSelectable = !model.IsSelectable;
         }
 
-        private void UpdateBookmarkIcon()
-        {
-            if (model == null || tbBookmarks == null)
-                return;
-
-            tbBookmarks.IconImageSource = CreateBookmarkIcon(model.BookmarkFont);
-        }
-
-        private static FontImageSource CreateBookmarkIcon(string fontFamily)
+        private static FontImageSource CreateBookmarkIcon(string fontFamily, Color color)
         {
             return new FontImageSource
             {
                 FontFamily = string.IsNullOrEmpty(fontFamily) ? "FAR" : fontFamily,
-                Glyph = FontAwesome.FontAwesomeIcons.Heart,
+                Glyph = FontAwesomeIcons.Heart,
                 Size = 17,
-                Color = (Color)Application.Current.Resources["PrimaryText"],
+                Color = color,
             };
         }
+
+        private static FontImageSource CreateToolbarIcon(string glyph, Color color) => new()
+        {
+            FontFamily = "FAS",
+            Glyph = glyph,
+            Size = 17,
+            Color = color,
+        };
 
         private void UpdatePlayIcon()
         {
@@ -1117,6 +1126,17 @@ namespace MobiHymn4.Views
         void TapGestureRecognizer_Tapped(System.Object sender, System.EventArgs e)
         {
             model.IsReadView = !model.IsReadView;
+        }
+
+        void HymnTitle_Tapped(object sender, TappedEventArgs e)
+        {
+            var hymn = globalInstance.ActiveHymn;
+            if (hymn == null)
+                return;
+
+            var popup = new HymnInfoPopup();
+            popup.Bind(hymn);
+            Navigation.ShowPopup(popup);
         }
 
         void Slider_ValueChanged(System.Object sender, Microsoft.Maui.Controls.ValueChangedEventArgs e)

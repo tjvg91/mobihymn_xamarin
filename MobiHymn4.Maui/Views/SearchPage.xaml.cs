@@ -33,17 +33,8 @@ namespace MobiHymn4.Views
             InitializeComponent();
 
             model = ((SearchViewModel)this.BindingContext);
-            model.OnSearchFinished += Model_OnSearchFinished;
-
-            MyListView.ItemsSource = model.Items;
 
             layoutSearching.HeightRequest = (DeviceDisplay.MainDisplayInfo.Height / DeviceDisplay.MainDisplayInfo.Density) - 200;
-        }
-
-        private void Model_OnSearchFinished(object sender, EventArgs e)
-        {
-            var list = (ObservableCollection<ShortHymn>)sender;
-            MyListView.ItemsSource = list;
         }
 
         async void root_Appearing(System.Object sender, System.EventArgs e)

@@ -24,7 +24,11 @@ public class DownloadNotificationService : IDownloadNotificationService
 
         var g = Globals.Instance;
         g.DownloadStarted += (_, e) => { _ = StartAsync(); };
-        g.DownloadProgressed += (sender, e) => { _ = UpdateProgressAsync((string)sender, -1, -1); };
+        g.DownloadProgressed += (sender, e) =>
+        {
+            var gInst = Globals.Instance;
+            _ = UpdateProgressAsync((string)sender, gInst.DownloadProgressCurrent, gInst.DownloadProgressTotal);
+        };
         g.InitFinished += (_, e) => TryRun(Stop);
         g.DownloadError += (_, e) => TryRun(Stop);
     }

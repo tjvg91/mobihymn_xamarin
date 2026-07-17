@@ -30,5 +30,14 @@ namespace MobiHymn4.Utils
 		Lyrics = 0,
 		Audio = 1
 	}
+
+	public enum SearchType
+	{
+		Lyrics = 0,
+		AuthorComposer = 1,
+		Metre = 2,
+		Key = 3,
+		Verse = 4
+	}
 }
 

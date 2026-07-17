@@ -52,6 +52,22 @@
                     HorizontalTextAlignment="Center"
                     TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
 
+                <VerticalStackLayout
+                    Spacing="6"
+                    Margin="8,8,8,0"
+                    IsVisible="{Binding ShowProgress}">
+                    <ProgressBar
+                        Progress="{Binding Progress}"
+                        ProgressColor="{StaticResource Primary}"
+                        HeightRequest="6"
+                        HorizontalOptions="Fill"/>
+                    <Label
+                        Text="{Binding ProgressText}"
+                        FontSize="12"
+                        HorizontalTextAlignment="Center"
+                        TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                </VerticalStackLayout>
+
                 <Label
                     Text="(this might take a while)"
                     FontSize="12"

@@ -115,8 +115,16 @@ public partial class App : Application
 
     async Task InitFirebaseAsync()
     {
-        await fbHelper.LoginWithEmailPassword("tim.gandionco@gmail.com", "TLmSIsnw231");
-        await globalInstance.RefreshMissingHymnCountAsync();
+        try
+        {
+            await fbHelper.LoginWithEmailPassword("tim.gandionco@gmail.com", "TLmSIsnw231");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Firebase login failed: {ex.Message}");
+        }
+
+        await globalInstance.RefreshCatalogDiffAsync();
     }
 
     async Task CheckForAppUpdateAsync()
@@ -224,6 +232,8 @@ public partial class App : Application
     {
         if (sender is string tag && tag == "sync")
             return;
+
+        _ = globalInstance.RefreshCatalogDiffAsync();
 
         if (globalInstance.ActiveHymn == null || globalInstance.HymnList == null || globalInstance.HymnList.Count == 0)
             return;
