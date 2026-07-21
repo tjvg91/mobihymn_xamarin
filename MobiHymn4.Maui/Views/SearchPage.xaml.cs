@@ -10,6 +10,7 @@ using MobiHymn4.Models;
 using MobiHymn4.ViewModels;
 using MobiHymn4.Utils;
 using MobiHymn4.Services;
+using MobiHymn4.Views.Popups;
 using FontAwesome;
 
 using Microsoft.Maui.Controls;
@@ -55,10 +56,14 @@ namespace MobiHymn4.Views
             await Shell.Current.GoToAsync($"//{Routes.READ}");
         }
 
+        void tbSettings_Clicked(object sender, EventArgs e)
+        {
+            Navigation.ShowPopup(new AgentChatSettingsPopup());
+        }
+
         async void MyListView_ChildAdded(System.Object sender, Microsoft.Maui.Controls.ElementEventArgs e)
         {
-            var item = e.Element as StackLayout;
-            if(item != null)
+            if (e.Element is VisualElement item)
             {
                 item.Opacity = 0;
                 await item.FadeTo(1, globalInstance.Duration);
@@ -67,6 +72,37 @@ namespace MobiHymn4.Views
 
 
         void searchBar_HandlerChanged(object sender, EventArgs e) => ApplySearchBarTransparentBackground();
+
+        void searchBar_SearchButtonPressed(object sender, EventArgs e)
+        {
+            searchBar.Unfocus();
+            _ = HideSearchKeyboardAsync();
+        }
+
+        async Task HideSearchKeyboardAsync()
+        {
+            try
+            {
+#if ANDROID
+                var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity;
+                Android.OS.IBinder token = activity?.CurrentFocus?.WindowToken;
+                if (token == null && searchBar?.Handler?.PlatformView is Android.Views.View nativeView)
+                    token = nativeView.WindowToken;
+
+                if (activity != null && token != null)
+                {
+                    var imm = activity.GetSystemService(Android.Content.Context.InputMethodService)
+                        as Android.Views.InputMethods.InputMethodManager;
+                    imm?.HideSoftInputFromWindow(token, Android.Views.InputMethods.HideSoftInputFlags.None);
+                }
+#else
+                await Task.CompletedTask;
+#endif
+            }
+            catch
+            {
+            }
+        }
 
         void ApplySearchBarTransparentBackground()
         {

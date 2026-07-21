@@ -137,7 +137,9 @@ namespace MobiHymn4.Utils
         public static string HYMN_STREAM_URL = "http://157.230.9.81/hymn/api/hymns.dna?stream=1";
         public static string HYMN_STREAM_PARTIAL_URL = "http://157.230.9.81/hymn/api/stream.cgi";
         public static string HYMN_META_URL = "http://157.230.9.81/hymn/api/hymns.dna?meta=1";
-        public static string HYMN_CHANGES_URL = "http://157.230.9.81/hymn/api/changes.cgi";
+        public static string HYMN_CHANGES_URL = "http://157.230.9.81/hymn/api/changes.py";
+        public static string HYMN_AGENT_SEARCH_URL = "http://157.230.9.81/hymn/api/agent.cgi/search";
+        public static string HYMN_AGENT_CHAT_URL = "http://157.230.9.81/hymn/api/agent.cgi/chat";
         public static string HYMN_AUDIO_URL = "http://157.230.9.81/hymn/audio/gccsatx/";
 
         public static string GetHymnAudioUrl(string hymnNumber) =>
@@ -560,6 +562,58 @@ namespace MobiHymn4.Utils
             }
         }
 
+        private AgentMode agentMode = AgentMode.Auto;
+        public AgentMode AgentMode
+        {
+            get => agentMode;
+            set
+            {
+                if (agentMode == value)
+                    return;
+
+                agentMode = value;
+                Preferences.Set(PreferencesVar.AGENT_MODE, (int)value);
+                OnAgentModeChanged(value);
+            }
+        }
+
+        public static readonly int[] AgentChatLimitOptions = { 5, 10, 15, 20, 25, 30 };
+        public const int AgentChatLimitMin = 5;
+        public const int AgentChatLimitMax = 30;
+        public const int AgentChatLimitDefault = 30;
+
+        private int agentChatLimit = AgentChatLimitDefault;
+        public int AgentChatLimit
+        {
+            get => agentChatLimit;
+            set
+            {
+                var snapped = SnapAgentChatLimit(value);
+                if (agentChatLimit == snapped)
+                    return;
+
+                agentChatLimit = snapped;
+                Preferences.Set(PreferencesVar.AGENT_CHAT_LIMIT, agentChatLimit);
+                OnAgentChatLimitChanged(agentChatLimit);
+            }
+        }
+
+        public static int SnapAgentChatLimit(int value)
+        {
+            var clamped = Math.Clamp(value, AgentChatLimitMin, AgentChatLimitMax);
+            var best = AgentChatLimitOptions[0];
+            var bestDistance = Math.Abs(best - clamped);
+            foreach (var option in AgentChatLimitOptions)
+            {
+                var distance = Math.Abs(option - clamped);
+                if (distance >= bestDistance)
+                    continue;
+                best = option;
+                bestDistance = distance;
+            }
+            return best;
+        }
+
         private bool isOrientationLocked = false;
         public bool IsOrientationLocked
         {
@@ -589,6 +643,8 @@ namespace MobiHymn4.Utils
         public event EventHandler HistoryChanged;
         public event EventHandler DarkModeChanged;
         public event EventHandler KeepAwakeChanged;
+        public event EventHandler AgentModeChanged;
+        public event EventHandler AgentChatLimitChanged;
         public event EventHandler OrientationLockedChanged;
         public event EventHandler IsFetchingSyncDetailsChanged;
         public event EventHandler MissingHymnCountChanged;
@@ -648,6 +704,15 @@ namespace MobiHymn4.Utils
         private void OnKeepAwakeChanged(bool value)
         {
             if (KeepAwakeChanged != null) KeepAwakeChanged(value, EventArgs.Empty);
+        }
+        private void OnAgentModeChanged(AgentMode value)
+        {
+            AgentModeChanged?.Invoke(value, EventArgs.Empty);
+        }
+
+        private void OnAgentChatLimitChanged(int value)
+        {
+            AgentChatLimitChanged?.Invoke(value, EventArgs.Empty);
         }
         private void OnOrientationLockedChanged(bool value)
         {
@@ -1666,6 +1731,8 @@ namespace MobiHymn4.Utils
                 Preferences.Set(PreferencesVar.DARK_MODE, darkMode);
                 Preferences.Set(PreferencesVar.KEEP_AWAKE, keepAwake);
                 Preferences.Set(PreferencesVar.HYMN_INPUT_TYPE, (int)hymnInputType);
+                Preferences.Set(PreferencesVar.AGENT_MODE, (int)agentMode);
+                Preferences.Set(PreferencesVar.AGENT_CHAT_LIMIT, agentChatLimit);
 
                 OnHymnInputTypeChanged(hymnInputType);
                 OnAlignmentChanged(activeAlignment);
@@ -1676,6 +1743,8 @@ namespace MobiHymn4.Utils
                 OnActiveLineSpacingChanged(activeLineSpacing);
                 OnDarkModeChanged(darkMode);
                 OnKeepAwakeChanged(keepAwake);
+                OnAgentModeChanged(agentMode);
+                OnAgentChatLimitChanged(agentChatLimit);
                 OnOrientationLockedChanged(isOrientationLocked);
 
                 if (activeHymn != null)
@@ -1692,6 +1761,34 @@ namespace MobiHymn4.Utils
                 null => false,
                 _ => Convert.ToBoolean(value)
             };
+
+        static AgentMode ParseAgentMode(object value)
+        {
+            if (value == null)
+                return AgentMode.Auto;
+
+            if (value is long or int or short or byte)
+                return Enum.IsDefined(typeof(AgentMode), Convert.ToInt32(value))
+                    ? (AgentMode)Convert.ToInt32(value)
+                    : AgentMode.Auto;
+
+            var text = value.ToString()?.Trim();
+            if (string.IsNullOrEmpty(text))
+                return AgentMode.Auto;
+
+            if (int.TryParse(text, out var asInt) && Enum.IsDefined(typeof(AgentMode), asInt))
+                return (AgentMode)asInt;
+
+            if (Enum.TryParse<AgentMode>(text, ignoreCase: true, out var parsed))
+                return parsed;
+
+            return text.ToLowerInvariant() switch
+            {
+                "local" => AgentMode.Local,
+                "cloud" => AgentMode.Cloud,
+                _ => AgentMode.Auto
+            };
+        }
 
         bool ApplySettingsEntry(KeyValuePair<string, object> entry)
         {
@@ -1747,6 +1844,12 @@ namespace MobiHymn4.Utils
                     return true;
                 case nameof(KeepAwake):
                     keepAwake = ReadBool(entry.Value);
+                    return true;
+                case nameof(AgentMode):
+                    agentMode = ParseAgentMode(entry.Value);
+                    return true;
+                case nameof(AgentChatLimit):
+                    agentChatLimit = SnapAgentChatLimit(Convert.ToInt32(entry.Value));
                     return true;
                 case nameof(IsOrientationLocked):
                     isOrientationLocked = ReadBool(entry.Value);

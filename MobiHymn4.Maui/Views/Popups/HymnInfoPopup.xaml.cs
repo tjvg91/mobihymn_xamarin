@@ -6,6 +6,7 @@ using Microsoft.Maui.Controls;
 using Microsoft.Maui.Controls.Shapes;
 using Microsoft.Maui.Devices;
 using Microsoft.Maui.Graphics;
+using Microsoft.Maui.Layouts;
 using MobiHymn4.Models;
 
 namespace MobiHymn4.Views.Popups
@@ -56,7 +57,7 @@ namespace MobiHymn4.Views.Popups
             AddRow(rows, "Composer", hymn.TuneComposer);
             AddRow(rows, "Key", hymn.TuneKey);
             AddRow(rows, "Verses", hymn.GetVerseReferences());
-            AddRow(rows, "Tags", hymn.Tags);
+            AddRow(rows, "Topic", hymn.Tags);
             AddRow(rows, "Year", hymn.Year);
             AddRow(rows, "Remark", hymn.Remark);
 

@@ -296,7 +296,7 @@ namespace MobiHymn4.Views.Popups
                 "tunekey" => "Tune key",
                 "midifilename" => "MIDI file",
                 "verseref" or "verses" => "Verses",
-                "tags" => "Tags",
+                "tags" => "Topic",
                 "year" => "Year",
                 "remark" => "Remark",
                 "number" => "Number",

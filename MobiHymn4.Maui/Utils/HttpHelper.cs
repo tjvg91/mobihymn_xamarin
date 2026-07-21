@@ -324,6 +324,84 @@ namespace MobiHymn4.Utils
                 ?? throw new InvalidDataException("The server returned invalid catalog metadata.");
         }
 
+        public async Task<AgentSearchResponse> SearchAgentAsync(
+            string query,
+            CancellationToken cts,
+            int limit = 30)
+        {
+            var body = new JObject
+            {
+                ["query"] = query ?? string.Empty,
+                ["limit"] = limit
+            };
+            AppendAgentMode(body);
+            using var content = new StringContent(
+                body.ToString(Formatting.None),
+                Encoding.UTF8,
+                "application/json");
+            using var response = await httpClient.PostAsync(
+                Globals.HYMN_AGENT_SEARCH_URL,
+                content,
+                cts).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStringAsync(cts).ConfigureAwait(false);
+            return JsonConvert.DeserializeObject<AgentSearchResponse>(json)
+                ?? throw new InvalidDataException("The server returned an invalid agent search response.");
+        }
+
+        public async Task<AgentChatResponse> ChatAgentAsync(
+            IEnumerable<object> messages,
+            CancellationToken cts,
+            string sessionId = null,
+            int limit = 30,
+            IEnumerable<string> excludeNumbers = null)
+        {
+            var body = new JObject
+            {
+                ["messages"] = JArray.FromObject(messages ?? Array.Empty<object>()),
+                ["limit"] = limit
+            };
+            if (!string.IsNullOrWhiteSpace(sessionId))
+                body["sessionId"] = sessionId;
+
+            var excludes = (excludeNumbers ?? Enumerable.Empty<string>())
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Select(n => n.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (excludes.Count > 0)
+                body["excludeNumbers"] = JArray.FromObject(excludes);
+
+            AppendAgentMode(body);
+
+            using var content = new StringContent(
+                body.ToString(Formatting.None),
+                Encoding.UTF8,
+                "application/json");
+            using var response = await httpClient.PostAsync(
+                Globals.HYMN_AGENT_CHAT_URL,
+                content,
+                cts).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStringAsync(cts).ConfigureAwait(false);
+            return JsonConvert.DeserializeObject<AgentChatResponse>(json)
+                ?? throw new InvalidDataException("The server returned an invalid agent chat response.");
+        }
+
+        // Auto means "let the server decide" — omit mode from the JSON body entirely.
+        static void AppendAgentMode(JObject body)
+        {
+            switch (Globals.Instance.AgentMode)
+            {
+                case AgentMode.Local:
+                    body["mode"] = "local";
+                    break;
+                case AgentMode.Cloud:
+                    body["mode"] = "cloud";
+                    break;
+            }
+        }
+
         public async Task<CatalogDiff> GetCatalogChangesAsync(
             HymnList localCatalog,
             CancellationToken cts)

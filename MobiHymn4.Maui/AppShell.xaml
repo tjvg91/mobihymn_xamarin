@@ -215,6 +215,9 @@
     <FlyoutItem Title="Search" Icon="{x:Static fontawesome:FontAwesomeIcons.Search}">
         <ShellContent Route="{x:Static utils:Routes.SEARCH}" ContentTemplate="{DataTemplate local:SearchPage}"/>
     </FlyoutItem>
+    <FlyoutItem x:Name="NavAgent" Title="Selah" Icon="{x:Static fontawesome:FontAwesomeIcons.Comments}">
+        <ShellContent Route="{x:Static utils:Routes.AGENT_CHAT}" ContentTemplate="{DataTemplate local:AgentChatPage}"/>
+    </FlyoutItem>
     <FlyoutItem Title="History" Icon="{x:Static fontawesome:FontAwesomeIcons.History}">
         <ShellContent Route="{x:Static utils:Routes.HISTORY}" ContentTemplate="{DataTemplate local:HistoryPage}" />
     </FlyoutItem>

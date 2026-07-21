@@ -9,6 +9,7 @@ using MobiHymn4.Views.Popups;
 using CommunityToolkit.Maui.Views;
 
 using Microsoft.Maui.Controls;
+using Microsoft.Maui.Networking;
 
 #if ANDROID
 using Android.Graphics.Drawables;
@@ -39,6 +40,7 @@ namespace MobiHymn4
             Routing.RegisterRoute(Routes.HOME, typeof(NumSearchPage));
             Routing.RegisterRoute(Routes.READ, typeof(ReadPage));
             Routing.RegisterRoute(Routes.SEARCH, typeof(SearchPage));
+            Routing.RegisterRoute(Routes.AGENT_CHAT, typeof(AgentChatPage));
             Routing.RegisterRoute(Routes.HISTORY, typeof(HistoryPage));
             Routing.RegisterRoute(Routes.BOOKMARKS_GROUP, typeof(BookmarksGroupPage));
             Routing.RegisterRoute(Routes.BOOKMARKS_LIST.Split('?')[0], typeof(BookmarksItemsPage));
@@ -53,7 +55,23 @@ namespace MobiHymn4
             PropertyChanged += AppShell_PropertyChanged;
             Loaded += AppShell_Loaded;
             Loaded += (_, _) => _ = WarmFlyoutPagesAsync();
+            Connectivity.ConnectivityChanged += Connectivity_ConnectivityChanged;
+            UpdateAgentFlyoutVisibility(HttpHelper.IsConnected());
             UpdateCatalogBadges();
+        }
+
+        void Connectivity_ConnectivityChanged(object sender, ConnectivityChangedEventArgs e) =>
+            MainThread.BeginInvokeOnMainThread(() =>
+                UpdateAgentFlyoutVisibility(e.NetworkAccess == NetworkAccess.Internet));
+
+        void UpdateAgentFlyoutVisibility(bool online)
+        {
+            if (NavAgent == null)
+                return;
+
+            NavAgent.IsVisible = online;
+            if (!online && CurrentItem == NavAgent)
+                CurrentItem = NavRead;
         }
 
         private void GlobalInstance_CatalogDiffChanged(object sender, EventArgs e) =>

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 
@@ -10,7 +11,9 @@ using HtmlAgilityPack;
 using MobiHymn4.Models;
 using MobiHymn4.Utils;
 
+using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
+using Microsoft.Maui.Networking;
 
 
 namespace MobiHymn4.ViewModels
@@ -19,7 +22,12 @@ namespace MobiHymn4.ViewModels
     {
         private Globals globalInstance = Globals.Instance;
         string lastSearchText = string.Empty;
+        string cachedQueryKey = string.Empty;
+        readonly Dictionary<SearchType, SearchWorkResult> resultsByType = new();
         bool searchRunning;
+        bool isOnline;
+        AgentMode agentMode = AgentMode.Auto;
+        int agentLimit = Globals.AgentChatLimitDefault;
 
         private bool isSearched;
         public bool IsSearched
@@ -85,17 +93,16 @@ namespace MobiHymn4.ViewModels
                 if (!SetProperty(ref selectedSearchType, value))
                     return;
 
-                OnPropertyChanged(nameof(SearchPlaceholder));
-                OnPropertyChanged(nameof(IsLyricsSelected));
-                OnPropertyChanged(nameof(IsAuthorComposerSelected));
-                OnPropertyChanged(nameof(IsMetreSelected));
-                OnPropertyChanged(nameof(IsKeySelected));
-                OnPropertyChanged(nameof(IsVerseSelected));
-                OnPropertyChanged(nameof(IsGroupedSearchType));
-                OnPropertyChanged(nameof(IsFlatSearchType));
+                NotifySearchTypeUi();
 
-                if (!string.IsNullOrWhiteSpace(lastSearchText) && !IsBusy)
-                    SearchHymns.Execute(lastSearchText);
+                if (string.IsNullOrWhiteSpace(lastSearchText) || IsBusy)
+                    return;
+
+                // Restore cached results for this query+type instead of hitting the API again.
+                if (TryRestoreCachedResults(lastSearchText, value))
+                    return;
+
+                SearchHymns.Execute(lastSearchText);
             }
         }
 
@@ -104,9 +111,58 @@ namespace MobiHymn4.ViewModels
         public bool IsMetreSelected => SelectedSearchType == SearchType.Metre;
         public bool IsKeySelected => SelectedSearchType == SearchType.Key;
         public bool IsVerseSelected => SelectedSearchType == SearchType.Verse;
+        public bool IsTagsSelected => SelectedSearchType == SearchType.Tags;
+        public bool IsAISelected => SelectedSearchType == SearchType.AI;
+        /// <summary>AI chip — only when online.</summary>
+        public bool ShowAISearch => isOnline;
+        /// <summary>Topic (tags) chip — offline only; AI covers topic search when online.</summary>
+        public bool ShowTopicSearch => !isOnline;
+        public bool ShowAgentModePicker => IsAISelected && isOnline;
         public bool IsGroupedSearchType =>
-            SelectedSearchType is SearchType.AuthorComposer or SearchType.Metre or SearchType.Key;
+            SelectedSearchType is SearchType.AuthorComposer or SearchType.Metre or SearchType.Key or SearchType.Tags;
         public bool IsFlatSearchType => !IsGroupedSearchType;
+
+        public AgentMode AgentMode
+        {
+            get => agentMode;
+            set
+            {
+                if (!SetProperty(ref agentMode, value))
+                    return;
+
+                OnPropertyChanged(nameof(IsAgentModeAuto));
+                OnPropertyChanged(nameof(IsAgentModeLocal));
+                OnPropertyChanged(nameof(IsAgentModeCloud));
+            }
+        }
+
+        public bool IsAgentModeAuto => AgentMode == AgentMode.Auto;
+        public bool IsAgentModeLocal => AgentMode == AgentMode.Local;
+        public bool IsAgentModeCloud => AgentMode == AgentMode.Cloud;
+
+        public IReadOnlyList<int> AgentLimitOptions => Globals.AgentChatLimitOptions;
+
+        public int SelectedAgentLimit
+        {
+            get => agentLimit;
+            set
+            {
+                var snapped = Globals.SnapAgentChatLimit(value);
+                if (agentLimit == snapped)
+                    return;
+
+                agentLimit = snapped;
+                OnPropertyChanged(nameof(SelectedAgentLimit));
+
+                if (globalInstance.AgentChatLimit != snapped)
+                {
+                    globalInstance.AgentChatLimit = snapped;
+                    globalInstance.SaveSettings();
+                }
+            }
+        }
+
+        public ICommand SelectAgentModeCommand { get; private set; }
 
         public string SearchPlaceholder => SelectedSearchType switch
         {
@@ -114,6 +170,8 @@ namespace MobiHymn4.ViewModels
             SearchType.Metre => "e.g. 8.7.8.7",
             SearchType.Key => "e.g. E flat, Eb, or C#",
             SearchType.Verse => "e.g. Genesis 1 or Gen 1",
+            SearchType.Tags => "e.g. Easter, Trust, Communion",
+            SearchType.AI => "Describe what you’re looking for…",
             _ => "e.g. amazing grace"
         };
 
@@ -126,6 +184,130 @@ namespace MobiHymn4.ViewModels
             IsSearched = false;
 
             Title = "Search";
+            isOnline = HttpHelper.IsConnected();
+            selectedSearchType = SearchType.Lyrics;
+            agentMode = globalInstance.AgentMode;
+            agentLimit = Globals.SnapAgentChatLimit(globalInstance.AgentChatLimit);
+            SelectAgentModeCommand = new Command<AgentMode>(SelectAgentMode);
+            Connectivity.ConnectivityChanged += Connectivity_ConnectivityChanged;
+            globalInstance.AgentModeChanged += GlobalInstance_AgentModeChanged;
+            globalInstance.AgentChatLimitChanged += GlobalInstance_AgentChatLimitChanged;
+        }
+
+        void GlobalInstance_AgentModeChanged(object sender, EventArgs e)
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                var mode = sender is AgentMode m ? m : globalInstance.AgentMode;
+                if (AgentMode != mode)
+                    AgentMode = mode;
+                RefreshAiSearchAfterSettingsChange();
+            });
+        }
+
+        void GlobalInstance_AgentChatLimitChanged(object sender, EventArgs e)
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                var limit = sender is int n
+                    ? Globals.SnapAgentChatLimit(n)
+                    : Globals.SnapAgentChatLimit(globalInstance.AgentChatLimit);
+                if (agentLimit != limit)
+                {
+                    agentLimit = limit;
+                    OnPropertyChanged(nameof(SelectedAgentLimit));
+                }
+                RefreshAiSearchAfterSettingsChange();
+            });
+        }
+
+        void SelectAgentMode(AgentMode mode)
+        {
+            if (globalInstance.AgentMode == mode && AgentMode == mode)
+                return;
+
+            globalInstance.AgentMode = mode;
+            AgentMode = mode;
+            globalInstance.SaveSettings();
+            RefreshAiSearchAfterSettingsChange();
+        }
+
+        void RefreshAiSearchAfterSettingsChange()
+        {
+            resultsByType.Remove(SearchType.AI);
+            if (SelectedSearchType == SearchType.AI
+                && !string.IsNullOrWhiteSpace(lastSearchText)
+                && !IsBusy)
+            {
+                SearchHymns.Execute(lastSearchText);
+            }
+        }
+
+        void Connectivity_ConnectivityChanged(object sender, ConnectivityChangedEventArgs e) =>
+            MainThread.BeginInvokeOnMainThread(() =>
+                RefreshConnectivity(e.NetworkAccess == NetworkAccess.Internet));
+
+        void RefreshConnectivity(bool online)
+        {
+            if (isOnline == online)
+                return;
+
+            isOnline = online;
+            OnPropertyChanged(nameof(ShowAISearch));
+            OnPropertyChanged(nameof(ShowTopicSearch));
+            OnPropertyChanged(nameof(ShowAgentModePicker));
+
+            // Only leave a hidden chip; otherwise keep the user's selection (Lyrics stays default).
+            if (online && SelectedSearchType == SearchType.Tags)
+                SelectedSearchType = SearchType.Lyrics;
+            else if (!online && SelectedSearchType == SearchType.AI)
+                SelectedSearchType = SearchType.Lyrics;
+        }
+
+        void NotifySearchTypeUi()
+        {
+            OnPropertyChanged(nameof(SearchPlaceholder));
+            OnPropertyChanged(nameof(IsLyricsSelected));
+            OnPropertyChanged(nameof(IsAuthorComposerSelected));
+            OnPropertyChanged(nameof(IsMetreSelected));
+            OnPropertyChanged(nameof(IsKeySelected));
+            OnPropertyChanged(nameof(IsVerseSelected));
+            OnPropertyChanged(nameof(IsTagsSelected));
+            OnPropertyChanged(nameof(IsAISelected));
+            OnPropertyChanged(nameof(ShowAgentModePicker));
+            OnPropertyChanged(nameof(IsGroupedSearchType));
+            OnPropertyChanged(nameof(IsFlatSearchType));
+        }
+
+        bool TryRestoreCachedResults(string text, SearchType searchType)
+        {
+            var key = NormalizeQueryKey(text);
+            if (!string.Equals(cachedQueryKey, key, StringComparison.Ordinal)
+                || !resultsByType.TryGetValue(searchType, out var cached))
+                return false;
+
+            Items = cached.Items;
+            Groups = cached.Groups;
+            ItemCount = cached.IsGrouped
+                ? Groups.Sum(group => group.Hymns.Count)
+                : Items.Count;
+            IsSearched = true;
+            OnSearchFinished?.Invoke(Items, EventArgs.Empty);
+            return true;
+        }
+
+        static string NormalizeQueryKey(string text) => (text ?? string.Empty).Trim();
+
+        void CacheResults(string text, SearchType searchType, SearchWorkResult result)
+        {
+            var key = NormalizeQueryKey(text);
+            if (!string.Equals(cachedQueryKey, key, StringComparison.Ordinal))
+            {
+                resultsByType.Clear();
+                cachedQueryKey = key;
+            }
+
+            resultsByType[searchType] = result;
         }
 
         private ICommand _searchHymns;
@@ -166,13 +348,18 @@ namespace MobiHymn4.ViewModels
                 await Task.Yield();
                 await Task.Delay(32);
 
-                var result = await Task.Run(() => Search(text, searchType));
+                SearchWorkResult result;
+                if (searchType == SearchType.AI)
+                    result = await SearchWithAgentAsync(text);
+                else
+                    result = await Task.Run(() => Search(text, searchType));
 
                 Items = result.Items;
                 Groups = result.Groups;
                 ItemCount = result.IsGrouped
                     ? Groups.Sum(group => group.Hymns.Count)
                     : Items.Count;
+                CacheResults(text, searchType, result);
                 IsSearched = true;
                 OnSearchFinished?.Invoke(Items, EventArgs.Empty);
             }
@@ -180,6 +367,68 @@ namespace MobiHymn4.ViewModels
             {
                 IsBusy = false;
                 searchRunning = false;
+            }
+        }
+
+        async Task<SearchWorkResult> SearchWithAgentAsync(string text)
+        {
+            var query = (text ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(query))
+                return SearchWorkResult.Empty(false);
+
+            if (!HttpHelper.IsConnected())
+            {
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                    Globals.ShowToastPopup(
+                        Application.Current?.UserAppTheme == AppTheme.Light ? "no-internet-light" : "no-internet-dark",
+                        "Connect to use AI search, or try Topic / Lyrics offline."));
+                return SearchWorkResult.Empty(false);
+            }
+
+            try
+            {
+                var http = new HttpHelper();
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+                var response = await http.SearchAgentAsync(
+                    query,
+                    cts.Token,
+                    limit: globalInstance.AgentChatLimit).ConfigureAwait(false);
+                var items = (response.Results ?? new List<AgentSearchResult>())
+                    .Where(r => !string.IsNullOrWhiteSpace(r?.Number))
+                    .Select(r => new ShortHymn
+                    {
+                        Number = r.Number.Trim(),
+                        Line = string.IsNullOrWhiteSpace(r.Title)
+                            ? (r.FirstLine ?? $"Hymn #{r.Number}")
+                            : r.Title,
+                        Reason = r.Reason
+                    })
+                    .ToList()
+                    .ToObservableCollection();
+
+                if (response.Fallback)
+                {
+                    await MainThread.InvokeOnMainThreadAsync(() =>
+                        Globals.ShowToastPopup(
+                            Application.Current?.UserAppTheme == AppTheme.Light ? "search-light" : "search-dark",
+                            "AI unavailable — showing local matches."));
+                }
+
+                return new SearchWorkResult
+                {
+                    Items = items,
+                    Groups = new ObservableCollection<SearchResultGroup>(),
+                    IsGrouped = false
+                };
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"AI search failed: {ex}");
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                    Globals.ShowToastPopup(
+                        Application.Current?.UserAppTheme == AppTheme.Light ? "search-light" : "search-dark",
+                        "AI search failed. Try Topic or Lyrics."));
+                return SearchWorkResult.Empty(false);
             }
         }
 
@@ -252,6 +501,9 @@ namespace MobiHymn4.ViewModels
                             break;
                         case SearchType.Verse:
                             AddVerseMatch(results, text, hymn);
+                            break;
+                        case SearchType.Tags:
+                            AddGroupedTagsMatch(metadataHits, pattern, hymn);
                             break;
                         default:
                             var lyricsHtml = ParsedLyrics(htmlDocument, hymn.Lyrics);
@@ -329,7 +581,7 @@ namespace MobiHymn4.ViewModels
         }
 
         static bool IsGrouped(SearchType searchType) =>
-            searchType is SearchType.AuthorComposer or SearchType.Metre or SearchType.Key;
+            searchType is SearchType.AuthorComposer or SearchType.Metre or SearchType.Key or SearchType.Tags;
 
         static int HymnSortNumber(string number)
         {
@@ -355,6 +607,27 @@ namespace MobiHymn4.ViewModels
                 GroupValue = value.Trim(),
                 Hymn = hymn
             });
+        }
+
+        static void AddGroupedTagsMatch(
+            List<MetadataSearchHit> results,
+            Regex pattern,
+            Hymn hymn)
+        {
+            foreach (var tag in hymn.Tags ?? Array.Empty<string>())
+            {
+                if (string.IsNullOrWhiteSpace(tag))
+                    continue;
+                if (!pattern.IsMatch(tag.StripPunctuation()))
+                    continue;
+
+                results.Add(new MetadataSearchHit
+                {
+                    Category = "Tag",
+                    GroupValue = tag.Trim(),
+                    Hymn = hymn
+                });
+            }
         }
 
         static void AddGroupedKeyMatch(
