@@ -6,6 +6,7 @@ namespace MobiHymn4.Utils
 		public const string HOME = "home";
         public const string READ = "read";
         public const string SEARCH = "search";
+        public const string AGENT_CHAT = "agent-chat";
         public const string BOOKMARKS_GROUP = "bookmarks-group";
         public const string BOOKMARKS_LIST = "bookmark-items?name={group}";
         public const string HISTORY = "history";

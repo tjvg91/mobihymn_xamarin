@@ -134,6 +134,7 @@ namespace MobiHymn4.ViewModels
         private void Globals_ActiveAlignmentChanged(object sender, EventArgs e)
         {
             ActiveAlignment = (TextAlignment)sender;
+            OnPropertyChanged(nameof(TitleRowHorizontalOptions));
         }
 
         private void GlobalInstance_InitFinished(object sender, EventArgs e)
@@ -156,6 +157,7 @@ namespace MobiHymn4.ViewModels
             Title = "Hymn #" + activeHymn.Title;
             Lyrics = NormalizeLyrics(activeHymn.Lyrics);
             BookmarkFont = globalInstance.IsBookmarked() ? "FAS" : "FAR";
+            UpdateHymnInfoIcon(activeHymn);
 
             if (OnHymnChanged != null) OnHymnChanged(activeHymn, EventArgs.Empty);
             UpdateLoadingState();
@@ -218,6 +220,7 @@ namespace MobiHymn4.ViewModels
             Title = "Hymn #" + activeHymn.Title;
             Lyrics = NormalizeLyrics(activeHymn.Lyrics);
             BookmarkFont = globalInstance.IsBookmarked() ? "FAS" : "FAR";
+            UpdateHymnInfoIcon(activeHymn);
 
             if (OnHymnChanged != null)
                 OnHymnChanged(activeHymn, EventArgs.Empty);
@@ -284,6 +287,27 @@ namespace MobiHymn4.ViewModels
             set => SetProperty(ref downloadMessage, value);
         }
 
+        private double downloadProgress;
+        public double DownloadProgress
+        {
+            get => downloadProgress;
+            set => SetProperty(ref downloadProgress, value);
+        }
+
+        private string downloadProgressText = string.Empty;
+        public string DownloadProgressText
+        {
+            get => downloadProgressText;
+            set => SetProperty(ref downloadProgressText, value);
+        }
+
+        private bool showDownloadProgress;
+        public bool ShowDownloadProgress
+        {
+            get => showDownloadProgress;
+            set => SetProperty(ref showDownloadProgress, value);
+        }
+
         private bool showDownloadDurationHint = true;
         public bool ShowDownloadDurationHint
         {
@@ -294,6 +318,7 @@ namespace MobiHymn4.ViewModels
         private void GlobalInstance_DownloadStarted(object sender, EventArgs e)
         {
             DownloadLottieIcon = "download";
+            ClearDownloadProgress();
             DownloadMessage = string.IsNullOrEmpty(globalInstance.LastDownloadProgressMessage)
                 ? "Initializing..."
                 : globalInstance.LastDownloadProgressMessage;
@@ -304,7 +329,7 @@ namespace MobiHymn4.ViewModels
         private void GlobalInstance_DownloadProgressed(object sender, EventArgs e)
         {
             DownloadLottieIcon = "download";
-            DownloadMessage = (string)sender;
+            ApplyDownloadProgress((string)sender);
             ShowDownloadDurationHint = true;
             UpdateLoadingState();
         }
@@ -312,6 +337,7 @@ namespace MobiHymn4.ViewModels
         private void GlobalInstance_DownloadError(object sender, EventArgs e)
         {
             DownloadMessage = (string)sender;
+            ClearDownloadProgress();
             DownloadLottieIcon = DownloadMessage.Contains("connect")
                 ? Application.Current.UserAppTheme == AppTheme.Light ? "no-internet-light" : "no-internet-dark"
                 : "download";
@@ -319,8 +345,42 @@ namespace MobiHymn4.ViewModels
             UpdateLoadingState();
         }
 
+        void ApplyDownloadProgress(string report)
+        {
+            var current = globalInstance.DownloadProgressCurrent;
+            var total = globalInstance.DownloadProgressTotal;
+            if (current >= 0 && total > 0)
+            {
+                DownloadProgress = Math.Clamp((double)current / total, 0, 1);
+                DownloadProgressText = $"{current} / {total}";
+                ShowDownloadProgress = true;
+
+                var text = report ?? string.Empty;
+                if (text.StartsWith("Saving", StringComparison.OrdinalIgnoreCase)
+                    || text.StartsWith("Saved", StringComparison.OrdinalIgnoreCase)
+                    || text.StartsWith("Finishing", StringComparison.OrdinalIgnoreCase))
+                    DownloadMessage = text.StartsWith("Saved", StringComparison.OrdinalIgnoreCase) ? "Saved" : "Saving…";
+                else if (text.StartsWith("Syncing", StringComparison.OrdinalIgnoreCase))
+                    DownloadMessage = "Syncing…";
+                else
+                    DownloadMessage = "Downloading…";
+            }
+            else
+            {
+                ClearDownloadProgress();
+                DownloadMessage = report;
+            }
+        }
+
+        void ClearDownloadProgress()
+        {
+            DownloadProgress = 0;
+            DownloadProgressText = string.Empty;
+            ShowDownloadProgress = false;
+        }
+
         static string NormalizeLyrics(string value) =>
-            (value ?? string.Empty).Replace('\uFFFD', '\'');
+            HttpHelper.SanitizeStoredLyrics(value ?? string.Empty);
 
         private bool isLoadingLyrics;
         public bool IsLoadingLyrics
@@ -408,8 +468,40 @@ namespace MobiHymn4.ViewModels
                 activeAlignment = value;
                 SetProperty(ref activeAlignment, value, nameof(ActiveAlignment));
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(TitleRowHorizontalOptions));
             }
         }
+
+        public LayoutOptions TitleRowHorizontalOptions => ActiveAlignment switch
+        {
+            TextAlignment.Center => LayoutOptions.Center,
+            TextAlignment.End => LayoutOptions.End,
+            _ => LayoutOptions.Start
+        };
+
+        private bool showHymnInfoIcon;
+        public bool ShowHymnInfoIcon
+        {
+            get => showHymnInfoIcon;
+            private set => SetProperty(ref showHymnInfoIcon, value);
+        }
+
+        void UpdateHymnInfoIcon(Models.Hymn hymn)
+        {
+            ShowHymnInfoIcon = hymn != null && HasHymnMetadata(hymn);
+        }
+
+        static bool HasHymnMetadata(Models.Hymn hymn) =>
+            !string.IsNullOrWhiteSpace(hymn.Name)
+            || !string.IsNullOrWhiteSpace(hymn.Author)
+            || !string.IsNullOrWhiteSpace(hymn.Metre)
+            || !string.IsNullOrWhiteSpace(hymn.Tune)
+            || !string.IsNullOrWhiteSpace(hymn.TuneComposer)
+            || !string.IsNullOrWhiteSpace(hymn.TuneKey)
+            || hymn.GetVerseReferences().Any()
+            || hymn.Tags?.Any(tag => !string.IsNullOrWhiteSpace(tag)) == true
+            || !string.IsNullOrWhiteSpace(hymn.Year)
+            || !string.IsNullOrWhiteSpace(hymn.Remark);
 
         private Color activeColor;
         public Color ActiveColor

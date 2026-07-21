@@ -1,0 +1,388 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<toolkit:Popup
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    xmlns:popups="clr-namespace:MobiHymn4.Views.Popups"
+    x:Class="MobiHymn4.Views.Popups.CatalogDiffPopup"
+    Color="Transparent"
+    CanBeDismissedByTappingOutsideOfPopup="True">
+
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill">
+        <ContentView
+            x:Name="overlay"
+            BackgroundColor="#8C000000"
+            HorizontalOptions="Fill"
+            VerticalOptions="Fill">
+            <ContentView.GestureRecognizers>
+                <TapGestureRecognizer Tapped="Overlay_Tapped"/>
+            </ContentView.GestureRecognizers>
+        </ContentView>
+
+        <Border
+            Padding="0"
+            WidthRequest="360"
+            MaximumWidthRequest="420"
+            HeightRequest="560"
+            MaximumHeightRequest="620"
+            Margin="20,0"
+            HorizontalOptions="Center"
+            VerticalOptions="Center"
+            Stroke="Transparent"
+            StrokeThickness="0"
+            StrokeShape="RoundRectangle 18"
+            Background="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}">
+            <Border.Shadow>
+                <Shadow Brush="Black" Offset="0,8" Radius="28" Opacity="0.35"/>
+            </Border.Shadow>
+
+            <Grid RowDefinitions="Auto,*,Auto">
+                <!-- Header -->
+                <VerticalStackLayout Padding="18,16,18,12" Spacing="10">
+                    <Label
+                        Text="Compare changes"
+                        FontSize="20"
+                        FontAttributes="Bold"
+                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+                    <Label
+                        Text="Your local hymns vs the server catalog. Old values are on the left; new values on the right."
+                        FontSize="12.5"
+                        LineBreakMode="WordWrap"
+                        TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+
+                    <FlexLayout
+                        Wrap="Wrap"
+                        JustifyContent="Start"
+                        AlignItems="Start">
+                        <Border
+                            x:Name="chipAdded"
+                            IsVisible="False"
+                            Margin="0,0,8,6"
+                            Padding="10,5"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 14"
+                            Background="{AppThemeBinding Light=#E8F5E9, Dark=#1B3324}">
+                            <Label
+                                x:Name="lblChipAdded"
+                                FontSize="12"
+                                FontAttributes="Bold"
+                                TextColor="{AppThemeBinding Light=#2E7D32, Dark=#81C784}"/>
+                        </Border>
+                        <Border
+                            x:Name="chipModified"
+                            IsVisible="False"
+                            Margin="0,0,8,6"
+                            Padding="10,5"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 14"
+                            Background="{AppThemeBinding Light=#FFF3E0, Dark=#3D2A14}">
+                            <Label
+                                x:Name="lblChipModified"
+                                FontSize="12"
+                                FontAttributes="Bold"
+                                TextColor="{AppThemeBinding Light=#E65100, Dark=#FFB74D}"/>
+                        </Border>
+                        <Border
+                            x:Name="chipRemoved"
+                            IsVisible="False"
+                            Margin="0,0,8,6"
+                            Padding="10,5"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 14"
+                            Background="{AppThemeBinding Light=#FFEBEE, Dark=#3D1F1F}">
+                            <Label
+                                x:Name="lblChipRemoved"
+                                FontSize="12"
+                                FontAttributes="Bold"
+                                TextColor="{AppThemeBinding Light=#C62828, Dark=#EF9A9A}"/>
+                        </Border>
+                    </FlexLayout>
+                </VerticalStackLayout>
+
+                <!-- Diff list -->
+                <CollectionView
+                    x:Name="changesList"
+                    Grid.Row="1"
+                    Margin="12,0"
+                    SelectionMode="None">
+                    <CollectionView.ItemsLayout>
+                        <LinearItemsLayout Orientation="Vertical" ItemSpacing="12"/>
+                    </CollectionView.ItemsLayout>
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="popups:DiffSectionVm">
+                            <Border
+                                Padding="0"
+                                Stroke="{AppThemeBinding Light=#E8E8E8, Dark=#333333}"
+                                StrokeThickness="1"
+                                StrokeShape="RoundRectangle 14"
+                                Background="{AppThemeBinding Light=#FAFAFA, Dark=#1E1E1E}">
+                                <VerticalStackLayout Spacing="0">
+                                    <!-- Section header (tap to expand) -->
+                                    <Grid
+                                        Padding="12,10"
+                                        ColumnDefinitions="Auto,*,Auto,Auto"
+                                        ColumnSpacing="8"
+                                        Background="{AppThemeBinding Light=#F0F0F0, Dark=#2A2A2A}">
+                                        <Grid.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding ToggleCommand}"/>
+                                        </Grid.GestureRecognizers>
+                                        <BoxView
+                                            WidthRequest="4"
+                                            HeightRequest="22"
+                                            CornerRadius="2"
+                                            Color="{Binding AccentColor}"
+                                            VerticalOptions="Center"/>
+                                        <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                                            <Label
+                                                Text="{Binding KindLabel}"
+                                                FontSize="10.5"
+                                                FontAttributes="Bold"
+                                                IsVisible="{Binding HasKindLabel}"
+                                                TextTransform="Uppercase"
+                                                TextColor="{Binding AccentColor}"/>
+                                            <Label
+                                                Text="{Binding Title}"
+                                                FontSize="14"
+                                                FontAttributes="Bold"
+                                                LineBreakMode="WordWrap"
+                                                TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+                                            <Label
+                                                Text="{Binding Detail}"
+                                                FontSize="11.5"
+                                                LineBreakMode="WordWrap"
+                                                IsVisible="{Binding ShowHeaderDetail}"
+                                                MaxLines="2"
+                                                TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                        </VerticalStackLayout>
+                                        <Grid
+                                            Grid.Column="2"
+                                            IsVisible="{Binding HasCount}"
+                                            VerticalOptions="Center"
+                                            Padding="8,3">
+                                            <BoxView
+                                                CornerRadius="10"
+                                                Color="{Binding AccentColor}"/>
+                                            <Label
+                                                Text="{Binding CountBadge}"
+                                                FontSize="11"
+                                                FontAttributes="Bold"
+                                                HorizontalTextAlignment="Center"
+                                                VerticalTextAlignment="Center"
+                                                TextColor="White"/>
+                                        </Grid>
+                                        <Label
+                                            Grid.Column="3"
+                                            Text="{Binding Chevron}"
+                                            FontFamily="FAS"
+                                            FontSize="13"
+                                            VerticalOptions="Center"
+                                            TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                    </Grid>
+
+                                    <!-- Section body -->
+                                    <VerticalStackLayout
+                                        Padding="12,10"
+                                        Spacing="8"
+                                        IsVisible="{Binding IsExpanded}">
+                                        <Label
+                                            Text="{Binding Detail}"
+                                            FontSize="12.5"
+                                            LineBreakMode="WordWrap"
+                                            IsVisible="{Binding ShowBodyDetail}"
+                                            TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+
+                                        <Label
+                                            Text="{Binding Note}"
+                                            FontSize="11.5"
+                                            FontAttributes="Italic"
+                                            IsVisible="{Binding HasNote}"
+                                            TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+
+                                        <VerticalStackLayout
+                                            Spacing="8"
+                                            IsVisible="{Binding HasExamples}"
+                                            BindableLayout.ItemsSource="{Binding Examples}">
+                                            <BindableLayout.ItemTemplate>
+                                                <DataTemplate x:DataType="popups:DiffExampleVm">
+                                                    <Border
+                                                        Padding="0"
+                                                        Stroke="{AppThemeBinding Light=#E0E0E0, Dark=#333333}"
+                                                        StrokeThickness="1"
+                                                        StrokeShape="RoundRectangle 10"
+                                                        Background="{AppThemeBinding Light=White, Dark=#252525}">
+                                                        <VerticalStackLayout Spacing="0">
+                                                            <Grid
+                                                                Padding="10,8"
+                                                                ColumnDefinitions="*,Auto"
+                                                                ColumnSpacing="8">
+                                                                <Grid.GestureRecognizers>
+                                                                    <TapGestureRecognizer Command="{Binding ToggleCommand}"/>
+                                                                </Grid.GestureRecognizers>
+                                                                <VerticalStackLayout Spacing="2" VerticalOptions="Center">
+                                                                    <Label
+                                                                        Text="{Binding Header}"
+                                                                        FontSize="12.5"
+                                                                        FontAttributes="Bold"
+                                                                        IsVisible="{Binding HasHeader}"
+                                                                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+                                                                    <Label
+                                                                        Text="{Binding Preview}"
+                                                                        FontSize="11.5"
+                                                                        LineBreakMode="TailTruncation"
+                                                                        MaxLines="1"
+                                                                        IsVisible="{Binding ShowPreview}"
+                                                                        TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                                                </VerticalStackLayout>
+                                                                <Label
+                                                                    Grid.Column="1"
+                                                                    Text="{Binding Chevron}"
+                                                                    FontFamily="FAS"
+                                                                    FontSize="12"
+                                                                    VerticalOptions="Center"
+                                                                    TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                                            </Grid>
+
+                                                            <VerticalStackLayout
+                                                                Padding="10,0,10,10"
+                                                                Spacing="8"
+                                                                IsVisible="{Binding IsExpanded}"
+                                                                BindableLayout.ItemsSource="{Binding Props}">
+                                                            <BindableLayout.ItemTemplate>
+                                                                <DataTemplate x:DataType="popups:DiffPropVm">
+                                                                    <VerticalStackLayout Spacing="4">
+                                                                        <Label
+                                                                            Text="{Binding Name}"
+                                                                            FontSize="11"
+                                                                            FontAttributes="Bold"
+                                                                            IsVisible="{Binding ShowName}"
+                                                                            TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+
+                                                                        <!-- New property (no previous value) -->
+                                                                        <Border
+                                                                            Padding="8,7"
+                                                                            StrokeThickness="0"
+                                                                            StrokeShape="RoundRectangle 8"
+                                                                            Background="{AppThemeBinding Light=#E8F5E9, Dark=#1B3324}"
+                                                                            IsVisible="{Binding IsNew}">
+                                                                            <VerticalStackLayout Spacing="3">
+                                                                                <Label
+                                                                                    Text="+ NEW"
+                                                                                    FontSize="9.5"
+                                                                                    FontAttributes="Bold"
+                                                                                    TextColor="{AppThemeBinding Light=#2E7D32, Dark=#81C784}"/>
+                                                                                <Label
+                                                                                    Text="{Binding NewText}"
+                                                                                    FontSize="12"
+                                                                                    LineBreakMode="WordWrap"
+                                                                                    FontAttributes="Bold"
+                                                                                    TextColor="{AppThemeBinding Light=#1B5E20, Dark=#A5D6A7}"/>
+                                                                            </VerticalStackLayout>
+                                                                        </Border>
+
+                                                                        <!-- Removed property (cleared on server) -->
+                                                                        <Border
+                                                                            Padding="8,7"
+                                                                            StrokeThickness="0"
+                                                                            StrokeShape="RoundRectangle 8"
+                                                                            Background="{AppThemeBinding Light=#FFEBEE, Dark=#3D1F1F}"
+                                                                            IsVisible="{Binding IsRemoved}">
+                                                                            <VerticalStackLayout Spacing="3">
+                                                                                <Label
+                                                                                    Text="− REMOVED"
+                                                                                    FontSize="9.5"
+                                                                                    FontAttributes="Bold"
+                                                                                    TextColor="{AppThemeBinding Light=#C62828, Dark=#EF9A9A}"/>
+                                                                                <Label
+                                                                                    Text="{Binding OldText}"
+                                                                                    FontSize="12"
+                                                                                    LineBreakMode="WordWrap"
+                                                                                    TextColor="{AppThemeBinding Light=#B71C1C, Dark=#FFCDD2}"/>
+                                                                            </VerticalStackLayout>
+                                                                        </Border>
+
+                                                                        <!-- Before / After comparison -->
+                                                                        <Grid
+                                                                            ColumnDefinitions="*,*"
+                                                                            ColumnSpacing="6"
+                                                                            IsVisible="{Binding IsChanged}">
+                                                                            <Border
+                                                                                Padding="8,7"
+                                                                                StrokeThickness="0"
+                                                                                StrokeShape="RoundRectangle 8"
+                                                                                Background="{AppThemeBinding Light=#FFEBEE, Dark=#3D1F1F}">
+                                                                                <VerticalStackLayout Spacing="3">
+                                                                                    <Label
+                                                                                        Text="− BEFORE"
+                                                                                        FontSize="9.5"
+                                                                                        FontAttributes="Bold"
+                                                                                        TextColor="{AppThemeBinding Light=#C62828, Dark=#EF9A9A}"/>
+                                                                                    <Label
+                                                                                        Text="{Binding OldText}"
+                                                                                        FontSize="12"
+                                                                                        LineBreakMode="WordWrap"
+                                                                                        TextColor="{AppThemeBinding Light=#B71C1C, Dark=#FFCDD2}"/>
+                                                                                </VerticalStackLayout>
+                                                                            </Border>
+                                                                            <Border
+                                                                                Grid.Column="1"
+                                                                                Padding="8,7"
+                                                                                StrokeThickness="0"
+                                                                                StrokeShape="RoundRectangle 8"
+                                                                                Background="{AppThemeBinding Light=#E8F5E9, Dark=#1B3324}">
+                                                                                <VerticalStackLayout Spacing="3">
+                                                                                    <Label
+                                                                                        Text="+ AFTER"
+                                                                                        FontSize="9.5"
+                                                                                        FontAttributes="Bold"
+                                                                                        TextColor="{AppThemeBinding Light=#2E7D32, Dark=#81C784}"/>
+                                                                                    <Label
+                                                                                        Text="{Binding NewText}"
+                                                                                        FontSize="12"
+                                                                                        LineBreakMode="WordWrap"
+                                                                                        FontAttributes="Bold"
+                                                                                        TextColor="{AppThemeBinding Light=#1B5E20, Dark=#A5D6A7}"/>
+                                                                                </VerticalStackLayout>
+                                                                            </Border>
+                                                                        </Grid>
+                                                                    </VerticalStackLayout>
+                                                                </DataTemplate>
+                                                            </BindableLayout.ItemTemplate>
+                                                            </VerticalStackLayout>
+                                                        </VerticalStackLayout>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </BindableLayout.ItemTemplate>
+                                        </VerticalStackLayout>
+                                    </VerticalStackLayout>
+                                </VerticalStackLayout>
+                            </Border>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                    <CollectionView.EmptyView>
+                        <Label
+                            Text="No changes are currently available."
+                            FontSize="13"
+                            Margin="6,16"
+                            TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                    </CollectionView.EmptyView>
+                </CollectionView>
+
+                <!-- Footer CTA -->
+                <VerticalStackLayout
+                    Grid.Row="2"
+                    Padding="16,10,16,14"
+                    Spacing="0"
+                    Background="{AppThemeBinding Light=#FAFAFA, Dark=#1A1A1A}">
+                    <Button
+                        Text="Sync Changes"
+                        HeightRequest="46"
+                        CornerRadius="12"
+                        FontAttributes="Bold"
+                        BackgroundColor="{StaticResource Primary}"
+                        TextColor="{StaticResource PrimaryText}"
+                        Clicked="btnSyncChanges_Clicked"/>
+                </VerticalStackLayout>
+            </Grid>
+        </Border>
+    </Grid>
+</toolkit:Popup>

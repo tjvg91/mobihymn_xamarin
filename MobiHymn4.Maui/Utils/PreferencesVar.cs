@@ -22,6 +22,9 @@ namespace MobiHymn4.Utils
         public const string READER_SETTINGS = "readerSettings";
         public const string GROUP_WELCOME_SEEN_IDS = "groupWelcomeSeenIds";
         public const string COMMUNITY_PROMPT_DISMISSED = "communityPromptDismissed";
+        public const string HYMN_TOTAL = "hymnTotal";
+        public const string HYMN_CATALOG_HASH = "hymnCatalogHash";
+        public const string AGENT_MODE = "agentMode";
+        public const string AGENT_CHAT_LIMIT = "agentChatLimit";
     }
 }
-

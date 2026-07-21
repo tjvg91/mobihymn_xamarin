@@ -7,6 +7,12 @@ namespace MobiHymn4.Models
         public string Line { get; set; }
         public string Number { get; set; }
         public string NumberText { get => "Hymn #" + Number; }
+        public string NumberBadge { get => "#" + Number; }
+
+        /// <summary>Optional AI / tags match explanation shown under the result.</summary>
+        public string Reason { get; set; }
+
+        public bool HasReason => !string.IsNullOrWhiteSpace(Reason);
 
 		private DateTime timeStamp;
 		public DateTime TimeStamp

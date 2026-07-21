@@ -56,5 +56,23 @@ namespace MobiHymn4.Utils
 		NameAsc = 3,
 		NameDesc = 4,
 	}
-}
 
+	public enum SearchType
+	{
+		Lyrics = 0,
+		AuthorComposer = 1,
+		Metre = 2,
+		Key = 3,
+		Verse = 4,
+		Tags = 5,
+		AI = 6
+	}
+
+	/// <summary>AI search/chat routing. Auto omits <c>mode</c> from the API payload.</summary>
+	public enum AgentMode
+	{
+		Auto = 0,
+		Local = 1,
+		Cloud = 2
+	}
+}

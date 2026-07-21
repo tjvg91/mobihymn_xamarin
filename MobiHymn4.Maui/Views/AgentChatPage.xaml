@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:MobiHymn4.ViewModels"
+             xmlns:elements="clr-namespace:MobiHymn4.Elements"
+             xmlns:fontawesome="clr-namespace:FontAwesome"
+             x:Class="MobiHymn4.Views.AgentChatPage"
+             x:Name="root"
+             Title="{Binding Title}">
+    <ContentPage.BindingContext>
+        <vm:AgentChatViewModel />
+    </ContentPage.BindingContext>
+    <ContentPage.ToolbarItems>
+        <ToolbarItem x:Name="tbSettings" Clicked="tbSettings_Clicked">
+            <ToolbarItem.IconImageSource>
+                <FontImageSource
+                    FontFamily="FAS"
+                    Color="{StaticResource PrimaryText}"
+                    Size="Medium"
+                    Glyph="{x:Static fontawesome:FontAwesomeIcons.Cog}"/>
+            </ToolbarItem.IconImageSource>
+        </ToolbarItem>
+    </ContentPage.ToolbarItems>
+
+    <Grid RowDefinitions="*,Auto,Auto">
+        <ScrollView x:Name="ChatScroll" VerticalOptions="Fill" SizeChanged="ChatScroll_SizeChanged">
+            <Grid x:Name="MessagesHost">
+                <VerticalStackLayout
+                    Padding="12,8"
+                    Spacing="12"
+                    VerticalOptions="End"
+                    BindableLayout.ItemsSource="{Binding Messages}">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate>
+                            <VerticalStackLayout Spacing="8">
+                                <!-- Typing indicator (bouncing dots, chat-style) -->
+                                <Border
+                                    IsVisible="{Binding IsTyping}"
+                                    Margin="0,0,32,0"
+                                    Padding="12,6"
+                                    StrokeThickness="0"
+                                    StrokeShape="RoundRectangle 14"
+                                    HorizontalOptions="Start"
+                                    BackgroundColor="{AppThemeBinding Light=#F0F0F0, Dark={StaticResource Gray}}">
+                                    <elements:AnimatingView
+                                        Source="typing-message"
+                                        Size="44"
+                                        HorizontalOptions="Center"
+                                        VerticalOptions="Center"/>
+                                </Border>
+
+                                <!-- Message bubble -->
+                                <Border
+                                    IsVisible="{Binding ShowTextBubble}"
+                                    Margin="0,0,32,0"
+                                    Padding="12,10"
+                                    StrokeThickness="0"
+                                    StrokeShape="RoundRectangle 14"
+                                    HorizontalOptions="Start"
+                                    BackgroundColor="{AppThemeBinding Light=#F0F0F0, Dark={StaticResource Gray}}">
+                                    <Border.Triggers>
+                                        <DataTrigger TargetType="Border" Binding="{Binding IsUser}" Value="True">
+                                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}"/>
+                                            <Setter Property="HorizontalOptions" Value="End"/>
+                                            <Setter Property="Margin" Value="32,0,0,0"/>
+                                        </DataTrigger>
+                                    </Border.Triggers>
+                                    <Label
+                                        FormattedText="{Binding FormattedDisplay}"
+                                        LineBreakMode="WordWrap"
+                                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}">
+                                        <Label.Triggers>
+                                            <DataTrigger TargetType="Label" Binding="{Binding IsUser}" Value="True">
+                                                <Setter Property="TextColor" Value="{StaticResource PrimaryText}"/>
+                                            </DataTrigger>
+                                        </Label.Triggers>
+                                    </Label>
+                                </Border>
+
+                                <!-- Collapsible hymn list for this reply -->
+                                <Border
+                                    IsVisible="{Binding HasSuggestions}"
+                                    Margin="0,0,32,0"
+                                    Padding="0"
+                                    StrokeThickness="1"
+                                    Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark=#333333}"
+                                    StrokeShape="RoundRectangle 14"
+                                    BackgroundColor="{AppThemeBinding Light=#FAFAFA, Dark=#1A1A1A}">
+                                    <VerticalStackLayout Spacing="0">
+                                        <Grid
+                                            Padding="12,10"
+                                            ColumnDefinitions="*,Auto,Auto"
+                                            ColumnSpacing="8">
+                                            <Grid.GestureRecognizers>
+                                                <TapGestureRecognizer
+                                                    Command="{Binding Source={x:Reference root}, Path=BindingContext.ToggleSuggestionsCommand}"
+                                                    CommandParameter="{Binding .}"/>
+                                            </Grid.GestureRecognizers>
+                                            <Label
+                                                Text="{Binding SuggestionHeaderText}"
+                                                FontSize="13"
+                                                FontAttributes="Bold"
+                                                VerticalOptions="Center"
+                                                TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                            <Label
+                                                Grid.Column="1"
+                                                Text="{Binding SuggestionChevron}"
+                                                FontSize="14"
+                                                VerticalOptions="Center"
+                                                TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                        </Grid>
+
+                                        <CollectionView
+                                            IsVisible="{Binding ShowSuggestionsList}"
+                                            ItemsSource="{Binding Suggestions}"
+                                            HeightRequest="240"
+                                            Margin="8,0,8,8"
+                                            SelectionMode="None"
+                                            VerticalScrollBarVisibility="Always">
+                                            <CollectionView.ItemsLayout>
+                                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="8"/>
+                                            </CollectionView.ItemsLayout>
+                                            <CollectionView.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border
+                                                        Padding="12,10"
+                                                        StrokeThickness="1"
+                                                        Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark=#333333}"
+                                                        StrokeShape="RoundRectangle 12"
+                                                        BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}">
+                                                        <Border.GestureRecognizers>
+                                                            <TapGestureRecognizer
+                                                                Command="{Binding Source={x:Reference root}, Path=BindingContext.OpenHymnCommand}"
+                                                                CommandParameter="{Binding .}"/>
+                                                        </Border.GestureRecognizers>
+                                                        <VerticalStackLayout Spacing="8">
+                                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                                                <Label
+                                                                    Text="{Binding Line}"
+                                                                    FontSize="14"
+                                                                    FontAttributes="Bold"
+                                                                    LineBreakMode="WordWrap"
+                                                                    VerticalOptions="Center"
+                                                                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+                                                                <Border
+                                                                    Grid.Column="1"
+                                                                    Padding="8,4"
+                                                                    StrokeThickness="0"
+                                                                    StrokeShape="RoundRectangle 10"
+                                                                    VerticalOptions="Start"
+                                                                    BackgroundColor="{StaticResource Primary}">
+                                                                    <Label
+                                                                        Text="{Binding NumberBadge}"
+                                                                        FontSize="11"
+                                                                        FontAttributes="Bold"
+                                                                        TextColor="{StaticResource PrimaryText}"/>
+                                                                </Border>
+                                                            </Grid>
+                                                            <Border
+                                                                Padding="10,8"
+                                                                StrokeThickness="0"
+                                                                StrokeShape="RoundRectangle 8"
+                                                                IsVisible="{Binding HasReason}"
+                                                                BackgroundColor="{AppThemeBinding Light=#FFF8E1, Dark=#2A2410}">
+                                                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                                                    <BoxView
+                                                                        WidthRequest="3"
+                                                                        CornerRadius="1.5"
+                                                                        Color="{StaticResource Primary}"
+                                                                        VerticalOptions="Fill"/>
+                                                                    <Label
+                                                                        Grid.Column="1"
+                                                                        Text="{Binding Reason}"
+                                                                        FontSize="12.5"
+                                                                        LineBreakMode="WordWrap"
+                                                                        TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                                                </Grid>
+                                                            </Border>
+                                                        </VerticalStackLayout>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </CollectionView.ItemTemplate>
+                                        </CollectionView>
+                                    </VerticalStackLayout>
+                                </Border>
+                            </VerticalStackLayout>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
+            </Grid>
+        </ScrollView>
+
+        <Grid
+            x:Name="voiceListeningPanel"
+            Grid.Row="1"
+            Padding="12,14"
+            IsVisible="False"
+            BackgroundColor="{AppThemeBinding Light=#F2F2F2, Dark={StaticResource Black}}">
+            <VerticalStackLayout Spacing="8" HorizontalOptions="Center">
+                <Grid WidthRequest="72" HeightRequest="72" HorizontalOptions="Center">
+                    <Ellipse
+                        x:Name="micPulse"
+                        WidthRequest="64"
+                        HeightRequest="64"
+                        Fill="{StaticResource Primary}"
+                        Opacity="0.25"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center"/>
+                    <Border
+                        WidthRequest="48"
+                        HeightRequest="48"
+                        BackgroundColor="{StaticResource Primary}"
+                        StrokeThickness="0"
+                        StrokeShape="RoundRectangle 24"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center">
+                        <Label
+                            FontFamily="FAS"
+                            FontSize="20"
+                            Text="{x:Static fontawesome:FontAwesomeIcons.Microphone}"
+                            TextColor="{StaticResource PrimaryText}"
+                            HorizontalTextAlignment="Center"
+                            VerticalTextAlignment="Center"
+                            HorizontalOptions="Center"
+                            VerticalOptions="Center"/>
+                    </Border>
+                </Grid>
+                <Label
+                    Text="Listening… tap the mic to cancel"
+                    FontSize="13"
+                    FontAttributes="Bold"
+                    HorizontalTextAlignment="Center"
+                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+            </VerticalStackLayout>
+        </Grid>
+
+        <Grid
+            Grid.Row="2"
+            ColumnDefinitions="*,Auto,Auto"
+            Padding="10,10,10,12"
+            ColumnSpacing="8"
+            BackgroundColor="{AppThemeBinding Light=#F2F2F2, Dark={StaticResource Black}}">
+            <VerticalStackLayout Spacing="0" VerticalOptions="Center">
+                <Entry
+                    x:Name="DraftEntry"
+                    Text="{Binding Draft, Mode=TwoWay}"
+                    Placeholder="Ask for a hymn…"
+                    PlaceholderColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource White}}"
+                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark={StaticResource White}}"
+                    BackgroundColor="Transparent"
+                    ReturnCommand="{Binding SendCommand}"
+                    IsEnabled="{Binding IsNotBusy}"/>
+                <BoxView
+                    HeightRequest="1"
+                    Color="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource White}}"/>
+            </VerticalStackLayout>
+            <Image
+                x:Name="btnVoice"
+                Grid.Column="1"
+                WidthRequest="28"
+                HeightRequest="28"
+                VerticalOptions="Center"
+                HorizontalOptions="Center"
+                BackgroundColor="Transparent"
+                IsEnabled="{Binding IsNotBusy}">
+                <Image.Source>
+                    <FontImageSource
+                        x:Name="btnVoiceIcon"
+                        FontFamily="FAS"
+                        Color="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                        Size="18"
+                        Glyph="{x:Static fontawesome:FontAwesomeIcons.Microphone}"/>
+                </Image.Source>
+                <Image.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="btnVoice_Clicked"/>
+                </Image.GestureRecognizers>
+            </Image>
+            <Button
+                Grid.Column="2"
+                Text="Send"
+                Command="{Binding SendCommand}"
+                Style="{StaticResource Button-Clear}"
+                VerticalOptions="Center"/>
+        </Grid>
+    </Grid>
+</ContentPage>

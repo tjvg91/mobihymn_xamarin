@@ -37,7 +37,7 @@ namespace MobiHymn4.ViewModels
                 DownloadStatus = string.IsNullOrEmpty(globalInstance.LastDownloadProgressMessage)
                     ? DownloadStatus.Started
                     : DownloadStatus.Ongoing;
-                Message = globalInstance.LastDownloadProgressMessage ?? "Downloading…";
+                ApplyProgress(globalInstance.LastDownloadProgressMessage ?? "Downloading…");
             }
             else if (globalInstance.HasIncompleteDownloadOnDisk)
             {
@@ -80,6 +80,27 @@ namespace MobiHymn4.ViewModels
             }
         }
 
+        private double progress;
+        public double Progress
+        {
+            get => progress;
+            set => SetProperty(ref progress, value);
+        }
+
+        private string progressText = string.Empty;
+        public string ProgressText
+        {
+            get => progressText;
+            set => SetProperty(ref progressText, value);
+        }
+
+        private bool showProgress;
+        public bool ShowProgress
+        {
+            get => showProgress;
+            set => SetProperty(ref showProgress, value);
+        }
+
         private bool isConnected = true;
 		public bool IsConnected
 		{
@@ -112,6 +133,7 @@ namespace MobiHymn4.ViewModels
         {
             LottieIcon = "download";
             DownloadStatus = DownloadStatus.Started;
+            ClearProgress();
             if (string.IsNullOrWhiteSpace(Message) ||
                 Message.Equals("Initializing…", StringComparison.Ordinal) ||
                 Message.Equals("Initializing...", StringComparison.Ordinal))
@@ -139,12 +161,14 @@ namespace MobiHymn4.ViewModels
             DownloadStatus = DownloadStatus.Success;
             LottieIcon = "done";
             Message = (string)sender == "sync" ? "Re-sync successful." : "Resources downloaded successfully.";
+            ClearProgress();
         }
 
         private void GlobalInstance_DownloadError(object sender, EventArgs e)
         {
             DownloadStatus = DownloadStatus.Error;
             Message = (string)sender;
+            ClearProgress();
             if (Message.Contains("connect"))
                 LottieIcon = Application.Current.UserAppTheme == AppTheme.Light ?
                     "no-internet-light" : "no-internet-dark";
@@ -154,7 +178,41 @@ namespace MobiHymn4.ViewModels
         {
             DownloadStatus = DownloadStatus.Ongoing;
             LottieIcon = "download";
-            Message = (string)sender;
+            ApplyProgress((string)sender);
+        }
+
+        void ApplyProgress(string report)
+        {
+            var current = globalInstance.DownloadProgressCurrent;
+            var total = globalInstance.DownloadProgressTotal;
+            if (current >= 0 && total > 0)
+            {
+                Progress = Math.Clamp((double)current / total, 0, 1);
+                ProgressText = $"{current} / {total}";
+                ShowProgress = true;
+
+                var text = report ?? string.Empty;
+                if (text.StartsWith("Saving", StringComparison.OrdinalIgnoreCase)
+                    || text.StartsWith("Saved", StringComparison.OrdinalIgnoreCase)
+                    || text.StartsWith("Finishing", StringComparison.OrdinalIgnoreCase))
+                    Message = text.StartsWith("Saved", StringComparison.OrdinalIgnoreCase) ? "Saved" : "Saving…";
+                else if (text.StartsWith("Syncing", StringComparison.OrdinalIgnoreCase))
+                    Message = "Syncing…";
+                else
+                    Message = "Downloading…";
+            }
+            else
+            {
+                ClearProgress();
+                Message = report;
+            }
+        }
+
+        void ClearProgress()
+        {
+            Progress = 0;
+            ProgressText = string.Empty;
+            ShowProgress = false;
         }
 
         private void SetNoInternet()
@@ -162,8 +220,7 @@ namespace MobiHymn4.ViewModels
             LottieIcon = Application.Current.UserAppTheme == AppTheme.Light ?
                                 "no-internet-light" : "no-internet-dark";
             Message = "Please connect to download resources.";
+            ClearProgress();
         }
     }
 }
-
-

@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -75,6 +76,9 @@ namespace MobiHymn4.Utils
         CancellationTokenSource missingCountCts;
 
         [JsonIgnore]
+        int catalogCheckInFlight;
+
+        [JsonIgnore]
         public bool InitInProgress => Volatile.Read(ref downloadInFlight) != 0;
 
         [JsonIgnore]
@@ -85,6 +89,17 @@ namespace MobiHymn4.Utils
 
         [JsonIgnore]
         public string LastDownloadProgressMessage { get; private set; }
+
+        [JsonIgnore]
+        public int DownloadProgressCurrent { get; private set; } = -1;
+
+        [JsonIgnore]
+        public int DownloadProgressTotal { get; private set; } = -1;
+
+        /// <summary>Last known hymn catalog size from the stream API (persisted).</summary>
+        [JsonIgnore]
+        public int HymnCatalogTotal =>
+            Preferences.Default.Get(PreferencesVar.HYMN_TOTAL, 0);
 
         public bool TryBeginDownloadOperation() =>
             Interlocked.CompareExchange(ref downloadInFlight, 1, 0) == 0;
@@ -123,6 +138,12 @@ namespace MobiHymn4.Utils
 
         [JsonIgnore]
         public static string HYMN_URL = "http://157.230.9.81/hymn/tim.dna?q=";
+        public static string HYMN_STREAM_URL = "http://157.230.9.81/hymn/api/hymns.dna?stream=1";
+        public static string HYMN_STREAM_PARTIAL_URL = "http://157.230.9.81/hymn/api/stream.cgi";
+        public static string HYMN_META_URL = "http://157.230.9.81/hymn/api/hymns.dna?meta=1";
+        public static string HYMN_CHANGES_URL = "http://157.230.9.81/hymn/api/changes.py";
+        public static string HYMN_AGENT_SEARCH_URL = "http://157.230.9.81/hymn/api/agent.cgi/search";
+        public static string HYMN_AGENT_CHAT_URL = "http://157.230.9.81/hymn/api/agent.cgi/chat";
         public static string HYMN_AUDIO_URL = "http://157.230.9.81/hymn/audio/gccsatx/";
 
         public static string GetHymnAudioUrl(string hymnNumber) =>
@@ -280,6 +301,21 @@ namespace MobiHymn4.Utils
             get => missingHymnCount;
             private set => missingHymnCount = value;
         }
+
+        private CatalogDiff pendingCatalogDiff;
+        [JsonIgnore]
+        public CatalogDiff PendingCatalogDiff
+        {
+            get => pendingCatalogDiff;
+            private set
+            {
+                pendingCatalogDiff = value;
+                CatalogDiffChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        [JsonIgnore]
+        public string CatalogDiffCheckError { get; private set; }
 
         public void SetMissingHymnScanResult(IEnumerable<string> numbers)
         {
@@ -540,6 +576,58 @@ namespace MobiHymn4.Utils
             }
         }
 
+        private AgentMode agentMode = AgentMode.Auto;
+        public AgentMode AgentMode
+        {
+            get => agentMode;
+            set
+            {
+                if (agentMode == value)
+                    return;
+
+                agentMode = value;
+                Preferences.Set(PreferencesVar.AGENT_MODE, (int)value);
+                OnAgentModeChanged(value);
+            }
+        }
+
+        public static readonly int[] AgentChatLimitOptions = { 5, 10, 15, 20, 25, 30 };
+        public const int AgentChatLimitMin = 5;
+        public const int AgentChatLimitMax = 30;
+        public const int AgentChatLimitDefault = 30;
+
+        private int agentChatLimit = AgentChatLimitDefault;
+        public int AgentChatLimit
+        {
+            get => agentChatLimit;
+            set
+            {
+                var snapped = SnapAgentChatLimit(value);
+                if (agentChatLimit == snapped)
+                    return;
+
+                agentChatLimit = snapped;
+                Preferences.Set(PreferencesVar.AGENT_CHAT_LIMIT, agentChatLimit);
+                OnAgentChatLimitChanged(agentChatLimit);
+            }
+        }
+
+        public static int SnapAgentChatLimit(int value)
+        {
+            var clamped = Math.Clamp(value, AgentChatLimitMin, AgentChatLimitMax);
+            var best = AgentChatLimitOptions[0];
+            var bestDistance = Math.Abs(best - clamped);
+            foreach (var option in AgentChatLimitOptions)
+            {
+                var distance = Math.Abs(option - clamped);
+                if (distance >= bestDistance)
+                    continue;
+                best = option;
+                bestDistance = distance;
+            }
+            return best;
+        }
+
         private bool isOrientationLocked = false;
         public bool IsOrientationLocked
         {
@@ -569,9 +657,12 @@ namespace MobiHymn4.Utils
         public event EventHandler HistoryChanged;
         public event EventHandler DarkModeChanged;
         public event EventHandler KeepAwakeChanged;
+        public event EventHandler AgentModeChanged;
+        public event EventHandler AgentChatLimitChanged;
         public event EventHandler OrientationLockedChanged;
         public event EventHandler IsFetchingSyncDetailsChanged;
         public event EventHandler MissingHymnCountChanged;
+        public event EventHandler CatalogDiffChanged;
         public event EventHandler SettingsLoaded;
 
         private void OnActiveHymnChanged(Hymn value)
@@ -628,6 +719,15 @@ namespace MobiHymn4.Utils
         {
             if (KeepAwakeChanged != null) KeepAwakeChanged(value, EventArgs.Empty);
         }
+        private void OnAgentModeChanged(AgentMode value)
+        {
+            AgentModeChanged?.Invoke(value, EventArgs.Empty);
+        }
+
+        private void OnAgentChatLimitChanged(int value)
+        {
+            AgentChatLimitChanged?.Invoke(value, EventArgs.Empty);
+        }
         private void OnOrientationLockedChanged(bool value)
         {
             if (OrientationLockedChanged != null) OrientationLockedChanged(value, EventArgs.Empty);
@@ -636,18 +736,34 @@ namespace MobiHymn4.Utils
         {
             CancelMissingHymnCountScan();
             IsDownloadUiActive = true;
+            DownloadProgressCurrent = -1;
+            DownloadProgressTotal = -1;
             RefreshIncompleteDownloadState();
             RaiseOnMainThread(() => DownloadStarted?.Invoke(value, EventArgs.Empty));
         }
         private void OnDownloadProgressed(string value)
         {
+            // Ignore late Reports (e.g. "Saved 841/841") that arrive after InitFinished.
+            if (!IsDownloadUiActive)
+                return;
+
             LastDownloadProgressMessage = value;
+            var match = System.Text.RegularExpressions.Regex.Match(value ?? string.Empty, @"(\d+)\s*/\s*(\d+)");
+            if (match.Success
+                && int.TryParse(match.Groups[1].Value, out var current)
+                && int.TryParse(match.Groups[2].Value, out var total))
+            {
+                DownloadProgressCurrent = current;
+                DownloadProgressTotal = total;
+            }
             RaiseOnMainThread(() => DownloadProgressed?.Invoke(value, EventArgs.Empty));
         }
         public void OnDownloadError(string value)
         {
             IsDownloadUiActive = false;
             LastDownloadProgressMessage = null;
+            DownloadProgressCurrent = -1;
+            DownloadProgressTotal = -1;
             RefreshIncompleteDownloadState();
             RaiseOnMainThread(() => DownloadError?.Invoke(value, EventArgs.Empty));
         }
@@ -656,8 +772,12 @@ namespace MobiHymn4.Utils
             initComplete = true;
             IsDownloadUiActive = false;
             LastDownloadProgressMessage = null;
-            RefreshIncompleteDownloadState();
+            DownloadProgressCurrent = -1;
+            DownloadProgressTotal = -1;
+
+            // Notify listeners first so Android stops the FG service before we re-check recovery state.
             RaiseOnMainThread(() => InitFinished?.Invoke(value, EventArgs.Empty));
+            RefreshIncompleteDownloadState();
         }
 
         static void RaiseOnMainThread(Action action)
@@ -709,13 +829,9 @@ namespace MobiHymn4.Utils
         {
             get
             {
-                if (IsDownloadUiActive || HasIncompleteDownloadOnDisk)
-                    return true;
-#if ANDROID
-                if (DownloadForegroundService.IsRunning)
-                    return true;
-#endif
-                return false;
+                // Do not key off DownloadForegroundService.IsRunning: stop is async, and after a
+                // successful sync it briefly stays true and would re-open the popup on navigation.
+                return IsDownloadUiActive || HasIncompleteDownloadOnDisk;
             }
         }
 
@@ -724,13 +840,9 @@ namespace MobiHymn4.Utils
             HasIncompleteDownloadOnDisk = File.Exists(
                 AppStorage.GetPath(folderRootName, "download_checkpoint.json"));
 
-#if ANDROID
-            var serviceRunning = DownloadForegroundService.IsRunning;
-#else
-            var serviceRunning = false;
-#endif
-
-            if (HasIncompleteDownloadOnDisk || serviceRunning)
+            // Only resume the download UI when a checkpoint actually remains on disk.
+            // An orphaned/stopping foreground service must not re-activate the popup.
+            if (HasIncompleteDownloadOnDisk)
             {
                 var becameActive = !IsDownloadUiActive;
                 IsDownloadUiActive = true;
@@ -863,7 +975,143 @@ namespace MobiHymn4.Utils
             }
             finally
             {
-                IsFetchingSyncDetails = false;
+                await MainThread.InvokeOnMainThreadAsync(() => IsFetchingSyncDetails = false);
+            }
+        }
+
+        public async Task RefreshCatalogDiffAsync()
+        {
+            if (!HttpHelper.IsConnected()
+                || Interlocked.Exchange(ref catalogCheckInFlight, 1) != 0)
+                return;
+
+            CancelMissingHymnCountScan();
+            missingCountCts = new CancellationTokenSource();
+            var token = missingCountCts.Token;
+            IsFetchingSyncDetails = true;
+            CatalogDiffCheckError = null;
+
+            try
+            {
+                await EnsureHymnsAndSettingsLoadedAsync().ConfigureAwait(false);
+                var local = HymnList;
+                if (local == null || local.Count == 0)
+                    return;
+
+                var httpHelper = new HttpHelper();
+                var meta = await httpHelper.GetCatalogMetaAsync(token).ConfigureAwait(false);
+                if (meta.Total > 0)
+                    Preferences.Default.Set(PreferencesVar.HYMN_TOTAL, meta.Total);
+
+                var lastSyncedHash = Preferences.Default.Get(
+                    PreferencesVar.HYMN_CATALOG_HASH,
+                    string.Empty);
+                if (!string.IsNullOrWhiteSpace(meta.CatalogHash)
+                    && string.Equals(meta.CatalogHash, lastSyncedHash, StringComparison.Ordinal))
+                {
+                    await MainThread.InvokeOnMainThreadAsync(() => PendingCatalogDiff = null);
+                    return;
+                }
+
+                var diff = await httpHelper.GetCatalogChangesAsync(local, token).ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(diff.CatalogHash))
+                    diff.CatalogHash = meta.CatalogHash;
+
+                if (!diff.Changed || diff.ChangeCount == 0)
+                {
+                    if (!string.IsNullOrWhiteSpace(diff.CatalogHash))
+                        Preferences.Default.Set(PreferencesVar.HYMN_CATALOG_HASH, diff.CatalogHash);
+                    await MainThread.InvokeOnMainThreadAsync(() => PendingCatalogDiff = null);
+                    return;
+                }
+
+                await MainThread.InvokeOnMainThreadAsync(() => PendingCatalogDiff = diff);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                // Tagged distinctly so `adb logcat | grep CatalogDiffCheck` finds this even
+                // in a Release build, since the friendly UI message hides the real cause.
+                System.Diagnostics.Debug.WriteLine($"[CatalogDiffCheck] RefreshCatalogDiffAsync failed: {ex}");
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                {
+                    CatalogDiffCheckError = "Could not check for hymn changes. Try again later." +
+                        DescribeCatalogDiffCheckFailure(ex);
+                    CatalogDiffChanged?.Invoke(this, EventArgs.Empty);
+                });
+            }
+            finally
+            {
+                await MainThread.InvokeOnMainThreadAsync(() => IsFetchingSyncDetails = false);
+                Interlocked.Exchange(ref catalogCheckInFlight, 0);
+            }
+        }
+
+        // Appends a short, non-technical hint to the user-facing error so the most common
+        // causes (slow/overloaded server, no signal, malformed response) are distinguishable
+        // without needing device logs.
+        static string DescribeCatalogDiffCheckFailure(Exception ex) => ex switch
+        {
+            TaskCanceledException => " (Request timed out.)",
+            HttpRequestException httpEx when httpEx.StatusCode.HasValue =>
+                $" (Server responded with {(int)httpEx.StatusCode.Value} {httpEx.StatusCode.Value}.)",
+            HttpRequestException => " (Could not reach the server.)",
+            JsonException or InvalidDataException => " (The server sent an unexpected response.)",
+            _ => string.Empty
+        };
+
+        public async Task<bool> ApplyPendingCatalogChangesAsync()
+        {
+            if (!TryBeginDownloadOperation())
+                return false;
+
+            try
+            {
+                CancelMissingHymnCountScan();
+                if (!HttpHelper.IsConnected())
+                {
+                    OnDownloadError("Please connect to sync hymn changes.");
+                    return false;
+                }
+
+                var diff = PendingCatalogDiff;
+                if (diff == null || diff.ChangeCount == 0)
+                    return false;
+
+                await EnsureHymnsAndSettingsLoadedAsync();
+                EnsureDownloadCancellationReady();
+                OnDownloadStarted("");
+
+                var progress = new Progress<string>(report => OnDownloadProgressed(report));
+                var httpHelper = new HttpHelper();
+                HymnList = await httpHelper.ApplyCatalogChangesAsync(
+                    HymnList,
+                    diff,
+                    progress,
+                    CTS.Token);
+
+                if (!string.IsNullOrWhiteSpace(diff.CatalogHash))
+                    Preferences.Default.Set(PreferencesVar.HYMN_CATALOG_HASH, diff.CatalogHash);
+
+                PendingCatalogDiff = null;
+                await FinishAfterDownloadAsync(isUserSync: true);
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                OnDownloadError("Sync cancelled.");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                OnDownloadError(ex.Message);
+                return false;
+            }
+            finally
+            {
+                EndDownloadOperation();
             }
         }
 
@@ -1186,7 +1434,7 @@ namespace MobiHymn4.Utils
                 SaveSettings();
             RefreshIncompleteDownloadState();
             if (isUserSync)
-                _ = RefreshMissingHymnCountAsync();
+                _ = RefreshCatalogDiffAsync();
             OnInitFinished(isUserSync ? "sync" : null);
         }
 
@@ -1533,6 +1781,8 @@ namespace MobiHymn4.Utils
                 Preferences.Set(PreferencesVar.DARK_MODE, darkMode);
                 Preferences.Set(PreferencesVar.KEEP_AWAKE, keepAwake);
                 Preferences.Set(PreferencesVar.HYMN_INPUT_TYPE, (int)hymnInputType);
+                Preferences.Set(PreferencesVar.AGENT_MODE, (int)agentMode);
+                Preferences.Set(PreferencesVar.AGENT_CHAT_LIMIT, agentChatLimit);
 
                 OnHymnInputTypeChanged(hymnInputType);
                 OnAlignmentChanged(activeAlignment);
@@ -1543,6 +1793,8 @@ namespace MobiHymn4.Utils
                 OnActiveLineSpacingChanged(activeLineSpacing);
                 OnDarkModeChanged(darkMode);
                 OnKeepAwakeChanged(keepAwake);
+                OnAgentModeChanged(agentMode);
+                OnAgentChatLimitChanged(agentChatLimit);
                 OnOrientationLockedChanged(isOrientationLocked);
 
                 if (activeHymn != null)
@@ -1585,6 +1837,34 @@ namespace MobiHymn4.Utils
             (BookmarkList == null || BookmarkList.Count == 0)
             && (HistoryList == null || HistoryList.Count == 0)
             && activeHymn == null;
+
+        static AgentMode ParseAgentMode(object value)
+        {
+            if (value == null)
+                return AgentMode.Auto;
+
+            if (value is long or int or short or byte)
+                return Enum.IsDefined(typeof(AgentMode), Convert.ToInt32(value))
+                    ? (AgentMode)Convert.ToInt32(value)
+                    : AgentMode.Auto;
+
+            var text = value.ToString()?.Trim();
+            if (string.IsNullOrEmpty(text))
+                return AgentMode.Auto;
+
+            if (int.TryParse(text, out var asInt) && Enum.IsDefined(typeof(AgentMode), asInt))
+                return (AgentMode)asInt;
+
+            if (Enum.TryParse<AgentMode>(text, ignoreCase: true, out var parsed))
+                return parsed;
+
+            return text.ToLowerInvariant() switch
+            {
+                "local" => AgentMode.Local,
+                "cloud" => AgentMode.Cloud,
+                _ => AgentMode.Auto
+            };
+        }
 
         bool ApplySettingsEntry(KeyValuePair<string, object> entry)
         {
@@ -1640,6 +1920,12 @@ namespace MobiHymn4.Utils
                     return true;
                 case nameof(KeepAwake):
                     keepAwake = ReadBool(entry.Value);
+                    return true;
+                case nameof(AgentMode):
+                    agentMode = ParseAgentMode(entry.Value);
+                    return true;
+                case nameof(AgentChatLimit):
+                    agentChatLimit = SnapAgentChatLimit(Convert.ToInt32(entry.Value));
                     return true;
                 case nameof(IsOrientationLocked):
                     isOrientationLocked = ReadBool(entry.Value);

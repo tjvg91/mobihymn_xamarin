@@ -5,7 +5,7 @@ namespace MobiHymn4.Models
     /// </summary>
     public class DownloadCheckpoint
     {
-        /// <summary>Next base hymn index to download (e.g. 42 → download 42, 42s, 42t, 42f).</summary>
+        /// <summary>Progress marker during stream download (processed hymn count).</summary>
         public int NextBaseIndex { get; set; } = 1;
 
         public bool ForceSync { get; set; }

@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<toolkit:Popup
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    x:Class="MobiHymn4.Views.Popups.HymnInfoPopup"
+    Color="Transparent">
+
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill">
+        <ContentView
+            BackgroundColor="#8C000000"
+            HorizontalOptions="Fill"
+            VerticalOptions="Fill">
+            <ContentView.GestureRecognizers>
+                <TapGestureRecognizer Tapped="Overlay_Tapped"/>
+            </ContentView.GestureRecognizers>
+        </ContentView>
+
+        <Border
+            Padding="20"
+            StrokeThickness="0"
+            Stroke="Transparent"
+            Background="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}"
+            StrokeShape="RoundRectangle 16"
+            WidthRequest="320"
+            MaximumWidthRequest="400"
+            Margin="24,24"
+            HorizontalOptions="Center"
+            VerticalOptions="Center">
+            <Border.Shadow>
+                <Shadow Brush="Black" Offset="0,6" Radius="24" Opacity="0.45"/>
+            </Border.Shadow>
+
+            <!-- Fixed header + Close; only the details list scrolls so the button isn't clipped. -->
+            <Grid
+                RowDefinitions="Auto,Auto,Auto,*,Auto"
+                RowSpacing="12"
+                MaximumHeightRequest="460">
+                <Label
+                    x:Name="lblNumber"
+                    Grid.Row="0"
+                    FontAttributes="Bold"
+                    FontSize="18"
+                    HorizontalTextAlignment="Center"
+                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+
+                <Label
+                    x:Name="lblName"
+                    Grid.Row="1"
+                    FontSize="15"
+                    LineBreakMode="WordWrap"
+                    HorizontalTextAlignment="Center"
+                    TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}"
+                    IsVisible="False"/>
+
+                <BoxView
+                    Grid.Row="2"
+                    HeightRequest="1"
+                    Color="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"/>
+
+                <ScrollView Grid.Row="3" VerticalOptions="Fill">
+                    <VerticalStackLayout Spacing="10">
+                        <VerticalStackLayout
+                            x:Name="detailsHost"
+                            Spacing="10"/>
+                        <Label
+                            x:Name="lblEmpty"
+                            Text="No details available for this hymn."
+                            FontSize="14"
+                            HorizontalTextAlignment="Center"
+                            IsVisible="False"
+                            TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                    </VerticalStackLayout>
+                </ScrollView>
+
+                <Button
+                    Grid.Row="4"
+                    Text="Close"
+                    HeightRequest="44"
+                    CornerRadius="10"
+                    FontSize="15"
+                    FontAttributes="Bold"
+                    BackgroundColor="{StaticResource Primary}"
+                    TextColor="{StaticResource PrimaryText}"
+                    VerticalOptions="End"
+                    Clicked="btnClose_Clicked"/>
+            </Grid>
+        </Border>
+    </Grid>
+</toolkit:Popup>

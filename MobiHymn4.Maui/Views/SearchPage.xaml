@@ -1,8 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:MobiHymn4.ViewModels"
              xmlns:fontawesome="clr-namespace:FontAwesome"
              xmlns:elements="clr-namespace:MobiHymn4.Elements"
+             xmlns:utils="clr-namespace:MobiHymn4.Utils"
              x:Class="MobiHymn4.Views.SearchPage"
              x:Name="root"
              Title="{Binding Title}"
@@ -20,12 +22,37 @@
                     Glyph="{x:Static fontawesome:FontAwesomeIcons.BookOpenReader}"/>
             </ToolbarItem.IconImageSource>
         </ToolbarItem>
+        <ToolbarItem x:Name="tbSettings" Clicked="tbSettings_Clicked">
+            <ToolbarItem.IconImageSource>
+                <FontImageSource
+                    FontFamily="FAS"
+                    Color="{StaticResource PrimaryText}"
+                    Size="Medium"
+                    Glyph="{x:Static fontawesome:FontAwesomeIcons.Cog}"/>
+            </ToolbarItem.IconImageSource>
+        </ToolbarItem>
     </ContentPage.ToolbarItems>
-    
-    <StackLayout VerticalOptions="FillAndExpand">
+    <ContentPage.Resources>
+        <Style x:Key="SearchTypeChip" TargetType="Border">
+            <Setter Property="Padding" Value="12,7"/>
+            <Setter Property="StrokeThickness" Value="1"/>
+            <Setter Property="StrokeShape" Value="RoundRectangle 16"/>
+            <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"/>
+            <Setter Property="BackgroundColor" Value="Transparent"/>
+        </Style>
+        <Style x:Key="SearchTypeChipLabel" TargetType="Label">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="VerticalOptions" Value="Center"/>
+            <Setter Property="HorizontalTextAlignment" Value="Center"/>
+            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+        </Style>
+    </ContentPage.Resources>
+
+    <StackLayout VerticalOptions="FillAndExpand" Spacing="0">
         <Border
             StrokeThickness="0"
-            Padding="2,4"
+            Padding="2,6"
+            Margin="0,0,0,2"
             BackgroundColor="{AppThemeBinding Dark={StaticResource Gray}, Light={StaticResource White}, Default=White}">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="0">
                 <SearchBar x:Name="searchBar"
@@ -33,10 +60,11 @@
                            HorizontalOptions="Fill"
                            VerticalOptions="Center"
                            BackgroundColor="Transparent"
-                           Placeholder="Search hymns..."
+                           Placeholder="{Binding SearchPlaceholder}"
                            IsEnabled="{Binding IsNotBusy}"
-                           SearchCommand="{Binding SearchHymns}" 
+                           SearchCommand="{Binding SearchHymns}"
                            SearchCommandParameter="{Binding Text, Source={x:Reference searchBar}}"
+                           SearchButtonPressed="searchBar_SearchButtonPressed"
                            Keyboard="Text"
                            HandlerChanged="searchBar_HandlerChanged"/>
                 <Image
@@ -62,6 +90,168 @@
                 </Image>
             </Grid>
         </Border>
+
+        <ScrollView
+            Orientation="Horizontal"
+            HorizontalScrollBarVisibility="Never"
+            Padding="12,10,12,6">
+            <HorizontalStackLayout Spacing="8">
+                <Border Style="{StaticResource SearchTypeChip}" IsVisible="{Binding ShowAISearch}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer
+                            Command="{Binding SelectSearchTypeCommand}"
+                            CommandParameter="{x:Static utils:SearchType.AI}"/>
+                    </Border.GestureRecognizers>
+                    <Border.Triggers>
+                        <DataTrigger TargetType="Border" Binding="{Binding IsAISelected}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}"/>
+                            <Setter Property="Stroke" Value="{StaticResource Primary}"/>
+                        </DataTrigger>
+                    </Border.Triggers>
+                    <Label Text="AI" Style="{StaticResource SearchTypeChipLabel}">
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding IsAISelected}" Value="True">
+                                <Setter Property="TextColor" Value="{StaticResource PrimaryText}"/>
+                                <Setter Property="FontAttributes" Value="Bold"/>
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                </Border>
+
+                <Border Style="{StaticResource SearchTypeChip}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer
+                            Command="{Binding SelectSearchTypeCommand}"
+                            CommandParameter="{x:Static utils:SearchType.Lyrics}"/>
+                    </Border.GestureRecognizers>
+                    <Border.Triggers>
+                        <DataTrigger TargetType="Border" Binding="{Binding IsLyricsSelected}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}"/>
+                            <Setter Property="Stroke" Value="{StaticResource Primary}"/>
+                        </DataTrigger>
+                    </Border.Triggers>
+                    <Label Text="Lyrics" Style="{StaticResource SearchTypeChipLabel}">
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding IsLyricsSelected}" Value="True">
+                                <Setter Property="TextColor" Value="{StaticResource PrimaryText}"/>
+                                <Setter Property="FontAttributes" Value="Bold"/>
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                </Border>
+
+                <Border Style="{StaticResource SearchTypeChip}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer
+                            Command="{Binding SelectSearchTypeCommand}"
+                            CommandParameter="{x:Static utils:SearchType.AuthorComposer}"/>
+                    </Border.GestureRecognizers>
+                    <Border.Triggers>
+                        <DataTrigger TargetType="Border" Binding="{Binding IsAuthorComposerSelected}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}"/>
+                            <Setter Property="Stroke" Value="{StaticResource Primary}"/>
+                        </DataTrigger>
+                    </Border.Triggers>
+                    <Label Text="Author / Composer" Style="{StaticResource SearchTypeChipLabel}">
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding IsAuthorComposerSelected}" Value="True">
+                                <Setter Property="TextColor" Value="{StaticResource PrimaryText}"/>
+                                <Setter Property="FontAttributes" Value="Bold"/>
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                </Border>
+
+                <Border Style="{StaticResource SearchTypeChip}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer
+                            Command="{Binding SelectSearchTypeCommand}"
+                            CommandParameter="{x:Static utils:SearchType.Metre}"/>
+                    </Border.GestureRecognizers>
+                    <Border.Triggers>
+                        <DataTrigger TargetType="Border" Binding="{Binding IsMetreSelected}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}"/>
+                            <Setter Property="Stroke" Value="{StaticResource Primary}"/>
+                        </DataTrigger>
+                    </Border.Triggers>
+                    <Label Text="Metre" Style="{StaticResource SearchTypeChipLabel}">
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding IsMetreSelected}" Value="True">
+                                <Setter Property="TextColor" Value="{StaticResource PrimaryText}"/>
+                                <Setter Property="FontAttributes" Value="Bold"/>
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                </Border>
+
+                <Border Style="{StaticResource SearchTypeChip}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer
+                            Command="{Binding SelectSearchTypeCommand}"
+                            CommandParameter="{x:Static utils:SearchType.Key}"/>
+                    </Border.GestureRecognizers>
+                    <Border.Triggers>
+                        <DataTrigger TargetType="Border" Binding="{Binding IsKeySelected}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}"/>
+                            <Setter Property="Stroke" Value="{StaticResource Primary}"/>
+                        </DataTrigger>
+                    </Border.Triggers>
+                    <Label Text="Key" Style="{StaticResource SearchTypeChipLabel}">
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding IsKeySelected}" Value="True">
+                                <Setter Property="TextColor" Value="{StaticResource PrimaryText}"/>
+                                <Setter Property="FontAttributes" Value="Bold"/>
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                </Border>
+
+                <Border Style="{StaticResource SearchTypeChip}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer
+                            Command="{Binding SelectSearchTypeCommand}"
+                            CommandParameter="{x:Static utils:SearchType.Verse}"/>
+                    </Border.GestureRecognizers>
+                    <Border.Triggers>
+                        <DataTrigger TargetType="Border" Binding="{Binding IsVerseSelected}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}"/>
+                            <Setter Property="Stroke" Value="{StaticResource Primary}"/>
+                        </DataTrigger>
+                    </Border.Triggers>
+                    <Label Text="Verse" Style="{StaticResource SearchTypeChipLabel}">
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding IsVerseSelected}" Value="True">
+                                <Setter Property="TextColor" Value="{StaticResource PrimaryText}"/>
+                                <Setter Property="FontAttributes" Value="Bold"/>
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                </Border>
+
+                <Border Style="{StaticResource SearchTypeChip}" IsVisible="{Binding ShowTopicSearch}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer
+                            Command="{Binding SelectSearchTypeCommand}"
+                            CommandParameter="{x:Static utils:SearchType.Tags}"/>
+                    </Border.GestureRecognizers>
+                    <Border.Triggers>
+                        <DataTrigger TargetType="Border" Binding="{Binding IsTagsSelected}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}"/>
+                            <Setter Property="Stroke" Value="{StaticResource Primary}"/>
+                        </DataTrigger>
+                    </Border.Triggers>
+                    <Label Text="Topic" Style="{StaticResource SearchTypeChipLabel}">
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding IsTagsSelected}" Value="True">
+                                <Setter Property="TextColor" Value="{StaticResource PrimaryText}"/>
+                                <Setter Property="FontAttributes" Value="Bold"/>
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                </Border>
+            </HorizontalStackLayout>
+        </ScrollView>
+
         <Grid
             x:Name="voiceListeningPanel"
             Padding="12,18"
@@ -108,7 +298,7 @@
                     TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
                     HorizontalTextAlignment="Center"/>
                 <Label
-                    Text="Say a lyric, phrase, or hymn search term."
+                    Text="{Binding SearchPlaceholder}"
                     FontSize="12"
                     TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"
                     HorizontalTextAlignment="Center"/>
@@ -128,10 +318,10 @@
             </StackLayout.Triggers>
             <Label
                 HorizontalTextAlignment="Center"
-                TextDecorations="Underline"
-                FontAttributes="Italic"
+                FontSize="13"
+                Margin="0,4,0,2"
                 Text="{Binding ItemCountString}"
-                Style="{StaticResource Subtitle}"/>
+                TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
         </StackLayout>
         <FlexLayout
             x:Name="layoutSearching"
@@ -139,8 +329,7 @@
             JustifyContent="Center"
             HorizontalOptions="FillAndExpand"
             HeightRequest="500"
-            IsVisible="False"
-        >
+            IsVisible="False">
             <FlexLayout.Triggers>
                 <DataTrigger TargetType="FlexLayout" Binding="{Binding IsBusy}" Value="True">
                     <Setter Property="IsVisible" Value="True" />
@@ -149,34 +338,102 @@
             <elements:AnimatingView
                 Source="{AppThemeBinding Light=search-light, Dark=search-dark}"
                 Size="{OnPlatform Android=200, iOS=1.2}"
-                Speed="3"
-            />
-                <!--<lottie:AnimationView
-                    x:Name="searchLottie"
-                    Animation="{AppThemeBinding Light=search-light.json, Dark=search-dark.json}"
-                    RepeatMode="Infinite"
-                    AnimationSource="AssetOrBundle"
-                    WidthRequest="200"
-                    HeightRequest="200"
-                    Speed="3"
-                    AutoPlay="True"
-                    AbsoluteLayout.LayoutBounds="1, 1, 1, 1"
-                    AbsoluteLayout.LayoutFlags="All"
-                />-->
+                Speed="3"/>
         </FlexLayout>
+        <CollectionView
+                ItemsSource="{Binding Groups}"
+                IsVisible="{Binding IsGroupedSearchType}"
+                VerticalOptions="StartAndExpand"
+                SelectionMode="None">
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Border
+                        Margin="10,5"
+                        Padding="0"
+                        StrokeThickness="1"
+                        Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                        StrokeShape="RoundRectangle 10"
+                        BackgroundColor="Transparent">
+                        <VerticalStackLayout Spacing="0">
+                            <Grid
+                                Padding="14,12"
+                                ColumnDefinitions="*,Auto"
+                                RowDefinitions="Auto,Auto"
+                                ColumnSpacing="10">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer
+                                        Command="{Binding Source={x:Reference root}, Path=BindingContext.ToggleGroupCommand}"
+                                        CommandParameter="{Binding .}"/>
+                                </Grid.GestureRecognizers>
+                                <Label
+                                    Grid.Row="0"
+                                    Text="{Binding DisplayTitle}"
+                                    Style="{StaticResource Title}"
+                                    FontAttributes="Bold"
+                                    LineBreakMode="WordWrap"/>
+                                <Label
+                                    Grid.Row="1"
+                                    Text="{Binding SubtitleText}"
+                                    Style="{StaticResource Subtitle}"/>
+                                <Label
+                                    Grid.Column="1"
+                                    Grid.RowSpan="2"
+                                    Text="{Binding Chevron}"
+                                    FontFamily="FAS"
+                                    FontSize="14"
+                                    VerticalOptions="Center"
+                                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+                            </Grid>
+
+                            <BoxView
+                                HeightRequest="1"
+                                Margin="14,0"
+                                BackgroundColor="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"/>
+
+                            <VerticalStackLayout
+                                BindableLayout.ItemsSource="{Binding Hymns}"
+                                IsVisible="{Binding IsExpanded}"
+                                Spacing="0">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid
+                                            Padding="14,10"
+                                            RowDefinitions="Auto,Auto"
+                                            BackgroundColor="{AppThemeBinding Light=#F7F7F7, Dark=#252525}">
+                                            <Grid.GestureRecognizers>
+                                                <TapGestureRecognizer
+                                                    Command="{Binding Source={x:Reference root}, Path=BindingContext.SearchItemSelected}"
+                                                    CommandParameter="{Binding .}"/>
+                                            </Grid.GestureRecognizers>
+                                            <Label
+                                                Text="{Binding NumberBadge}"
+                                                Style="{StaticResource Title}"
+                                                FontAttributes="Bold"/>
+                                            <Label
+                                                Grid.Row="1"
+                                                Text="{Binding Line}"
+                                                Style="{StaticResource Subtitle}"
+                                                LineBreakMode="WordWrap"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
         <CollectionView x:Name="MyListView"
                 ItemsSource="{Binding Items}"
+                IsVisible="{Binding IsFlatSearchType}"
                 ChildAdded="MyListView_ChildAdded"
-                VerticalOptions="StartAndExpand">
-            
-        <!--Built in Cells-->
-        <!--<ListView.ItemTemplate>
-            <DataTemplate>
-                <TextCell Text="{Binding .}" />
-            </DataTemplate>
-        </ListView.ItemTemplate>-->
-    
-        <!--Custom View Cells-->
+                VerticalOptions="StartAndExpand"
+                SelectionMode="None"
+                Margin="0,4,0,0">
+            <CollectionView.ItemsLayout>
+                <LinearItemsLayout Orientation="Vertical" ItemSpacing="8"/>
+            </CollectionView.ItemsLayout>
             <CollectionView.ItemTemplate>
                 <DataTemplate>
                     <SwipeView>
@@ -185,22 +442,68 @@
                                 <SwipeItem Text="Board" BackgroundColor="{StaticResource Primary}" Invoked="AddToBoard_Invoked"/>
                             </SwipeItems>
                         </SwipeView.RightItems>
-                    <StackLayout Padding="10">
-                        <StackLayout.GestureRecognizers>
+                    <Border
+                        Margin="10,0"
+                        Padding="14,12"
+                        StrokeThickness="1"
+                        Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark=#333333}"
+                        StrokeShape="RoundRectangle 12"
+                        BackgroundColor="{AppThemeBinding Light=#FAFAFA, Dark=#1E1E1E}">
+                        <Border.GestureRecognizers>
                             <TapGestureRecognizer
                                 Command="{Binding Source={x:Reference root}, Path=BindingContext.SearchItemSelected}"
                                 CommandParameter="{Binding .}"/>
-                        </StackLayout.GestureRecognizers>
-                        <Label Text="{Binding Line}" Style="{StaticResource Title}" TextType="Html"/>
-                        <Label
-                            Text="{Binding NumberText}"
-                            Style="{StaticResource Subtitle}"
-                        />
-                    </StackLayout>
+                        </Border.GestureRecognizers>
+                        <VerticalStackLayout Spacing="8">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                <Label
+                                    Text="{Binding Line}"
+                                    FontSize="15"
+                                    FontAttributes="Bold"
+                                    LineBreakMode="WordWrap"
+                                    VerticalOptions="Center"
+                                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                                    TextType="Html"/>
+                                <Border
+                                    Grid.Column="1"
+                                    Padding="8,4"
+                                    StrokeThickness="0"
+                                    StrokeShape="RoundRectangle 10"
+                                    VerticalOptions="Start"
+                                    BackgroundColor="{StaticResource Primary}">
+                                    <Label
+                                        Text="{Binding NumberBadge}"
+                                        FontSize="11"
+                                        FontAttributes="Bold"
+                                        TextColor="{StaticResource PrimaryText}"/>
+                                </Border>
+                            </Grid>
+
+                            <Border
+                                Padding="10,8"
+                                StrokeThickness="0"
+                                StrokeShape="RoundRectangle 8"
+                                IsVisible="{Binding HasReason}"
+                                BackgroundColor="{AppThemeBinding Light=#FFF8E1, Dark=#2A2410}">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                    <BoxView
+                                        WidthRequest="3"
+                                        CornerRadius="1.5"
+                                        Color="{StaticResource Primary}"
+                                        VerticalOptions="Fill"/>
+                                    <Label
+                                        Grid.Column="1"
+                                        Text="{Binding Reason}"
+                                        FontSize="12.5"
+                                        LineBreakMode="WordWrap"
+                                        TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                </Grid>
+                            </Border>
+                        </VerticalStackLayout>
+                    </Border>
                     </SwipeView>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
-      </CollectionView>
+        </CollectionView>
     </StackLayout>
 </ContentPage>
-

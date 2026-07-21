@@ -72,93 +72,140 @@
         </Grid>
         <BoxView />
         <VerticalStackLayout Padding="15,12" Spacing="14">
+            <VerticalStackLayout.GestureRecognizers>
+                <TapGestureRecognizer Tapped="ResyncSection_Tapped"/>
+            </VerticalStackLayout.GestureRecognizers>
             <VerticalStackLayout Spacing="4">
-                <Label Text="Resync" Style="{StaticResource Title}" FontAttributes="Bold"/>
+                <HorizontalStackLayout Spacing="7">
+                    <Label Text="Resync" Style="{StaticResource Title}" FontAttributes="Bold"/>
+                    <Ellipse
+                        WidthRequest="7"
+                        HeightRequest="7"
+                        Fill="{StaticResource Primary}"
+                        VerticalOptions="Center"
+                        IsVisible="{Binding ShowResyncBadge}"/>
+                </HorizontalStackLayout>
                 <Label
-                    Text="Manage how your hymn library stays up to date."
+                    Text="Review server changes or re-download the full hymn library."
                     Style="{StaticResource Subtitle}"
                     LineBreakMode="WordWrap"/>
             </VerticalStackLayout>
 
             <VerticalStackLayout Spacing="14" Margin="16,0,0,0">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                <Grid.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="btnResyncAll_Clicked"/>
-                </Grid.GestureRecognizers>
-                <VerticalStackLayout Spacing="4" VerticalOptions="Center">
-                    <Label Text="All hymns" Style="{StaticResource Title}"/>
-                    <Label
-                        Text="Re-download every hymn from the server. This may take a while."
-                        Style="{StaticResource Subtitle}"
-                        LineBreakMode="WordWrap"/>
-                </VerticalStackLayout>
-                <ImageButton
-                    Grid.Column="1"
-                    x:Name="btnResyncAll"
-                    WidthRequest="32"
-                    HeightRequest="32"
-                    Padding="4"
-                    BackgroundColor="Transparent"
-                    VerticalOptions="Center"
-                    Clicked="btnResyncAll_Clicked"/>
-            </Grid>
-
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                <Grid.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="btnResyncMissing_Clicked"/>
-                </Grid.GestureRecognizers>
-                <VerticalStackLayout Spacing="4" VerticalOptions="Center">
-                    <Label Text="Missing updates" Style="{StaticResource Title}"/>
-                    <Label
-                        Text="Download hymns available on the server that are not on this device."
-                        Style="{StaticResource Subtitle}"
-                        LineBreakMode="WordWrap"/>
-                    <Label
-                        Text="{Binding SyncSummary}"
-                        Style="{StaticResource Subsubtitle}"
-                        IsVisible="{Binding ShowSyncs}"
-                        LineBreakMode="WordWrap"/>
-                </VerticalStackLayout>
-                <ImageButton
-                    Grid.Column="1"
-                    x:Name="btnResyncMissing"
-                    WidthRequest="32"
-                    HeightRequest="32"
-                    Padding="4"
-                    BackgroundColor="Transparent"
-                    VerticalOptions="Center"
-                    Clicked="btnResyncMissing_Clicked"/>
-            </Grid>
-
-            <VerticalStackLayout Spacing="6">
-                <VerticalStackLayout Spacing="4">
-                    <Label Text="Custom" Style="{StaticResource Title}"/>
-                    <Label
-                        Text="Re-sync specific hymn numbers. Separate with commas or use a dash for ranges."
-                        Style="{StaticResource Subtitle}"
-                        LineBreakMode="WordWrap"/>
-                </VerticalStackLayout>
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                    <Border Style="{StaticResource InputBorder}">
-                        <Entry
-                            x:Name="entResyncHymn"
-                            Style="{StaticResource FormEntry}"
-                            Placeholder="e.g. 123, 77, 55-100"
-                            Keyboard="Text"
-                            ReturnType="Go"
-                            Completed="btnResyncCustom_Clicked"/>
-                    </Border>
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="btnResyncAll_Clicked"/>
+                    </Grid.GestureRecognizers>
+                    <VerticalStackLayout Spacing="4" VerticalOptions="Center">
+                        <Label Text="All hymns" Style="{StaticResource Title}"/>
+                        <Label
+                            Text="Replace local hymns with the latest catalog."
+                            Style="{StaticResource Subtitle}"
+                            LineBreakMode="WordWrap"/>
+                    </VerticalStackLayout>
                     <ImageButton
                         Grid.Column="1"
-                        x:Name="btnResyncCustom"
+                        x:Name="btnResyncAll"
                         WidthRequest="32"
                         HeightRequest="32"
                         Padding="4"
                         BackgroundColor="Transparent"
                         VerticalOptions="Center"
-                        Clicked="btnResyncCustom_Clicked"/>
+                        Clicked="btnResyncAll_Clicked"/>
                 </Grid>
-            </VerticalStackLayout>
+
+                <Border
+                    Padding="12"
+                    Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 10"
+                    BackgroundColor="Transparent"
+                    IsVisible="{Binding ShowSyncs}">
+                    <VerticalStackLayout Spacing="10">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                            <ActivityIndicator
+                                IsRunning="{Binding IsBusy}"
+                                IsVisible="{Binding IsBusy}"
+                                Color="{StaticResource Primary}"
+                                WidthRequest="20"
+                                HeightRequest="20"
+                                VerticalOptions="Center"/>
+                            <Label
+                                Grid.Column="1"
+                                Text="{Binding SyncSummary}"
+                                Style="{StaticResource Subtitle}"
+                                LineBreakMode="WordWrap"
+                                VerticalOptions="Center"/>
+                        </Grid>
+                        <Button
+                            Text="View Changes"
+                            Padding="12,7"
+                            FontSize="13"
+                            HorizontalOptions="End"
+                            IsVisible="{Binding ShowViewChangesButton}"
+                            Clicked="btnViewChanges_Clicked"
+                            Style="{StaticResource Button-Clear}"/>
+                        <ActivityIndicator
+                            IsRunning="{Binding IsOpeningChangesView}"
+                            IsVisible="{Binding IsOpeningChangesView}"
+                            Color="{StaticResource Primary}"
+                            WidthRequest="20"
+                            HeightRequest="20"
+                            HorizontalOptions="End"/>
+                    </VerticalStackLayout>
+                </Border>
+
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="btnResyncMissing_Clicked"/>
+                    </Grid.GestureRecognizers>
+                    <VerticalStackLayout Spacing="4" VerticalOptions="Center">
+                        <Label Text="Missing updates" Style="{StaticResource Title}"/>
+                        <Label
+                            Text="Download hymns available on the server that are not on this device."
+                            Style="{StaticResource Subtitle}"
+                            LineBreakMode="WordWrap"/>
+                    </VerticalStackLayout>
+                    <ImageButton
+                        Grid.Column="1"
+                        x:Name="btnResyncMissing"
+                        WidthRequest="32"
+                        HeightRequest="32"
+                        Padding="4"
+                        BackgroundColor="Transparent"
+                        VerticalOptions="Center"
+                        Clicked="btnResyncMissing_Clicked"/>
+                </Grid>
+
+                <VerticalStackLayout Spacing="6">
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Custom" Style="{StaticResource Title}"/>
+                        <Label
+                            Text="Re-sync specific hymn numbers. Separate with commas or use a dash for ranges."
+                            Style="{StaticResource Subtitle}"
+                            LineBreakMode="WordWrap"/>
+                    </VerticalStackLayout>
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                        <Border Style="{StaticResource InputBorder}">
+                            <Entry
+                                x:Name="entResyncHymn"
+                                Style="{StaticResource FormEntry}"
+                                Placeholder="e.g. 123, 77, 55-100"
+                                Keyboard="Text"
+                                ReturnType="Go"
+                                Completed="btnResyncCustom_Clicked"/>
+                        </Border>
+                        <ImageButton
+                            Grid.Column="1"
+                            x:Name="btnResyncCustom"
+                            WidthRequest="32"
+                            HeightRequest="32"
+                            Padding="4"
+                            BackgroundColor="Transparent"
+                            VerticalOptions="Center"
+                            Clicked="btnResyncCustom_Clicked"/>
+                    </Grid>
+                </VerticalStackLayout>
             </VerticalStackLayout>
         </VerticalStackLayout>
     </StackLayout>

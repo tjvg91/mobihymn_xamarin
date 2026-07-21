@@ -134,8 +134,9 @@ public partial class App : Application
             Debug.WriteLine($"InitFirebaseAsync auth: {ex.Message}");
         }
 
-            await globalInstance.RefreshMissingHymnCountAsync();
-            CommunitySignInPresenter.ScheduleShow();
+        await globalInstance.RefreshMissingHymnCountAsync();
+        await globalInstance.RefreshCatalogDiffAsync();
+        CommunitySignInPresenter.ScheduleShow();
     }
 
     async Task CheckForAppUpdateAsync()
@@ -243,6 +244,8 @@ public partial class App : Application
     {
         if (sender is string tag && tag == "sync")
             return;
+
+        _ = globalInstance.RefreshCatalogDiffAsync();
 
         if (globalInstance.ActiveHymn == null || globalInstance.HymnList == null || globalInstance.HymnList.Count == 0)
             return;

@@ -145,6 +145,40 @@ namespace MobiHymn4.ViewModels
             }
         }
 
+        private bool hasCatalogChanges;
+        public bool HasCatalogChanges
+        {
+            get => hasCatalogChanges;
+            set
+            {
+                if (SetProperty(ref hasCatalogChanges, value))
+                    OnPropertyChanged(nameof(ShowViewChangesButton));
+            }
+        }
+
+        private bool isOpeningChangesView;
+        public bool IsOpeningChangesView
+        {
+            get => isOpeningChangesView;
+            set
+            {
+                if (SetProperty(ref isOpeningChangesView, value))
+                    OnPropertyChanged(nameof(ShowViewChangesButton));
+            }
+        }
+
+        public bool ShowViewChangesButton => HasCatalogChanges && !IsOpeningChangesView;
+
+        private bool showResyncBadge;
+        public bool ShowResyncBadge
+        {
+            get => showResyncBadge;
+            private set => SetProperty(ref showResyncBadge, value);
+        }
+
+        private bool resyncBadgeAcknowledged;
+        private string badgeCatalogHash;
+
         private int syncCount;
         public int SyncCount
         {
@@ -187,14 +221,32 @@ namespace MobiHymn4.ViewModels
             IsOrientationLocked = globalInstance.IsOrientationLocked;
             IsBusy = globalInstance.IsFetchingSyncDetails;
 
-            SyncCount = globalInstance.MissingHymnCount;
-            UpdateMissingSummary();
+            badgeCatalogHash = globalInstance.PendingCatalogDiff?.CatalogHash;
+            UpdateCatalogSummary();
 
             globalInstance.DarkModeChanged += GlobalInstance_DarkModeChanged;
             globalInstance.KeepAwakeChanged += GlobalInstance_KeepAwakeChanged;
             globalInstance.OrientationLockedChanged += GlobalInstance_OrientationLockedChanged;
             globalInstance.IsFetchingSyncDetailsChanged += GlobalInstance_IsFetchingSyncDetailsChanged;
-            globalInstance.MissingHymnCountChanged += GlobalInstance_MissingHymnCountChanged;
+            globalInstance.CatalogDiffChanged += GlobalInstance_CatalogDiffChanged;
+        }
+
+        private void GlobalInstance_CatalogDiffChanged(object sender, EventArgs e)
+        {
+            var hash = globalInstance.PendingCatalogDiff?.CatalogHash;
+            if (!string.Equals(hash, badgeCatalogHash, StringComparison.Ordinal))
+            {
+                badgeCatalogHash = hash;
+                resyncBadgeAcknowledged = false;
+            }
+
+            UpdateCatalogSummary();
+        }
+
+        public void AcknowledgeResyncBadge()
+        {
+            resyncBadgeAcknowledged = true;
+            ShowResyncBadge = false;
         }
 
         private void GlobalInstance_MissingHymnCountChanged(object sender, EventArgs e)
@@ -212,7 +264,44 @@ namespace MobiHymn4.ViewModels
         {
             IsBusy = (bool)sender;
             resyncInitialized = false;
-            UpdateMissingSummary();
+            UpdateCatalogSummary();
+        }
+
+        void UpdateCatalogSummary()
+        {
+            ShowSyncs = true;
+            if (globalInstance.IsFetchingSyncDetails)
+            {
+                SyncSummary = "Checking the server for hymn changes…";
+                HasCatalogChanges = false;
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(globalInstance.CatalogDiffCheckError))
+            {
+                SyncSummary = globalInstance.CatalogDiffCheckError;
+                HasCatalogChanges = false;
+                return;
+            }
+
+            var diff = globalInstance.PendingCatalogDiff;
+            HasCatalogChanges = diff?.ChangeCount > 0;
+            ShowResyncBadge = HasCatalogChanges && !resyncBadgeAcknowledged;
+            SyncCount = diff?.ChangeCount ?? 0;
+            if (!HasCatalogChanges)
+            {
+                SyncSummary = "Your hymn catalog is up to date.";
+                return;
+            }
+
+            var parts = new List<string>();
+            if (diff.AddedCount > 0)
+                parts.Add($"{diff.AddedCount} added");
+            if (diff.ModifiedCount > 0)
+                parts.Add($"{diff.ModifiedCount} modified");
+            if (diff.RemovedCount > 0)
+                parts.Add($"{diff.RemovedCount} removed");
+            SyncSummary = $"{diff.ChangeCount} hymn change{(diff.ChangeCount == 1 ? string.Empty : "s")} available: {string.Join(", ", parts)}.";
         }
 
         void UpdateMissingSummary()

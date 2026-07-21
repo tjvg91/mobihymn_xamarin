@@ -1,16 +1,18 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using FontAwesome;
-using MobiHymn4.Services;
 using MobiHymn4.Utils;
+using MobiHymn4.ViewModels;
+using MobiHymn4.Views.Popups;
 using CommunityToolkit.Maui.Views;
 
+using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
+#if ANDROID
 using Microsoft.Maui.Platform;
+#endif
 
 namespace MobiHymn4.Views
 {
@@ -49,6 +51,8 @@ namespace MobiHymn4.Views
             base.OnAppearing();
             UpdateResyncIcons();
             ApplyResyncInputAccent();
+            if (!globalInstance.IsFetchingSyncDetails)
+                _ = globalInstance.RefreshCatalogDiffAsync();
             _ = globalInstance.RefreshMissingHymnCountAsync();
         }
 
@@ -66,6 +70,73 @@ namespace MobiHymn4.Views
                 : ((Color)Application.Current.Resources["Gray"]).ToPlatform();
             editText.BackgroundTintList = Android.Content.Res.ColorStateList.ValueOf(lineColor);
 #endif
+        }
+
+        async void btnViewChanges_Clicked(object sender, EventArgs e)
+        {
+            AcknowledgeResyncBadge();
+            var diff = globalInstance.PendingCatalogDiff;
+            if (diff == null || diff.ChangeCount == 0)
+                return;
+
+            if (BindingContext is not SettingsViewModel model)
+                return;
+
+            model.IsOpeningChangesView = true;
+            try
+            {
+                await Task.Yield();
+
+                var popup = new CatalogDiffPopup();
+                await popup.BindAsync(diff);
+                model.IsOpeningChangesView = false;
+
+                var result = await this.ShowPopupAsync(popup);
+                if (result is string action
+                    && string.Equals(action, CatalogDiffPopup.ResultSync, StringComparison.Ordinal))
+                {
+                    await SyncPendingChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"View changes failed: {ex}");
+                await DisplayAlert(
+                    "View Changes",
+                    "Could not open the change list. Try again later.",
+                    "OK");
+            }
+            finally
+            {
+                model.IsOpeningChangesView = false;
+            }
+        }
+
+        async Task SyncPendingChangesAsync()
+        {
+            var diff = globalInstance.PendingCatalogDiff;
+            if (diff == null || diff.ChangeCount == 0 || !await EnsureConnectedAsync())
+                return;
+
+            var sure = await DisplayAlert(
+                "Sync Changes",
+                $"Apply changes to {diff.ChangeCount} hymn{(diff.ChangeCount == 1 ? string.Empty : "s")}?",
+                "Sync",
+                "Cancel");
+            if (!sure)
+                return;
+
+            await ShowDownloadPopupAndRun(
+                async () => await globalInstance.ApplyPendingCatalogChangesAsync());
+        }
+
+        void ResyncSection_Tapped(object sender, TappedEventArgs e) =>
+            AcknowledgeResyncBadge();
+
+        void AcknowledgeResyncBadge()
+        {
+            if (BindingContext is SettingsViewModel model)
+                model.AcknowledgeResyncBadge();
         }
 
         void swDarkMode_Toggled(System.Object sender, Microsoft.Maui.Controls.ToggledEventArgs e)
@@ -93,12 +164,13 @@ namespace MobiHymn4.Views
 
         async void btnResyncAll_Clicked(object sender, EventArgs e)
         {
+            AcknowledgeResyncBadge();
             if (!await EnsureConnectedAsync())
                 return;
 
             var sure = await DisplayAlert(
                 "Resync All",
-                "This will re-download all hymns and may take a while. Continue?",
+                "This will re-download all hymns from the server. Continue?",
                 "Yes",
                 "No");
             if (!sure)
@@ -158,9 +230,11 @@ namespace MobiHymn4.Views
             if (!await EnsureConnectedAsync())
                 return;
 
-            var label = $"Re-download lyrics for {input} from the server?";
-
-            var sure = await DisplayAlert("Resync Custom", label, "Yes", "No");
+            var sure = await DisplayAlert(
+                "Resync Custom",
+                $"Re-download lyrics for {input} from the server?",
+                "Yes",
+                "No");
             if (!sure)
                 return;
 
@@ -182,14 +256,11 @@ namespace MobiHymn4.Views
         async Task ShowDownloadPopupAndRun(Func<Task> action)
         {
             DismissResyncKeyboard();
-            // Android crashes if a popup opens while the alert dialog is still closing.
             await Task.Delay(250);
 
             var downloadPopup = DownloadPopupPresenter.CreateAndTrack();
             var work = action();
 
-            // Do not await ShowPopupAsync — on Android it completes only when the popup closes,
-            // which would block the download/sync work from ever starting.
             if (Window != null)
             {
                 _ = this.ShowPopupAsync(downloadPopup).ContinueWith(t =>
@@ -227,7 +298,7 @@ namespace MobiHymn4.Views
 #if ANDROID
             if (Platform.CurrentActivity?.CurrentFocus is Android.Views.View focusedView)
             {
-                var imm = (Android.Views.InputMethods.InputMethodManager?)
+                var imm = (Android.Views.InputMethods.InputMethodManager)
                     Platform.CurrentActivity.GetSystemService(Android.Content.Context.InputMethodService);
                 imm?.HideSoftInputFromWindow(focusedView.WindowToken, 0);
                 focusedView.ClearFocus();
