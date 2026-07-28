@@ -126,13 +126,13 @@
                             <VisualState x:Name="Normal">
                                 <VisualState.Setters>
                                     <Setter Property="BackgroundColor" Value="Transparent" />
-                                    <Setter Property="TextColor" Value="{StaticResource Primary}" />
+                                    <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Brown}, Dark={StaticResource Primary}}" />
                                 </VisualState.Setters>
                             </VisualState>
                             <VisualState x:Name="Disabled">
                                 <VisualState.Setters>
                                     <Setter Property="BackgroundColor" Value="Transparent" />
-                                    <Setter Property="TextColor" Value="{StaticResource PrimaryLight}" />
+                                    <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource PrimaryLight}}" />
                                 </VisualState.Setters>
                             </VisualState>
                         </VisualStateGroup>
@@ -271,6 +271,16 @@
                 <Setter Property="HeightRequest" Value="60"/>
                 <Setter Property="CornerRadius" Value="30"/>
                 <Setter Property="FontSize" Value="19"/>
+            </Style>
+
+            <Style TargetType="Button" x:Key="NumpadLandscape" BasedOn="{StaticResource Numpad}">
+                <Setter Property="CornerRadius" Value="0"/>
+                <Setter Property="WidthRequest" Value="-1"/>
+                <Setter Property="HeightRequest" Value="-1"/>
+                <Setter Property="HorizontalOptions" Value="Fill"/>
+                <Setter Property="VerticalOptions" Value="Fill"/>
+                <Setter Property="Margin" Value="0"/>
+                <Setter Property="Padding" Value="0"/>
             </Style>
 
             <Style TargetType="CollectionView">

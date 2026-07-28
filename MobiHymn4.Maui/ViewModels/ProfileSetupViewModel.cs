@@ -267,9 +267,13 @@ public class ProfileSetupViewModel : BaseViewModel
 
             await profileService.SaveProfileAsync(profile);
 
+            // Clear busy before navigation — Shell GoToAsync/Pop can hang and would leave the spinner forever.
+            IsBusy = false;
+            RefreshSaveCommand();
+
             if (isEditing)
             {
-                await Shell.Current.GoToAsync("..");
+                await NavigateBackAfterEditAsync();
                 return;
             }
 
@@ -282,8 +286,37 @@ public class ProfileSetupViewModel : BaseViewModel
         }
         finally
         {
-            IsBusy = false;
-            RefreshSaveCommand();
+            if (IsBusy)
+            {
+                IsBusy = false;
+                RefreshSaveCommand();
+            }
+        }
+    }
+
+    static async Task NavigateBackAfterEditAsync()
+    {
+        try
+        {
+            var nav = Shell.Current?.Navigation;
+            if (nav != null && nav.NavigationStack.Count > 1)
+            {
+                await nav.PopAsync();
+                return;
+            }
+
+            await Shell.Current.GoToAsync("..");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"NavigateBackAfterEditAsync failed: {ex.Message}");
+            try
+            {
+                await Shell.Current.GoToAsync($"//{Routes.READ}");
+            }
+            catch
+            {
+            }
         }
     }
 }

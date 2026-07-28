@@ -14,6 +14,7 @@ using MobiHymn4.Views.Popups;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Controls.Shapes;
 using Microsoft.Maui.Graphics;
+using Microsoft.Maui.ApplicationModel.DataTransfer;
 using Microsoft.Maui.Platform;
 
 namespace MobiHymn4.Elements;
@@ -33,11 +34,14 @@ public partial class GroupDashboardPane : ContentView
     readonly IBoardService boardService = ServiceHelper.Get<IBoardService>();
     readonly BoardContext boardContext = ServiceHelper.Get<BoardContext>();
     readonly IGroupDashboardService dashboardService = ServiceHelper.Get<IGroupDashboardService>();
+    readonly IBoardNotificationService boardNotificationService = ServiceHelper.Get<IBoardNotificationService>();
     readonly BoardNavigationContext boardNavigation = ServiceHelper.Get<BoardNavigationContext>();
 
     readonly ObservableCollection<BoardHymnEntry> hymns = new();
     readonly ObservableCollection<BoardHymnEntry> displayHymns = new();
     readonly ObservableCollection<GroupHymnListSummary> hymnLists = new();
+    bool hymnListsHasMore;
+    bool hymnListsLoadingMore;
     readonly ObservableCollection<HymnSuggestion> hymnSuggestions = new();
     readonly ObservableCollection<GroupMemberDisplayItem> displayMembers = new();
     readonly ObservableCollection<GroupMemberRoleSection> memberSections = new();
@@ -63,6 +67,7 @@ public partial class GroupDashboardPane : ContentView
     CancellationTokenSource suggestionCts;
     CancellationTokenSource editSuggestionCts;
     BoardHymnEntry editingEntry;
+    bool suppressEditTextChanged;
     BoardHymnEntry dragEntry;
     bool suppressBoardReorder;
     bool addHymnPanelExpanded;
@@ -82,6 +87,8 @@ public partial class GroupDashboardPane : ContentView
     bool addFabAnimating;
     BoardSectionTemplate activeSectionTemplate;
     bool suppressBoardContextReload;
+    DateTime newHymnBaselineUtc = DateTime.MaxValue;
+    List<BoardDeletedHymnInfo> sessionDeletedHymns = new();
     const uint AnimMs = 220;
     const uint FabAnimMs = 220;
     const int SuggestionDebounceMs = 180;
@@ -95,6 +102,7 @@ public partial class GroupDashboardPane : ContentView
         membersCollection.ItemsSource = displayMembers;
         InitializeMemberFilters();
         dashboardService.IsOpenChanged += (_, _) => _ = SyncOpenStateAsync();
+        dashboardService.UnreadListsChanged += (_, _) => MainThread.BeginInvokeOnMainThread(ApplyUnreadBadgesToLists);
         auth.AuthStateChanged += (_, _) => MainThread.BeginInvokeOnMainThread(RefreshState);
         profileService.ProfileChanged += (_, _) => MainThread.BeginInvokeOnMainThread(RefreshState);
         boardContext.Changed += (_, _) => MainThread.BeginInvokeOnMainThread(() => _ = OnBoardContextChangedAsync());
@@ -126,6 +134,7 @@ public partial class GroupDashboardPane : ContentView
 
     async Task CloseAnimatedAsync()
     {
+        MarkActiveListViewed();
         await Task.WhenAll(
             dimmer.FadeTo(0, AnimMs, Easing.CubicIn),
             pane.TranslateTo(360, 0, AnimMs, Easing.CubicIn));
@@ -262,65 +271,65 @@ public partial class GroupDashboardPane : ContentView
     {
         btnAddMenu?.AbortAnimation("ScaleTo");
         btnAddMenu?.AbortAnimation("RotateTo");
-        btnAddHymn?.AbortAnimation("FadeTo");
-        btnAddHymn?.AbortAnimation("ScaleTo");
-        btnAddHymn?.AbortAnimation("TranslateTo");
-        btnAddSection?.AbortAnimation("FadeTo");
-        btnAddSection?.AbortAnimation("ScaleTo");
-        btnAddSection?.AbortAnimation("TranslateTo");
+        fabAddHymnRow?.AbortAnimation("FadeTo");
+        fabAddHymnRow?.AbortAnimation("ScaleTo");
+        fabAddHymnRow?.AbortAnimation("TranslateTo");
+        fabAddSectionRow?.AbortAnimation("FadeTo");
+        fabAddSectionRow?.AbortAnimation("ScaleTo");
+        fabAddSectionRow?.AbortAnimation("TranslateTo");
     }
 
     void ApplyFabMenuVisualState(bool expanded, bool visible)
     {
-        if (btnAddHymn != null)
+        if (fabAddHymnRow != null)
         {
-            btnAddHymn.IsVisible = visible;
-            btnAddHymn.Opacity = expanded ? 1 : 0;
-            btnAddHymn.Scale = expanded ? 1 : 0.5;
-            btnAddHymn.TranslationY = expanded ? 0 : 20;
+            fabAddHymnRow.IsVisible = visible;
+            fabAddHymnRow.Opacity = expanded ? 1 : 0;
+            fabAddHymnRow.Scale = expanded ? 1 : 0.5;
+            fabAddHymnRow.TranslationY = expanded ? 0 : 20;
         }
 
-        if (btnAddSection != null)
+        if (fabAddSectionRow != null)
         {
-            btnAddSection.IsVisible = visible;
-            btnAddSection.Opacity = expanded ? 1 : 0;
-            btnAddSection.Scale = expanded ? 1 : 0.5;
-            btnAddSection.TranslationY = expanded ? 0 : 20;
+            fabAddSectionRow.IsVisible = visible;
+            fabAddSectionRow.Opacity = expanded ? 1 : 0;
+            fabAddSectionRow.Scale = expanded ? 1 : 0.5;
+            fabAddSectionRow.TranslationY = expanded ? 0 : 20;
         }
     }
 
     async Task ExpandFabMenuAsync()
     {
-        if (btnAddMenu == null || btnAddHymn == null || btnAddSection == null)
+        if (btnAddMenu == null || fabAddHymnRow == null || fabAddSectionRow == null)
             return;
 
         ApplyFabMenuVisualState(expanded: true, visible: true);
 
         var iconSwap = AnimateFabMenuIconAsync(FontAwesomeIcons.Xmark);
         var children = Task.WhenAll(
-            btnAddSection.FadeTo(1, FabAnimMs, Easing.CubicOut),
-            btnAddSection.ScaleTo(1, FabAnimMs, Easing.CubicOut),
-            btnAddSection.TranslateTo(0, 0, FabAnimMs, Easing.CubicOut),
-            btnAddHymn.FadeTo(1, FabAnimMs, Easing.CubicOut),
-            btnAddHymn.ScaleTo(1, FabAnimMs, Easing.CubicOut),
-            btnAddHymn.TranslateTo(0, 0, FabAnimMs, Easing.CubicOut));
+            fabAddSectionRow.FadeTo(1, FabAnimMs, Easing.CubicOut),
+            fabAddSectionRow.ScaleTo(1, FabAnimMs, Easing.CubicOut),
+            fabAddSectionRow.TranslateTo(0, 0, FabAnimMs, Easing.CubicOut),
+            fabAddHymnRow.FadeTo(1, FabAnimMs, Easing.CubicOut),
+            fabAddHymnRow.ScaleTo(1, FabAnimMs, Easing.CubicOut),
+            fabAddHymnRow.TranslateTo(0, 0, FabAnimMs, Easing.CubicOut));
 
         await Task.WhenAll(iconSwap, children);
     }
 
     async Task CollapseFabMenuAsync()
     {
-        if (btnAddMenu == null || btnAddHymn == null || btnAddSection == null)
+        if (btnAddMenu == null || fabAddHymnRow == null || fabAddSectionRow == null)
             return;
 
         var iconSwap = AnimateFabMenuIconAsync(FontAwesomeIcons.Plus);
         var children = Task.WhenAll(
-            btnAddSection.FadeTo(0, FabAnimMs, Easing.CubicIn),
-            btnAddSection.ScaleTo(0.5, FabAnimMs, Easing.CubicIn),
-            btnAddSection.TranslateTo(0, 20, FabAnimMs, Easing.CubicIn),
-            btnAddHymn.FadeTo(0, FabAnimMs, Easing.CubicIn),
-            btnAddHymn.ScaleTo(0.5, FabAnimMs, Easing.CubicIn),
-            btnAddHymn.TranslateTo(0, 20, FabAnimMs, Easing.CubicIn));
+            fabAddSectionRow.FadeTo(0, FabAnimMs, Easing.CubicIn),
+            fabAddSectionRow.ScaleTo(0.5, FabAnimMs, Easing.CubicIn),
+            fabAddSectionRow.TranslateTo(0, 20, FabAnimMs, Easing.CubicIn),
+            fabAddHymnRow.FadeTo(0, FabAnimMs, Easing.CubicIn),
+            fabAddHymnRow.ScaleTo(0.5, FabAnimMs, Easing.CubicIn),
+            fabAddHymnRow.TranslateTo(0, 20, FabAnimMs, Easing.CubicIn));
 
         await Task.WhenAll(iconSwap, children);
         ApplyFabMenuVisualState(expanded: false, visible: false);
@@ -585,8 +594,8 @@ public partial class GroupDashboardPane : ContentView
         if (activeListSummary == null || string.IsNullOrWhiteSpace(activeListSummary.Id))
             return;
 
-        var hymnCount = hymns.Count(h => !h.IsSection);
-        var entryCount = hymns.Count;
+        var hymnCount = hymns.Count(h => !h.IsSection && !h.IsDeleted);
+        var entryCount = hymns.Count(h => !h.IsDeleted);
         activeListSummary.SetCounts(hymnCount, entryCount);
 
         if (!string.IsNullOrWhiteSpace(activeListSummary.Name)
@@ -616,6 +625,7 @@ public partial class GroupDashboardPane : ContentView
         subscribedListId = null;
         hymns.Clear();
         displayHymns.Clear();
+        sessionDeletedHymns.Clear();
 
         // A stuck loader would hide the overview even after switching views.
         while (boardLoadingCount > 0)
@@ -629,6 +639,8 @@ public partial class GroupDashboardPane : ContentView
 
     void BackToLists_Tapped(object sender, TappedEventArgs e)
     {
+        MarkActiveListViewed();
+
         suppressBoardContextReload = true;
         try
         {
@@ -654,6 +666,13 @@ public partial class GroupDashboardPane : ContentView
         currentView = GroupDashboardView.HymnListDetail;
         viewingListDetail = true;
 
+        CaptureNewHymnBaseline(summary.Id);
+        CaptureDeletedHymnsForSession(summary.Id);
+
+        // Clear the board-card badge as soon as the list is opened.
+        summary.UnreadCount = 0;
+        _ = boardNotificationService.MarkListReadAsync(activeGroup.Id, summary.Id);
+
         suppressBoardContextReload = true;
         try
         {
@@ -671,6 +690,8 @@ public partial class GroupDashboardPane : ContentView
         UpdateLayout();
     }
 
+    static readonly TimeSpan BoardLoadTimeout = TimeSpan.FromSeconds(15);
+
     async Task LoadBoardAsync()
     {
         if (!auth.IsSignedIn || !profileService.HasCompleteProfile)
@@ -680,12 +701,26 @@ public partial class GroupDashboardPane : ContentView
         var version = Interlocked.Increment(ref loadBoardVersion);
         await loadBoardLock.WaitAsync();
         suppressBoardContextReload = true;
+        var timedOut = false;
+        using var loadCts = new CancellationTokenSource(BoardLoadTimeout);
         try
         {
             if (version != loadBoardVersion)
                 return;
 
-            var groups = await groupService.GetMyGroupsAsync();
+            var knownGroupId = boardContext.ActiveGroupId?.Trim();
+            var groupsTask = groupService.GetMyGroupsAsync();
+
+            // When we already know the active group, start board fetches in parallel with groups.
+            Task<BoardListsPage> earlySummariesTask = null;
+            Task<BoardSectionTemplate> earlyTemplateTask = null;
+            if (!string.IsNullOrWhiteSpace(knownGroupId))
+            {
+                earlySummariesTask = boardService.ListHymnListsAsync(knownGroupId);
+                earlyTemplateTask = boardService.GetSectionTemplateAsync(knownGroupId);
+            }
+
+            var groups = await groupsTask.WaitAsync(loadCts.Token);
             if (version != loadBoardVersion)
                 return;
 
@@ -703,6 +738,8 @@ public partial class GroupDashboardPane : ContentView
                 boardSubscription?.Dispose();
                 boardSubscription = null;
                 hymnLists.Clear();
+                hymnListsHasMore = false;
+                hymnListsLoadingMore = false;
                 hymns.Clear();
                 displayHymns.Clear();
                 return;
@@ -717,12 +754,18 @@ public partial class GroupDashboardPane : ContentView
             var pendingListId = boardContext.ActiveListId;
             var openingListDetail = !string.IsNullOrWhiteSpace(pendingListId);
 
-            var summariesTask = boardService.ListHymnListsAsync(activeGroup.Id);
-            var templateTask = boardService.GetSectionTemplateAsync(activeGroup.Id);
+            var summariesTask = string.Equals(knownGroupId, activeGroup.Id, StringComparison.Ordinal)
+                && earlySummariesTask != null
+                ? earlySummariesTask
+                : boardService.ListHymnListsAsync(activeGroup.Id);
+            var templateTask = string.Equals(knownGroupId, activeGroup.Id, StringComparison.Ordinal)
+                && earlyTemplateTask != null
+                ? earlyTemplateTask
+                : boardService.GetSectionTemplateAsync(activeGroup.Id);
 
             if (openingListDetail)
             {
-                await templateTask;
+                await templateTask.WaitAsync(loadCts.Token);
                 if (version != loadBoardVersion)
                     return;
 
@@ -733,23 +776,28 @@ public partial class GroupDashboardPane : ContentView
                 currentView = GroupDashboardView.HymnListDetail;
                 viewingListDetail = true;
 
+                CaptureNewHymnBaseline(pendingListId);
+                CaptureDeletedHymnsForSession(pendingListId);
+                _ = boardNotificationService.MarkListReadAsync(activeGroup.Id, pendingListId);
+
                 UpdateBoardViewMode();
                 UpdateLayout();
 
-                await LoadActiveListAsync(version, showLoading: false);
+                await LoadActiveListAsync(version, showLoading: false).WaitAsync(loadCts.Token);
                 _ = ApplySummariesWhenReadyAsync(summariesTask, version);
             }
             else
             {
-                await Task.WhenAll(summariesTask, templateTask);
+                await Task.WhenAll(summariesTask, templateTask).WaitAsync(loadCts.Token);
                 if (version != loadBoardVersion)
                     return;
 
-                var summaries = await summariesTask;
+                var page = await summariesTask;
                 activeSectionTemplate = await templateTask;
 
                 hymnLists.Clear();
-                AddHymnListSummaries(summaries);
+                hymnListsHasMore = page.HasMore;
+                AddHymnListSummaries(page.Items);
                 ApplySavedSectionTemplate(activeSectionTemplate);
                 ShowListsOverview();
             }
@@ -761,21 +809,46 @@ public partial class GroupDashboardPane : ContentView
             }
 
             if (currentView == GroupDashboardView.Members)
-                await LoadMembersAsync();
+                await LoadMembersAsync().WaitAsync(loadCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            timedOut = true;
+            Debug.WriteLine("LoadBoardAsync timed out.");
+            if (version == loadBoardVersion)
+            {
+                ShowListsOverview();
+                UpdateBoardViewMode();
+                UpdateLayout();
+            }
+        }
+        catch (TimeoutException)
+        {
+            timedOut = true;
+            Debug.WriteLine("LoadBoardAsync timed out.");
+            if (version == loadBoardVersion)
+            {
+                ShowListsOverview();
+                UpdateBoardViewMode();
+                UpdateLayout();
+            }
         }
         finally
         {
             suppressBoardContextReload = false;
             loadBoardLock.Release();
             SetBoardLoading(false);
+            if (timedOut && version == loadBoardVersion)
+                MainThread.BeginInvokeOnMainThread(() =>
+                    Globals.ShowToastPopup("error", "Board is taking too long. Try again.", 120));
         }
     }
 
-    async Task ApplySummariesWhenReadyAsync(Task<IReadOnlyList<GroupHymnListSummary>> summariesTask, int version)
+    async Task ApplySummariesWhenReadyAsync(Task<BoardListsPage> summariesTask, int version)
     {
         try
         {
-            var summaries = await summariesTask;
+            var page = await summariesTask;
             if (version != loadBoardVersion)
                 return;
 
@@ -785,7 +858,8 @@ public partial class GroupDashboardPane : ContentView
                     return;
 
                 hymnLists.Clear();
-                AddHymnListSummaries(summaries);
+                hymnListsHasMore = page.HasMore;
+                AddHymnListSummaries(page.Items);
 
                 if (activeListSummary != null)
                 {
@@ -815,6 +889,38 @@ public partial class GroupDashboardPane : ContentView
         catch (Exception ex)
         {
             Debug.WriteLine($"ApplySummariesWhenReadyAsync failed: {ex.Message}");
+        }
+    }
+
+    async void HymnLists_RemainingItemsThresholdReached(object sender, EventArgs e) =>
+        await LoadMoreHymnListsAsync();
+
+    async Task LoadMoreHymnListsAsync()
+    {
+        if (!hymnListsHasMore
+            || hymnListsLoadingMore
+            || activeGroup == null
+            || hymnLists.Count == 0
+            || currentView != GroupDashboardView.HymnLists)
+            return;
+
+        hymnListsLoadingMore = true;
+        try
+        {
+            var cursor = hymnLists[hymnLists.Count - 1];
+            var page = await boardService.ListHymnListsAsync(activeGroup.Id, cursor);
+            hymnListsHasMore = page.HasMore;
+
+            var existingIds = new HashSet<string>(hymnLists.Select(l => l.Id), StringComparer.Ordinal);
+            AddHymnListSummaries(page.Items.Where(item => existingIds.Add(item.Id)));
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"LoadMoreHymnListsAsync failed: {ex.Message}");
+        }
+        finally
+        {
+            hymnListsLoadingMore = false;
         }
     }
 
@@ -972,8 +1078,149 @@ public partial class GroupDashboardPane : ContentView
         }
 
         list.Hymns = ordered;
+        ApplyNewHymnFlags(ordered);
+        ApplyDeletedHymnIndicators(ordered);
         CommitHymnListState(list);
         RefreshHymnFirstLines();
+    }
+
+    void ApplyNewHymnFlags(IList<BoardHymnEntry> entries)
+    {
+        if (entries == null || entries.Count == 0 || activeGroup == null || activeListSummary == null)
+            return;
+
+        var uid = auth.CurrentUserId;
+        var baseline = newHymnBaselineUtc;
+
+        foreach (var entry in entries)
+        {
+            if (entry.IsSection || entry.IsDeleted)
+            {
+                entry.IsNew = false;
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(uid)
+                && string.Equals(entry.AddedBy, uid, StringComparison.Ordinal))
+            {
+                entry.IsNew = false;
+                continue;
+            }
+
+            var updated = entry.UpdatedAt.Kind == DateTimeKind.Utc
+                ? entry.UpdatedAt
+                : entry.UpdatedAt.ToUniversalTime();
+            entry.IsNew = updated > baseline;
+        }
+    }
+
+    void CaptureDeletedHymnsForSession(string listId)
+    {
+        sessionDeletedHymns.Clear();
+        if (activeGroup == null || string.IsNullOrWhiteSpace(listId))
+            return;
+
+        var deleted = dashboardService.GetListDeletedHymns(activeGroup.Id, listId);
+        if (deleted == null || deleted.Count == 0)
+            return;
+
+        sessionDeletedHymns.AddRange(deleted);
+    }
+
+    void ApplyDeletedHymnIndicators(List<BoardHymnEntry> ordered)
+    {
+        if (ordered == null || sessionDeletedHymns.Count == 0)
+            return;
+
+        var liveIds = new HashSet<string>(
+            ordered.Where(h => !h.IsSection).Select(h => h.Id),
+            StringComparer.Ordinal);
+        var lookup = GetHymnNumberLookup();
+
+        foreach (var deleted in sessionDeletedHymns
+                     .OrderBy(d => d.SortOrder)
+                     .ThenBy(d => d.DeletedAtUtc))
+        {
+            if (deleted == null || string.IsNullOrWhiteSpace(deleted.Id) || liveIds.Contains(deleted.Id))
+                continue;
+
+            var entry = new BoardHymnEntry
+            {
+                Id = deleted.Id,
+                HymnNumber = deleted.HymnNumber ?? string.Empty,
+                Notes = deleted.Notes ?? string.Empty,
+                SortOrder = deleted.SortOrder,
+                AddedByName = deleted.DeletedByName ?? string.Empty,
+                UpdatedAt = deleted.DeletedAtUtc == default ? DateTime.UtcNow : deleted.DeletedAtUtc,
+                IsDeleted = true,
+                IsNew = false,
+                ShowDragHandle = false,
+            };
+            entry.FirstLine = ResolveFirstLine(entry.HymnNumber, lookup);
+
+            var insertAt = ordered.FindIndex(h =>
+                !h.IsSection && !h.IsDeleted && h.SortOrder > entry.SortOrder);
+            if (insertAt < 0)
+                ordered.Add(entry);
+            else
+                ordered.Insert(insertAt, entry);
+
+            liveIds.Add(entry.Id);
+        }
+    }
+
+    void CaptureNewHymnBaseline(string listId)
+    {
+        if (activeGroup == null || string.IsNullOrWhiteSpace(listId) || !auth.IsSignedIn)
+        {
+            newHymnBaselineUtc = DateTime.MaxValue;
+            return;
+        }
+
+        var lastRead = BoardListReadStore.GetLastReadUtc(auth.CurrentUserId, activeGroup.Id, listId);
+        var unreadSince = dashboardService.GetListUnreadSinceUtc(activeGroup.Id, listId);
+        if (lastRead > DateTime.MinValue)
+            newHymnBaselineUtc = lastRead;
+        else if (unreadSince > DateTime.MinValue)
+            newHymnBaselineUtc = unreadSince.AddMinutes(-1);
+        else
+            newHymnBaselineUtc = DateTime.MaxValue;
+    }
+
+    void MarkActiveListViewed()
+    {
+        if (activeGroup == null || activeListSummary == null || !auth.IsSignedIn)
+            return;
+
+        BoardListReadStore.SetLastReadUtc(
+            auth.CurrentUserId,
+            activeGroup.Id,
+            activeListSummary.Id,
+            DateTime.UtcNow);
+
+        newHymnBaselineUtc = DateTime.MaxValue;
+        foreach (var entry in hymns)
+            entry.IsNew = false;
+        sessionDeletedHymns.Clear();
+        var deletedRows = hymns.Where(h => h.IsDeleted).ToList();
+        if (deletedRows.Count > 0)
+        {
+            foreach (var entry in deletedRows)
+                hymns.Remove(entry);
+            RefreshSectionPresentation();
+            SyncActiveListSummaryFromHymns();
+        }
+
+        activeListSummary.UnreadCount = 0;
+    }
+
+    void ApplyUnreadBadgesToLists()
+    {
+        if (activeGroup == null)
+            return;
+
+        foreach (var summary in hymnLists)
+            summary.UnreadCount = dashboardService.GetListUnreadCount(activeGroup.Id, summary.Id);
     }
 
     void RefreshHymnFirstLines()
@@ -1025,7 +1272,9 @@ public partial class GroupDashboardPane : ContentView
                     || !string.Equals(incoming.Notes, existing.Notes, StringComparison.Ordinal)
                     || incoming.SortOrder != existing.SortOrder
                     || !string.Equals(incoming.AddedByName, existing.AddedByName, StringComparison.Ordinal)
-                    || incoming.UpdatedAt != existing.UpdatedAt)
+                    || incoming.UpdatedAt != existing.UpdatedAt
+                    || incoming.IsDeleted != existing.IsDeleted
+                    || incoming.IsNew != existing.IsNew)
                 {
                     unchanged = false;
                     break;
@@ -1042,6 +1291,9 @@ public partial class GroupDashboardPane : ContentView
                     {
                         hymns[i].FirstLine = ordered[i].FirstLine;
                     }
+
+                    if (hymns[i].IsNew != ordered[i].IsNew)
+                        hymns[i].IsNew = ordered[i].IsNew;
                 }
 
                 RefreshSectionPresentation();
@@ -1073,7 +1325,7 @@ public partial class GroupDashboardPane : ContentView
                 continue;
             }
 
-            if (currentSection != null)
+            if (currentSection != null && !item.IsDeleted)
                 counts[currentSection.Id] = counts.GetValueOrDefault(currentSection.Id) + 1;
         }
 
@@ -1081,7 +1333,7 @@ public partial class GroupDashboardPane : ContentView
         var canViewNotes = RolePermissions.CanViewBoardNotes(profileService.CurrentProfile?.Roles);
         foreach (var item in hymns)
         {
-            item.ShowDragHandle = canEdit && item.IsNotEditing;
+            item.ShowDragHandle = canEdit && item.IsNotEditing && !item.IsDeleted;
 
             if (item.IsSection)
             {
@@ -1449,7 +1701,10 @@ public partial class GroupDashboardPane : ContentView
         try
         {
             suppressBoardReorder = true;
-            await boardService.ReorderHymnsAsync(activeGroup.Id, boardContext.ActiveListId, hymns.ToList());
+            await boardService.ReorderHymnsAsync(
+                activeGroup.Id,
+                boardContext.ActiveListId,
+                hymns.Where(h => !h.IsDeleted).ToList());
 
             if (manualReorder && sectionSortMode != SectionSortMode.AddedOrder)
             {
@@ -1912,13 +2167,25 @@ public partial class GroupDashboardPane : ContentView
         if (page == null)
             return;
 
+        var groupMuted = false;
+        try
+        {
+            groupMuted = await groupService.IsGroupNotificationsMutedAsync(activeGroup.Id);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"IsGroupNotificationsMutedAsync failed: {ex.Message}");
+        }
+
+        var muteLabel = groupMuted ? "Unmute notifications" : "Mute notifications";
         var action = await ActionMenuPopup.PickAsync(
             page,
             activeGroup.Name,
             new[]
             {
                 "View members",
-                "Copy group ID",
+                "Share Invite Code",
+                muteLabel,
                 "Leave group",
             });
 
@@ -1932,9 +2199,16 @@ public partial class GroupDashboardPane : ContentView
                 case "View members":
                     await ShowMembersViewAsync();
                     break;
-                case "Copy group ID":
-                    await Clipboard.SetTextAsync(activeGroup.Id);
-                    Globals.ShowToastPopup("done", "Group ID copied.", 90);
+                case "Share Invite Code":
+                    await ShareInviteCodeAsync(page);
+                    break;
+                case "Mute notifications":
+                    await groupService.SetGroupNotificationsMutedAsync(activeGroup.Id, muted: true);
+                    Globals.ShowToastPopup("done", "Notifications muted for this group.", 90);
+                    break;
+                case "Unmute notifications":
+                    await groupService.SetGroupNotificationsMutedAsync(activeGroup.Id, muted: false);
+                    Globals.ShowToastPopup("done", "Notifications enabled for this group.", 90);
                     break;
                 case "Leave group":
                     await LeaveActiveGroupAsync(page);
@@ -1945,6 +2219,26 @@ public partial class GroupDashboardPane : ContentView
         {
             await page.DisplayAlert("Group", ex.Message, "OK");
         }
+    }
+
+    async Task ShareInviteCodeAsync(Page page)
+    {
+        if (activeGroup == null)
+            return;
+
+        var code = activeGroup.JoinCode?.Trim();
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            await page.DisplayAlert("Invite code", "This group does not have an invite code yet.", "OK");
+            return;
+        }
+
+        var groupLabel = string.IsNullOrWhiteSpace(activeGroup.Name) ? "our group" : activeGroup.Name.Trim();
+        await Share.Default.RequestAsync(new ShareTextRequest
+        {
+            Title = "Share Invite Code",
+            Text = $"Join {groupLabel} on MobiHymn with invite code: {code}",
+        });
     }
 
     async Task LeaveActiveGroupAsync(Page page)
@@ -2158,6 +2452,8 @@ public partial class GroupDashboardPane : ContentView
         foreach (var summary in summaries)
         {
             summary.CanManage = canEdit;
+            if (activeGroup != null)
+                summary.UnreadCount = dashboardService.GetListUnreadCount(activeGroup.Id, summary.Id);
             hymnLists.Add(summary);
         }
     }
@@ -2210,9 +2506,10 @@ public partial class GroupDashboardPane : ContentView
                 boardContext.ActiveListId = list.Id;
             }
 
-            var summaries = await boardService.ListHymnListsAsync(activeGroup.Id);
+            var listsPage = await boardService.ListHymnListsAsync(activeGroup.Id);
             hymnLists.Clear();
-            AddHymnListSummaries(summaries);
+            hymnListsHasMore = listsPage.HasMore;
+            AddHymnListSummaries(listsPage.Items);
 
             if (wasViewing)
             {
@@ -2582,7 +2879,7 @@ public partial class GroupDashboardPane : ContentView
 
     bool CanModify(BoardHymnEntry entry)
     {
-        if (entry == null)
+        if (entry == null || entry.IsDeleted)
             return false;
         if (canEdit)
             return true;
@@ -2748,7 +3045,9 @@ public partial class GroupDashboardPane : ContentView
             CollapseEdit(other);
 
         editingEntry = entry;
+        suppressEditTextChanged = true;
         entry.EditText = entry.IsSection ? entry.SectionName : entry.HymnNumber;
+        suppressEditTextChanged = false;
         entry.EditNote = entry.Notes;
         entry.ShowEditNote = !entry.IsSection && (revealNote || !string.IsNullOrWhiteSpace(entry.Notes));
         entry.EditSuggestions.Clear();
@@ -2760,6 +3059,8 @@ public partial class GroupDashboardPane : ContentView
     {
         if (entry == null)
             return;
+        editSuggestionCts?.Cancel();
+        editSuggestionCts = null;
         entry.IsEditing = false;
         entry.ShowEditNote = false;
         entry.HasEditSuggestions = false;
@@ -2770,18 +3071,23 @@ public partial class GroupDashboardPane : ContentView
 
     void CancelEdit_Clicked(object sender, EventArgs e)
     {
-        editSuggestionCts?.Cancel();
         var entry = (sender as BindableObject)?.BindingContext as BoardHymnEntry ?? editingEntry;
         if (entry == null)
             return;
 
+        suppressEditTextChanged = true;
         entry.EditText = entry.IsSection ? entry.SectionName : entry.HymnNumber;
+        suppressEditTextChanged = false;
         CollapseEdit(entry);
     }
 
     async void EditEntry_TextChanged(object sender, TextChangedEventArgs e)
     {
-        if (sender is not BindableObject bindable || bindable.BindingContext is not BoardHymnEntry entry)
+        if (suppressEditTextChanged)
+            return;
+
+        var entry = (sender as BindableObject)?.BindingContext as BoardHymnEntry ?? editingEntry;
+        if (entry == null || entry.IsSection)
             return;
 
         await UpdateEditSuggestionsAsync(entry, e.NewTextValue);
@@ -2790,6 +3096,9 @@ public partial class GroupDashboardPane : ContentView
     async Task UpdateEditSuggestionsAsync(BoardHymnEntry entry, string query)
     {
         editSuggestionCts?.Cancel();
+
+        if (entry == null)
+            return;
 
         if (string.IsNullOrWhiteSpace(query))
         {
@@ -2811,34 +3120,41 @@ public partial class GroupDashboardPane : ContentView
                 () => HymnNumberHelper.GetSuggestions(query, hymnList),
                 token);
 
-            if (token.IsCancellationRequested)
+            if (token.IsCancellationRequested || editingEntry != entry)
                 return;
 
-            entry.EditSuggestions.Clear();
-            foreach (var suggestion in results)
-                entry.EditSuggestions.Add(suggestion);
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (token.IsCancellationRequested || editingEntry != entry)
+                    return;
 
-            entry.HasEditSuggestions = entry.EditSuggestions.Count > 0;
+                entry.EditSuggestions.Clear();
+                foreach (var suggestion in results)
+                    entry.EditSuggestions.Add(suggestion);
+                entry.HasEditSuggestions = entry.EditSuggestions.Count > 0;
+            });
         }
         catch (OperationCanceledException)
         {
         }
     }
 
-    async void EditSuggestion_Tapped(object sender, EventArgs e)
+    void EditSuggestion_Tapped(object sender, TappedEventArgs e)
     {
-        if (sender is not BindableObject bindable || bindable.BindingContext is not HymnSuggestion suggestion)
+        if ((sender as BindableObject)?.BindingContext is not HymnSuggestion suggestion)
             return;
 
         var entry = editingEntry;
-        if (entry == null)
+        if (entry == null || entry.IsSection)
             return;
 
-        editSuggestionCts?.Cancel();
+        suppressEditTextChanged = true;
         entry.EditText = suggestion.Number;
-        entry.HasEditSuggestions = false;
+        suppressEditTextChanged = false;
         entry.EditSuggestions.Clear();
-        await CommitEditAsync(entry, suggestion.Number);
+        entry.HasEditSuggestions = false;
+        editSuggestionCts?.Cancel();
+        editSuggestionCts = null;
     }
 
     async void SaveEdit_Clicked(object sender, EventArgs e)
@@ -2958,13 +3274,25 @@ public partial class GroupDashboardPane : ContentView
         }
     }
 
-    async void HymnList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    async void HymnEntry_Tapped(object sender, TappedEventArgs e)
     {
-        if (e.CurrentSelection.FirstOrDefault() is not BoardHymnEntry entry || activeGroup == null || entry.IsSection)
+        if ((sender as BindableObject)?.BindingContext is not BoardHymnEntry entry)
             return;
 
-        hymnList.SelectedItem = null;
-        var numbers = hymns.Where(h => !h.IsSection).Select(h => h.HymnNumber).ToList();
+        // Inline edit controls (X, suggestions, etc.) sit inside this card — don't treat
+        // those taps as "open hymn" (which closes the board pane).
+        if (entry.IsEditing)
+            return;
+
+        await OpenHymnFromBoardAsync(entry);
+    }
+
+    async Task OpenHymnFromBoardAsync(BoardHymnEntry entry)
+    {
+        if (entry == null || activeGroup == null || entry.IsSection || entry.IsDeleted)
+            return;
+
+        var numbers = hymns.Where(h => !h.IsSection && !h.IsDeleted).Select(h => h.HymnNumber).ToList();
         var index = numbers.FindIndex(n => string.Equals(n, entry.HymnNumber, StringComparison.OrdinalIgnoreCase));
         boardNavigation.Set(activeGroup.Id, boardContext.ActiveListId, numbers, Math.Max(0, index));
 

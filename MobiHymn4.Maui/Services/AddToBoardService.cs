@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using MobiHymn4.Models;
@@ -65,18 +66,18 @@ public sealed class AddToBoardService : IAddToBoardService
         GroupHymnListSummary list = null;
 
         if (!string.IsNullOrWhiteSpace(boardContext.ActiveListId))
-            list = lists.FirstOrDefault(l => l.Id == boardContext.ActiveListId);
+            list = lists.Items.FirstOrDefault(l => l.Id == boardContext.ActiveListId);
 
-        if (list == null && lists.Count == 1)
-            list = lists[0];
+        if (list == null && lists.Items.Count == 1)
+            list = lists.Items[0];
 
-        if (list == null && host != null && lists.Count > 1)
+        if (list == null && host != null && lists.Items.Count > 1)
         {
-            var listNames = lists.Select(l => l.Name).ToArray();
+            var listNames = lists.Items.Select(l => l.Name).ToArray();
             var picked = await host.DisplayActionSheet("Choose hymn list", "Cancel", null, listNames);
             if (string.IsNullOrWhiteSpace(picked) || picked == "Cancel")
                 return false;
-            list = lists.First(l => l.Name == picked);
+            list = lists.Items.First(l => l.Name == picked);
         }
 
         if (list == null)
@@ -123,9 +124,12 @@ public sealed class AddToBoardService : IAddToBoardService
 public sealed class GroupDashboardService : IGroupDashboardService
 {
     public event EventHandler IsOpenChanged;
+    public event EventHandler UnreadListsChanged;
 
     bool isOpen;
     bool hasUnread;
+    int unreadNotificationCount;
+    Dictionary<string, BoardListUnreadInfo> unreadByList = new(StringComparer.Ordinal);
 
     public bool IsOpen
     {
@@ -151,6 +155,18 @@ public sealed class GroupDashboardService : IGroupDashboardService
         }
     }
 
+    public int UnreadNotificationCount
+    {
+        get => unreadNotificationCount;
+        private set
+        {
+            if (unreadNotificationCount == value)
+                return;
+            unreadNotificationCount = value < 0 ? 0 : value;
+            IsOpenChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     readonly BoardContext boardContext;
 
     public GroupDashboardService(BoardContext boardContext)
@@ -165,16 +181,64 @@ public sealed class GroupDashboardService : IGroupDashboardService
         if (!string.IsNullOrWhiteSpace(listId))
             boardContext.ActiveListId = listId;
         IsOpen = true;
-        HasUnreadNotifications = false;
     }
 
     public void Close() => IsOpen = false;
 
     public void Toggle() => IsOpen = !IsOpen;
 
-    public void MarkNotificationsRead() => HasUnreadNotifications = false;
+    public void MarkNotificationsRead()
+    {
+        HasUnreadNotifications = false;
+        UnreadNotificationCount = 0;
+        if (unreadByList.Count == 0)
+            return;
+        unreadByList = new Dictionary<string, BoardListUnreadInfo>(StringComparer.Ordinal);
+        UnreadListsChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     public void SetUnreadNotifications(bool hasUnread) => HasUnreadNotifications = hasUnread;
 
-    public void NotifyBoardUpdated() => HasUnreadNotifications = !IsOpen;
+    public void SetUnreadLists(IReadOnlyDictionary<string, BoardListUnreadInfo> unreadByListKey)
+    {
+        unreadByList = unreadByListKey != null
+            ? new Dictionary<string, BoardListUnreadInfo>(unreadByListKey, StringComparer.Ordinal)
+            : new Dictionary<string, BoardListUnreadInfo>(StringComparer.Ordinal);
+
+        var totalHymns = 0;
+        foreach (var info in unreadByList.Values)
+            totalHymns += Math.Max(1, info.NewHymnCount);
+
+        UnreadNotificationCount = totalHymns;
+        HasUnreadNotifications = unreadByList.Count > 0;
+        UnreadListsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public int GetListUnreadCount(string groupId, string listId)
+    {
+        if (!unreadByList.TryGetValue(ListKey(groupId, listId), out var info))
+            return 0;
+        return Math.Max(1, info.NewHymnCount);
+    }
+
+    public DateTime GetListUnreadSinceUtc(string groupId, string listId)
+    {
+        if (!unreadByList.TryGetValue(ListKey(groupId, listId), out var info))
+            return DateTime.MinValue;
+        return info.OldestCreatedAtUtc;
+    }
+
+    public IReadOnlyList<BoardDeletedHymnInfo> GetListDeletedHymns(string groupId, string listId)
+    {
+        if (!unreadByList.TryGetValue(ListKey(groupId, listId), out var info)
+            || info.DeletedHymns == null
+            || info.DeletedHymns.Count == 0)
+            return Array.Empty<BoardDeletedHymnInfo>();
+        return info.DeletedHymns;
+    }
+
+    public void NotifyBoardUpdated() => HasUnreadNotifications = true;
+
+    public static string ListKey(string groupId, string listId) =>
+        $"{groupId?.Trim() ?? string.Empty}\n{listId?.Trim() ?? string.Empty}";
 }

@@ -21,10 +21,17 @@ namespace MobiHymn4.Utils
         public const string ACTIVE_ALIGNMENT = "activeAlignment";
         public const string READER_SETTINGS = "readerSettings";
         public const string GROUP_WELCOME_SEEN_IDS = "groupWelcomeSeenIds";
-        public const string COMMUNITY_PROMPT_DISMISSED = "communityPromptDismissed";
+        // Bumped key: earlier builds could set the flag without the user seeing the popup.
+        public const string COMMUNITY_PROMPT_DISMISSED = "communityPromptDismissedV2";
         public const string HYMN_TOTAL = "hymnTotal";
         public const string HYMN_CATALOG_HASH = "hymnCatalogHash";
         public const string AGENT_MODE = "agentMode";
         public const string AGENT_CHAT_LIMIT = "agentChatLimit";
+        public const string PENDING_INVITES_CHECKED_AT = "pendingInvitesCheckedAt";
+        public const string GROUP_NOTIFICATIONS_MUTED_PREFIX = "groupNotificationsMuted:";
+        public const string CLOUD_SETTINGS_UPDATED_AT = "cloudSettingsUpdatedAt";
+        public const string CLOUD_SETTINGS_PENDING = "cloudSettingsPending";
+        /// <summary>Firebase uid whose settings were last applied/synced on this device.</summary>
+        public const string CLOUD_SETTINGS_OWNER_UID = "cloudSettingsOwnerUid";
     }
 }

@@ -7,6 +7,7 @@ using FontAwesome;
 using MobiHymn4.Models;
 using MobiHymn4.Services;
 using MobiHymn4.Utils;
+using MobiHymn4.Views.Popups;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using MvvmHelpers;
@@ -33,6 +34,7 @@ public class AccountViewModel : BaseViewModel
 
         OpenGroupsCommand = new Command(async () => await Shell.Current.GoToAsync(Routes.GROUPS));
         EditProfileCommand = new Command(async () => await Shell.Current.GoToAsync(Routes.PROFILE_SETUP));
+        PasswordOptionsCommand = new Command(async () => await ShowPasswordOptionsAsync(), () => !IsBusy && CanManagePassword);
         ResendVerificationCommand = new Command(async () => await ResendVerificationAsync(), () => !IsBusy);
         RefreshVerificationCommand = new Command(async () => await RefreshVerificationAsync(), () => !IsBusy);
 
@@ -43,6 +45,8 @@ public class AccountViewModel : BaseViewModel
     public string Email { get; private set; } = string.Empty;
     public string RolesSummary { get; private set; } = string.Empty;
     public IList<UserRole> Roles { get; private set; } = new List<UserRole>();
+
+    public bool CanManagePassword => auth.IsSignedIn && !auth.SignedInWithGoogle;
 
     public bool IsEmailVerified
     {
@@ -110,6 +114,7 @@ public class AccountViewModel : BaseViewModel
 
     public ICommand OpenGroupsCommand { get; }
     public ICommand EditProfileCommand { get; }
+    public ICommand PasswordOptionsCommand { get; }
     public ICommand ResendVerificationCommand { get; }
     public ICommand RefreshVerificationCommand { get; }
 
@@ -147,6 +152,48 @@ public class AccountViewModel : BaseViewModel
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    async Task ShowPasswordOptionsAsync()
+    {
+        var page = Shell.Current?.CurrentPage;
+        if (page == null || !CanManagePassword)
+            return;
+
+        await ChangePasswordAsync(page);
+    }
+
+    async Task ChangePasswordAsync(Page page)
+    {
+        var newPassword = await ChangePasswordPopup.PromptAsync(page);
+        if (string.IsNullOrEmpty(newPassword))
+            return;
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = string.Empty;
+            await auth.UpdatePasswordAsync(newPassword);
+            StatusMessage = "Password updated.";
+        }
+        catch (Exception ex)
+        {
+            var message = ex.Message ?? string.Empty;
+            if (message.Contains("requires-recent-login", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("recent", StringComparison.OrdinalIgnoreCase))
+            {
+                StatusMessage = "For security, sign out and use Forgot password on the sign-in screen.";
+            }
+            else
+            {
+                StatusMessage = message;
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+            (PasswordOptionsCommand as Command)?.ChangeCanExecute();
         }
     }
 
@@ -218,13 +265,16 @@ public class AccountViewModel : BaseViewModel
         OnPropertyChanged(nameof(Email));
         OnPropertyChanged(nameof(Roles));
         OnPropertyChanged(nameof(RolesSummary));
+        OnPropertyChanged(nameof(CanManagePassword));
         OnPropertyChanged(nameof(NotificationsToggleTitle));
         OnPropertyChanged(nameof(NotificationsToggleSubtitle));
+        (PasswordOptionsCommand as Command)?.ChangeCanExecute();
     }
 
     void RefreshVerificationCommands()
     {
         (ResendVerificationCommand as Command)?.ChangeCanExecute();
         (RefreshVerificationCommand as Command)?.ChangeCanExecute();
+        (PasswordOptionsCommand as Command)?.ChangeCanExecute();
     }
 }

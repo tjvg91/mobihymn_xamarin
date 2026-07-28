@@ -66,22 +66,26 @@ public class VerifyEmailViewModel : BaseViewModel
         }
     }
 
-    async Task RefreshAsync()
+    public async Task RefreshAsync(bool fromResume = false)
     {
         try
         {
             IsBusy = true;
             RefreshCommands();
-            StatusMessage = string.Empty;
+            if (!fromResume)
+                StatusMessage = string.Empty;
+
             await auth.RefreshEmailVerificationStatusAsync();
 
             if (auth.IsEmailVerified)
             {
+                StatusMessage = "Email verified.";
                 await AuthNavigationHelper.NavigateForAuthStateAsync();
                 return;
             }
 
-            StatusMessage = "Email not verified yet. Open the link in your inbox, then tap Refresh.";
+            if (!fromResume)
+                StatusMessage = "Email not verified yet. Open the link in your inbox, then tap Refresh.";
         }
         catch (Exception ex)
         {

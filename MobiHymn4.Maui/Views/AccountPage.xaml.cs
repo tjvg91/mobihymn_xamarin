@@ -1,3 +1,4 @@
+using System;
 using FontAwesome;
 using MobiHymn4.Utils;
 using MobiHymn4.ViewModels;
@@ -8,6 +9,8 @@ namespace MobiHymn4.Views;
 
 public partial class AccountPage : ContentPage
 {
+    bool windowResumeHooked;
+
     public AccountPage()
     {
         InitializeComponent();
@@ -18,6 +21,7 @@ public partial class AccountPage : ContentPage
         base.OnAppearing();
         Shell.SetFlyoutBehavior(this, FlyoutBehavior.Disabled);
         UpdateBackIcon();
+        HookWindowResumed();
 
         if (BindingContext is AccountViewModel vm)
             _ = vm.RefreshOnAppearAsync();
@@ -25,8 +29,42 @@ public partial class AccountPage : ContentPage
 
     protected override void OnDisappearing()
     {
+        UnhookWindowResumed();
         Shell.SetFlyoutBehavior(this, FlyoutBehavior.Flyout);
         base.OnDisappearing();
+    }
+
+    protected override void OnHandlerChanged()
+    {
+        base.OnHandlerChanged();
+        if (Handler != null)
+            HookWindowResumed();
+        else
+            UnhookWindowResumed();
+    }
+
+    void HookWindowResumed()
+    {
+        if (windowResumeHooked || Window == null)
+            return;
+
+        Window.Resumed += Window_Resumed;
+        windowResumeHooked = true;
+    }
+
+    void UnhookWindowResumed()
+    {
+        if (!windowResumeHooked || Window == null)
+            return;
+
+        Window.Resumed -= Window_Resumed;
+        windowResumeHooked = false;
+    }
+
+    async void Window_Resumed(object sender, EventArgs e)
+    {
+        if (BindingContext is AccountViewModel vm)
+            await vm.RefreshOnAppearAsync();
     }
 
     void UpdateBackIcon()

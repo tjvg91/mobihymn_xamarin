@@ -20,6 +20,8 @@ public class GroupManageViewModel : BaseViewModel
     string joinCode = string.Empty;
     string inviteEmail = string.Empty;
     string statusMessage = string.Empty;
+    bool notificationsEnabled = true;
+    bool suppressNotificationsToggle;
     ObservableRangeCollection<GroupMember> members = new();
 
     public GroupManageViewModel()
@@ -64,6 +66,27 @@ public class GroupManageViewModel : BaseViewModel
         }
     }
 
+    public bool NotificationsEnabled
+    {
+        get => notificationsEnabled;
+        set
+        {
+            if (SetProperty(ref notificationsEnabled, value))
+            {
+                OnPropertyChanged(nameof(NotificationsToggleTitle));
+                OnPropertyChanged(nameof(NotificationsToggleSubtitle));
+            }
+        }
+    }
+
+    public string NotificationsToggleTitle =>
+        NotificationsEnabled ? "Board notifications" : "Board notifications muted";
+
+    public string NotificationsToggleSubtitle =>
+        NotificationsEnabled
+            ? "Get alerts when this group’s hymn list changes."
+            : "Notifications for this group are off.";
+
     public string StatusMessage
     {
         get => statusMessage;
@@ -86,6 +109,34 @@ public class GroupManageViewModel : BaseViewModel
     public ICommand InviteCommand { get; }
     public ICommand LeaveGroupCommand { get; }
 
+    public async Task OnNotificationsEnabledToggledAsync(bool enabled)
+    {
+        if (suppressNotificationsToggle || string.IsNullOrWhiteSpace(GroupId))
+            return;
+
+        var muted = !enabled;
+        try
+        {
+            IsBusy = true;
+            NotificationsEnabled = enabled;
+            await groupService.SetGroupNotificationsMutedAsync(GroupId, muted);
+            StatusMessage = muted
+                ? "Notifications muted for this group."
+                : "Notifications enabled for this group.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = ex.Message;
+            suppressNotificationsToggle = true;
+            NotificationsEnabled = !muted;
+            suppressNotificationsToggle = false;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     async Task LoadAsync()
     {
         if (string.IsNullOrWhiteSpace(GroupId))
@@ -105,6 +156,11 @@ public class GroupManageViewModel : BaseViewModel
                 JoinCode = group.JoinCode;
                 Title = group.Name;
             }
+
+            var muted = await groupService.IsGroupNotificationsMutedAsync(GroupId);
+            suppressNotificationsToggle = true;
+            NotificationsEnabled = !muted;
+            suppressNotificationsToggle = false;
 
             var memberList = await groupService.GetMembersAsync(GroupId);
             Members.ReplaceRange(memberList);

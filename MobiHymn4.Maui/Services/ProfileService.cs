@@ -1,6 +1,6 @@
 using System;
 using System.Diagnostics;
-using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using MobiHymn4.Models;
 using MobiHymn4.Models.Firestore;
@@ -11,8 +11,13 @@ namespace MobiHymn4.Services;
 
 public sealed class ProfileService : IProfileService
 {
+    static readonly TimeSpan ProfileCacheTtl = TimeSpan.FromSeconds(45);
+
     readonly IFirebaseFirestoreAccessor firebase;
     readonly IAuthService auth;
+    readonly SemaphoreSlim refreshLock = new(1, 1);
+    DateTime profileLoadedAt;
+    string profileLoadedUid;
 
     public ProfileService(IFirebaseFirestoreAccessor firebase, IAuthService auth)
     {
@@ -65,6 +70,8 @@ public sealed class ProfileService : IProfileService
         if (auth.CurrentUserId == profile.Uid)
         {
             CurrentProfile = profile;
+            profileLoadedUid = profile.Uid;
+            profileLoadedAt = DateTime.UtcNow;
             ProfileChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -85,18 +92,57 @@ public sealed class ProfileService : IProfileService
         ProfileChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    public async Task RefreshCurrentProfileAsync()
+    public async Task RefreshCurrentProfileAsync(bool force = false)
     {
         if (!auth.IsSignedIn)
         {
             CurrentProfile = null;
+            profileLoadedUid = null;
+            profileLoadedAt = default;
             ProfileChanged?.Invoke(this, EventArgs.Empty);
             return;
         }
 
-        CurrentProfile = await LoadProfileAsync(auth.CurrentUserId);
-        await EnsureRoleBasedNotificationDefaultAsync();
-        ProfileChanged?.Invoke(this, EventArgs.Empty);
+        var uid = auth.CurrentUserId;
+        if (!force
+            && CurrentProfile != null
+            && string.Equals(CurrentProfile.Uid, uid, StringComparison.Ordinal)
+            && DateTime.UtcNow - profileLoadedAt < ProfileCacheTtl)
+        {
+            return;
+        }
+
+        await refreshLock.WaitAsync();
+        try
+        {
+            if (!auth.IsSignedIn)
+            {
+                CurrentProfile = null;
+                profileLoadedUid = null;
+                profileLoadedAt = default;
+                ProfileChanged?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+
+            uid = auth.CurrentUserId;
+            if (!force
+                && CurrentProfile != null
+                && string.Equals(CurrentProfile.Uid, uid, StringComparison.Ordinal)
+                && DateTime.UtcNow - profileLoadedAt < ProfileCacheTtl)
+            {
+                return;
+            }
+
+            CurrentProfile = await LoadProfileAsync(uid);
+            profileLoadedUid = uid;
+            profileLoadedAt = DateTime.UtcNow;
+            await EnsureRoleBasedNotificationDefaultAsync();
+            ProfileChanged?.Invoke(this, EventArgs.Empty);
+        }
+        finally
+        {
+            refreshLock.Release();
+        }
     }
 
     async Task EnsureRoleBasedNotificationDefaultAsync()

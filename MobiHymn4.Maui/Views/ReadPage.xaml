@@ -420,19 +420,17 @@
                     
                 </elements:BottomDrawer>
 
-                <FlexLayout
+                <Grid
                     x:Name="loaderOverlay"
                     AbsoluteLayout.LayoutFlags="All"
                     AbsoluteLayout.LayoutBounds="0,0,1,1"
-                    AlignItems="Center"
-                    JustifyContent="Center"
-                    Direction="Column"
                     BackgroundColor="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}"
                     IsVisible="{Binding IsLoadingLyrics}">
                     <Grid
                         WidthRequest="110"
                         HeightRequest="110"
-                        HorizontalOptions="Center">
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center">
                         <Ellipse
                             x:Name="setupLogoPulse"
                             WidthRequest="96"
@@ -453,7 +451,7 @@
                             VerticalTextAlignment="Center"
                             LineHeight="1"/>
                     </Grid>
-                </FlexLayout>
+                </Grid>
 
                 <Grid
                     x:Name="downloadOverlay"

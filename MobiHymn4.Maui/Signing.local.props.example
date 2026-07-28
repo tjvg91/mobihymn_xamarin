@@ -1,0 +1,14 @@
+<!--
+  Copy this file to Signing.local.props and fill in the passwords.
+  Signing.local.props is gitignored — do not commit secrets.
+-->
+<Project>
+  <PropertyGroup>
+    <AndroidSigningKeyStore>$(MSBuildThisFileDirectory)mobihymn_keystore.p12</AndroidSigningKeyStore>
+    <AndroidSigningKeyAlias>coindo_prod</AndroidSigningKeyAlias>
+    <!-- PKCS12 store password -->
+    <AndroidSigningStorePass>YOUR_STORE_PASSWORD</AndroidSigningStorePass>
+    <!-- Usually the same as the store password for .p12 -->
+    <AndroidSigningKeyPass>YOUR_KEY_PASSWORD</AndroidSigningKeyPass>
+  </PropertyGroup>
+</Project>

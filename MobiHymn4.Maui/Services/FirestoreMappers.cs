@@ -67,11 +67,17 @@ public static class FirestoreMappers
             Roles = doc?.Roles?.Select(r => UserRoleExtensions.Parse(r)).Where(r => r.HasValue).Select(r => r.Value).ToList() ?? new List<UserRole>(),
             JoinedAt = doc?.JoinedAt.UtcDateTime ?? default,
             InvitedBy = doc?.InvitedBy ?? string.Empty,
+            NotificationsMuted = doc?.NotificationsMuted ?? false,
         };
 
     public static GroupHymnList ToGroupHymnList(string groupId, string listId, BoardFirestoreDocument doc)
     {
-        var (name, createdAt, createdBy) = ResolveListMetadata(listId, doc);
+        var (name, createdAt, createdBy) = ResolveListMetadata(
+            listId,
+            doc?.Name,
+            doc?.CreatedAt ?? default,
+            doc?.UpdatedAt ?? default,
+            doc?.CreatedBy);
         var list = new GroupHymnList
         {
             Id = listId ?? string.Empty,
@@ -102,21 +108,47 @@ public static class FirestoreMappers
         return list;
     }
 
+    public static GroupHymnListSummary ToGroupHymnListSummary(string listId, BoardListSummaryFirestoreDocument doc)
+    {
+        var (name, createdAt, createdBy) = ResolveListMetadata(
+            listId,
+            doc?.Name,
+            doc?.CreatedAt ?? default,
+            doc?.UpdatedAt ?? default,
+            doc?.CreatedBy);
+
+        return new GroupHymnListSummary
+        {
+            Id = listId ?? string.Empty,
+            Name = name,
+            CreatedAt = createdAt,
+            CreatedBy = createdBy,
+            HymnCount = (int)(doc?.HymnCount ?? 0),
+            EntryCount = (int)(doc?.EntryCount ?? doc?.HymnCount ?? 0),
+        };
+    }
+
     public static GroupHymnListSummary ToGroupHymnListSummary(string listId, BoardFirestoreDocument doc)
     {
-        var (name, createdAt, createdBy) = ResolveListMetadata(listId, doc);
+        var (name, createdAt, createdBy) = ResolveListMetadata(
+            listId,
+            doc?.Name,
+            doc?.CreatedAt ?? default,
+            doc?.UpdatedAt ?? default,
+            doc?.CreatedBy);
+
+        // Prefer denormalized counts so overview listing does not depend on hymns[].
+        var hymnCount = (int)(doc?.HymnCount ?? 0);
+        var entryCount = (int)(doc?.EntryCount ?? 0);
         var hymns = doc?.Hymns;
-        int hymnCount;
-        int entryCount;
-        if (hymns?.Count > 0)
+        if (hymnCount == 0 && entryCount == 0 && hymns?.Count > 0)
         {
             hymnCount = hymns.Count(h => !h.IsSection);
             entryCount = hymns.Count;
         }
-        else
+        else if (entryCount == 0 && hymnCount > 0)
         {
-            hymnCount = (int)(doc?.HymnCount ?? 0);
-            entryCount = (int)(doc?.EntryCount ?? doc?.HymnCount ?? 0);
+            entryCount = hymnCount;
         }
 
         return new GroupHymnListSummary
@@ -161,14 +193,19 @@ public static class FirestoreMappers
         };
     }
 
-    static (string Name, DateTime CreatedAt, string CreatedBy) ResolveListMetadata(string listId, BoardFirestoreDocument doc)
+    static (string Name, DateTime CreatedAt, string CreatedBy) ResolveListMetadata(
+        string listId,
+        string name,
+        DateTimeOffset createdAt,
+        DateTimeOffset updatedAt,
+        string createdBy)
     {
-        if (!string.IsNullOrWhiteSpace(doc?.Name))
+        if (!string.IsNullOrWhiteSpace(name))
         {
-            var created = doc.CreatedAt != default
-                ? doc.CreatedAt.UtcDateTime
-                : doc.UpdatedAt.UtcDateTime;
-            return (doc.Name.Trim(), created, doc.CreatedBy ?? string.Empty);
+            var created = createdAt != default
+                ? createdAt.UtcDateTime
+                : updatedAt.UtcDateTime;
+            return (name.Trim(), created, createdBy ?? string.Empty);
         }
 
         if (DateTime.TryParseExact(
@@ -178,14 +215,14 @@ public static class FirestoreMappers
                 DateTimeStyles.None,
                 out var legacyDate))
         {
-            return (GroupHymnListDates.FormatName(legacyDate), legacyDate, doc?.CreatedBy ?? string.Empty);
+            return (GroupHymnListDates.FormatName(legacyDate), legacyDate, createdBy ?? string.Empty);
         }
 
-        var fallbackCreated = doc?.CreatedAt != default
-            ? doc.CreatedAt.UtcDateTime
-            : doc?.UpdatedAt.UtcDateTime ?? DateTime.UtcNow;
+        var fallbackCreated = createdAt != default
+            ? createdAt.UtcDateTime
+            : updatedAt != default ? updatedAt.UtcDateTime : DateTime.UtcNow;
 
-        return (string.IsNullOrWhiteSpace(listId) ? "Hymn list" : "Hymn list", fallbackCreated, doc?.CreatedBy ?? string.Empty);
+        return ("Hymn list", fallbackCreated, createdBy ?? string.Empty);
     }
 
     public static BoardSectionTemplate ToBoardSectionTemplate(BoardSectionTemplateFirestoreDocument doc)

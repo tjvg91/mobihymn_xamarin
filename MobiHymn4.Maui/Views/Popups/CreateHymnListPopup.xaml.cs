@@ -52,6 +52,12 @@ public partial class CreateHymnListPopup : Popup
         lblError.IsVisible = false;
     }
 
+    void CalendarIcon_Tapped(object sender, TappedEventArgs e)
+    {
+        // Absorb the tap (do not dismiss the popup) and open the date picker.
+        datePicker.Focus();
+    }
+
     void Overlay_Tapped(object sender, TappedEventArgs e) => Close(null);
 
     void Cancel_Clicked(object sender, EventArgs e) => Close(null);

@@ -10,4 +10,6 @@ public static class FirestorePaths
     public const string SectionTemplate = "sectionTemplate";
     public const string Notifications = "notifications";
     public const string FcmTokens = "fcmTokens";
+    public const string AppData = "appData";
+    public const string SettingsDoc = "settings";
 }

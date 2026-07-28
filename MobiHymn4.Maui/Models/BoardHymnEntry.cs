@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using Microsoft.Maui.Controls;
 
 namespace MobiHymn4.Models;
 
@@ -148,6 +149,47 @@ public class BoardHymnEntry : INotifyPropertyChanged
     }
 
     public bool HasFirstLine => !string.IsNullOrWhiteSpace(FirstLine);
+
+    bool isNew;
+    /// <summary>UI-only: hymn was added/updated since the viewer last opened this list.</summary>
+    public bool IsNew
+    {
+        get => isNew;
+        set
+        {
+            if (SetField(ref isNew, value))
+                OnPropertyChanged(nameof(ShowNewChip));
+        }
+    }
+
+    bool isDeleted;
+    /// <summary>UI-only: tombstone for a hymn deleted by another member (session).</summary>
+    public bool IsDeleted
+    {
+        get => isDeleted;
+        set
+        {
+            if (SetField(ref isDeleted, value))
+            {
+                OnPropertyChanged(nameof(ShowNewChip));
+                OnPropertyChanged(nameof(ShowDeletedChip));
+                OnPropertyChanged(nameof(IsActiveHymn));
+                OnPropertyChanged(nameof(ActorLabel));
+                OnPropertyChanged(nameof(HymnTitleDecorations));
+            }
+        }
+    }
+
+    public bool IsActiveHymn => IsHymn && !IsDeleted;
+    public bool ShowNewChip => IsNew && !IsDeleted;
+    public bool ShowDeletedChip => IsDeleted;
+
+    public string ActorLabel => IsDeleted
+        ? (string.IsNullOrWhiteSpace(AddedByName) ? "Deleted" : $"Deleted by {AddedByName}")
+        : AddedByName ?? string.Empty;
+
+    public TextDecorations HymnTitleDecorations =>
+        IsDeleted ? TextDecorations.Strikethrough : TextDecorations.None;
 
     public string AddedAtText
     {

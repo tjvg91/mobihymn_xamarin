@@ -299,8 +299,11 @@
                 </MultiTrigger>
             </StackLayout.Triggers>
             <Grid
+                x:Name="numpadGrid"
                 ColumnSpacing="0"
-                RowSpacing="0">
+                RowSpacing="0"
+                HorizontalOptions="Fill"
+                VerticalOptions="FillAndExpand">
                 <Grid.Triggers>
                     <DataTrigger
                         TargetType="Grid"
@@ -314,8 +317,9 @@
                         TargetType="Grid"
                         Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                         Value="{Static Member=ess:DisplayOrientation.Landscape}">
-                            <Setter Property="RowDefinitions" Value="*,70,70,70,70" />
-                            <Setter Property="ColumnDefinitions" Value="*,100,100,100,100,100,*" />
+                            <!-- Display + 3 equal key rows; 5 equal columns fill the full width. -->
+                            <Setter Property="RowDefinitions" Value="0.45*,*,*,*" />
+                            <Setter Property="ColumnDefinitions" Value="*,*,*,*,*" />
                             <Setter Property="VerticalOptions" Value="FillAndExpand" />
                     </DataTrigger>
                 </Grid.Triggers>
@@ -343,7 +347,7 @@
                             TargetType="Label"
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Landscape}">
-                            <Setter Property="Grid.ColumnSpan" Value="7" />
+                            <Setter Property="Grid.ColumnSpan" Value="5" />
                         </DataTrigger>
                     </Label.Triggers>
 
@@ -356,12 +360,14 @@
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Portrait}">
                             <Setter Property="Grid.Column" Value="1" />
+                            <Setter Property="Style" Value="{StaticResource Numpad}" />
                         </DataTrigger>
                         <DataTrigger
                             TargetType="Button"
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Landscape}">
-                            <Setter Property="Grid.Column" Value="2" />
+                            <Setter Property="Grid.Column" Value="1" />
+                            <Setter Property="Style" Value="{StaticResource NumpadLandscape}" />
                         </DataTrigger>
                     </Button.Triggers>
 
@@ -373,12 +379,14 @@
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Portrait}">
                             <Setter Property="Grid.Column" Value="2" />
+                            <Setter Property="Style" Value="{StaticResource Numpad}" />
                         </DataTrigger>
                         <DataTrigger
                             TargetType="Button"
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Landscape}">
-                            <Setter Property="Grid.Column" Value="3" />
+                            <Setter Property="Grid.Column" Value="2" />
+                            <Setter Property="Style" Value="{StaticResource NumpadLandscape}" />
                         </DataTrigger>
                     </Button.Triggers>
 
@@ -390,12 +398,14 @@
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Portrait}">
                             <Setter Property="Grid.Column" Value="3" />
+                            <Setter Property="Style" Value="{StaticResource Numpad}" />
                         </DataTrigger>
                         <DataTrigger
                             TargetType="Button"
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Landscape}">
-                            <Setter Property="Grid.Column" Value="4" />
+                            <Setter Property="Grid.Column" Value="3" />
+                            <Setter Property="Style" Value="{StaticResource NumpadLandscape}" />
                         </DataTrigger>
                     </Button.Triggers>
 
@@ -408,12 +418,14 @@
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Portrait}">
                             <Setter Property="Grid.Column" Value="1" />
+                            <Setter Property="Style" Value="{StaticResource Numpad}" />
                         </DataTrigger>
                         <DataTrigger
                             TargetType="Button"
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Landscape}">
-                            <Setter Property="Grid.Column" Value="2" />
+                            <Setter Property="Grid.Column" Value="1" />
+                            <Setter Property="Style" Value="{StaticResource NumpadLandscape}" />
                         </DataTrigger>
                     </Button.Triggers>
                 </Button>
@@ -424,12 +436,14 @@
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Portrait}">
                             <Setter Property="Grid.Column" Value="2" />
+                            <Setter Property="Style" Value="{StaticResource Numpad}" />
                         </DataTrigger>
                         <DataTrigger
                             TargetType="Button"
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Landscape}">
-                            <Setter Property="Grid.Column" Value="3" />
+                            <Setter Property="Grid.Column" Value="2" />
+                            <Setter Property="Style" Value="{StaticResource NumpadLandscape}" />
                         </DataTrigger>
                     </Button.Triggers>
 
@@ -441,12 +455,14 @@
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Portrait}">
                             <Setter Property="Grid.Column" Value="3" />
+                            <Setter Property="Style" Value="{StaticResource Numpad}" />
                         </DataTrigger>
                         <DataTrigger
                             TargetType="Button"
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Landscape}">
-                            <Setter Property="Grid.Column" Value="4" />
+                            <Setter Property="Grid.Column" Value="3" />
+                            <Setter Property="Style" Value="{StaticResource NumpadLandscape}" />
                         </DataTrigger>
                     </Button.Triggers>
 
@@ -459,12 +475,14 @@
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Portrait}">
                             <Setter Property="Grid.Column" Value="1" />
+                            <Setter Property="Style" Value="{StaticResource Numpad}" />
                         </DataTrigger>
                         <DataTrigger
                             TargetType="Button"
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Landscape}">
-                            <Setter Property="Grid.Column" Value="2" />
+                            <Setter Property="Grid.Column" Value="1" />
+                            <Setter Property="Style" Value="{StaticResource NumpadLandscape}" />
                         </DataTrigger>
                     </Button.Triggers>
 
@@ -476,12 +494,14 @@
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Portrait}">
                             <Setter Property="Grid.Column" Value="2" />
+                            <Setter Property="Style" Value="{StaticResource Numpad}" />
                         </DataTrigger>
                         <DataTrigger
                             TargetType="Button"
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Landscape}">
-                            <Setter Property="Grid.Column" Value="3" />
+                            <Setter Property="Grid.Column" Value="2" />
+                            <Setter Property="Style" Value="{StaticResource NumpadLandscape}" />
                         </DataTrigger>
                     </Button.Triggers>
 
@@ -493,12 +513,14 @@
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Portrait}">
                             <Setter Property="Grid.Column" Value="3" />
+                            <Setter Property="Style" Value="{StaticResource Numpad}" />
                         </DataTrigger>
                         <DataTrigger
                             TargetType="Button"
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Landscape}">
-                            <Setter Property="Grid.Column" Value="4" />
+                            <Setter Property="Grid.Column" Value="3" />
+                            <Setter Property="Style" Value="{StaticResource NumpadLandscape}" />
                         </DataTrigger>
                     </Button.Triggers>
 
@@ -513,13 +535,15 @@
                             Value="{Static Member=ess:DisplayOrientation.Portrait}">
                             <Setter Property="Grid.Column" Value="1" />
                             <Setter Property="Grid.Row" Value="4" />
+                            <Setter Property="Style" Value="{StaticResource Numpad}" />
                         </DataTrigger>
                         <DataTrigger
                             TargetType="Button"
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Landscape}">
-                            <Setter Property="Grid.Column" Value="1" />
+                            <Setter Property="Grid.Column" Value="0" />
                             <Setter Property="Grid.Row" Value="1" />
+                            <Setter Property="Style" Value="{StaticResource NumpadLandscape}" />
                         </DataTrigger>
                     </Button.Triggers>
                 </Button>
@@ -531,13 +555,15 @@
                             Value="{Static Member=ess:DisplayOrientation.Portrait}">
                             <Setter Property="Grid.Column" Value="2" />
                             <Setter Property="Grid.Row" Value="4" />
+                            <Setter Property="Style" Value="{StaticResource Numpad}" />
                         </DataTrigger>
                         <DataTrigger
                             TargetType="Button"
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Landscape}">
-                            <Setter Property="Grid.Column" Value="1" />
+                            <Setter Property="Grid.Column" Value="0" />
                             <Setter Property="Grid.Row" Value="2" />
+                            <Setter Property="Style" Value="{StaticResource NumpadLandscape}" />
                         </DataTrigger>
                     </Button.Triggers>
 
@@ -550,13 +576,15 @@
                             Value="{Static Member=ess:DisplayOrientation.Portrait}">
                             <Setter Property="Grid.Column" Value="3" />
                             <Setter Property="Grid.Row" Value="4" />
+                            <Setter Property="Style" Value="{StaticResource Numpad}" />
                         </DataTrigger>
                         <DataTrigger
                             TargetType="Button"
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Landscape}">
-                            <Setter Property="Grid.Column" Value="1" />
+                            <Setter Property="Grid.Column" Value="0" />
                             <Setter Property="Grid.Row" Value="3" />
+                            <Setter Property="Style" Value="{StaticResource NumpadLandscape}" />
                         </DataTrigger>
                     </Button.Triggers>
 
@@ -578,13 +606,15 @@
                             Value="{Static Member=ess:DisplayOrientation.Portrait}">
                             <Setter Property="Grid.Column" Value="1" />
                             <Setter Property="Grid.Row" Value="5" />
+                            <Setter Property="Style" Value="{StaticResource Numpad}" />
                         </DataTrigger>
                         <DataTrigger
                             TargetType="Button"
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Landscape}">
-                            <Setter Property="Grid.Column" Value="5" />
+                            <Setter Property="Grid.Column" Value="4" />
                             <Setter Property="Grid.Row" Value="1" />
+                            <Setter Property="Style" Value="{StaticResource NumpadLandscape}" />
                         </DataTrigger>
                     </Button.Triggers>
                 </Button>
@@ -597,13 +627,15 @@
                             Value="{Static Member=ess:DisplayOrientation.Portrait}">
                             <Setter Property="Grid.Column" Value="2" />
                             <Setter Property="Grid.Row" Value="5" />
+                            <Setter Property="Style" Value="{StaticResource Numpad}" />
                         </DataTrigger>
                         <DataTrigger
                             TargetType="Button"
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Landscape}">
-                            <Setter Property="Grid.Column" Value="5" />
+                            <Setter Property="Grid.Column" Value="4" />
                             <Setter Property="Grid.Row" Value="2" />
+                            <Setter Property="Style" Value="{StaticResource NumpadLandscape}" />
                         </DataTrigger>
                     </Button.Triggers>
 
@@ -625,13 +657,15 @@
                             Value="{Static Member=ess:DisplayOrientation.Portrait}">
                             <Setter Property="Grid.Column" Value="3" />
                             <Setter Property="Grid.Row" Value="5" />
+                            <Setter Property="Style" Value="{StaticResource Numpad}" />
                         </DataTrigger>
                         <DataTrigger
                             TargetType="Button"
                             Binding="{Binding BindingContext.Orientation, Source={Reference Name=root}}"
                             Value="{Static Member=ess:DisplayOrientation.Landscape}">
-                            <Setter Property="Grid.Column" Value="5" />
+                            <Setter Property="Grid.Column" Value="4" />
                             <Setter Property="Grid.Row" Value="3" />
+                            <Setter Property="Style" Value="{StaticResource NumpadLandscape}" />
                         </DataTrigger>
                     </Button.Triggers>
                 </Button>

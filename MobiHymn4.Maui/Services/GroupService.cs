@@ -12,15 +12,22 @@ namespace MobiHymn4.Services;
 
 public sealed class GroupService : IGroupService
 {
+    static readonly TimeSpan GroupsCacheTtl = TimeSpan.FromMinutes(3);
+    static readonly TimeSpan PendingInvitesCheckInterval = TimeSpan.FromHours(12);
+
     readonly IFirebaseFirestoreAccessor firebase;
     readonly IAuthService auth;
     readonly IProfileService profileService;
+    IReadOnlyList<WorshipGroup> groupsCache;
+    string groupsCacheKey;
+    DateTime groupsCacheAt;
 
     public GroupService(IFirebaseFirestoreAccessor firebase, IAuthService auth, IProfileService profileService)
     {
         this.firebase = firebase;
         this.auth = auth;
         this.profileService = profileService;
+        profileService.ProfileChanged += (_, _) => InvalidateGroupsCache();
     }
 
     public async Task<IReadOnlyList<WorshipGroup>> GetMyGroupsAsync()
@@ -30,11 +37,31 @@ public sealed class GroupService : IGroupService
             return Array.Empty<WorshipGroup>();
 
         var groupIds = profile.GroupIds.Distinct().ToList();
+        var cacheKey = $"{profile.Uid}|{string.Join(",", groupIds)}";
+        if (groupsCache != null
+            && string.Equals(groupsCacheKey, cacheKey, StringComparison.Ordinal)
+            && DateTime.UtcNow - groupsCacheAt < GroupsCacheTtl)
+        {
+            return groupsCache;
+        }
+
         var snapshots = await Task.WhenAll(groupIds.Select(LoadGroupAsync));
-        return snapshots
+        var groups = snapshots
             .Where(g => g != null)
             .OrderBy(g => g.Name)
             .ToList();
+
+        groupsCache = groups;
+        groupsCacheKey = cacheKey;
+        groupsCacheAt = DateTime.UtcNow;
+        return groups;
+    }
+
+    void InvalidateGroupsCache()
+    {
+        groupsCache = null;
+        groupsCacheKey = null;
+        groupsCacheAt = default;
     }
 
     async Task<WorshipGroup> LoadGroupAsync(string groupId)
@@ -46,9 +73,13 @@ public sealed class GroupService : IGroupService
                 .GetDocument(groupId)
                 .GetDocumentSnapshotAsync<GroupFirestoreDocument>();
 
-            return snapshot?.Data != null
-                ? FirestoreMappers.ToWorshipGroup(snapshot.Data)
-                : null;
+            if (snapshot?.Data == null)
+                return null;
+
+            var group = FirestoreMappers.ToWorshipGroup(snapshot.Data);
+            if (string.IsNullOrWhiteSpace(group.Id))
+                group.Id = snapshot.Reference?.Id ?? groupId;
+            return group;
         }
         catch (Exception ex)
         {
@@ -84,13 +115,14 @@ public sealed class GroupService : IGroupService
             profile.GroupIds.Add(groupId);
         await profileService.SaveProfileAsync(profile);
 
+        InvalidateGroupsCache();
         return FirestoreMappers.ToWorshipGroup(groupDoc);
     }
 
     public async Task<WorshipGroup> JoinGroupByCodeAsync(string joinCode)
     {
         EnsureSignedIn();
-        var normalized = joinCode?.Trim().ToUpperInvariant();
+        var normalized = NormalizeJoinCode(joinCode);
         if (string.IsNullOrWhiteSpace(normalized))
             throw new InvalidOperationException("Enter a group code.");
 
@@ -103,7 +135,7 @@ public sealed class GroupService : IGroupService
         if (match?.Data == null)
             throw new InvalidOperationException("No group found with that code.");
 
-        var group = FirestoreMappers.ToWorshipGroup(match.Data);
+        var group = ToWorshipGroup(match);
         await AddCurrentUserToGroupAsync(group);
         return group;
     }
@@ -111,21 +143,63 @@ public sealed class GroupService : IGroupService
     public async Task<WorshipGroup> JoinGroupByIdAsync(string groupId)
     {
         EnsureSignedIn();
-        var normalized = groupId?.Trim();
+        var raw = groupId?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(raw))
+            throw new InvalidOperationException("Enter a group ID.");
+
+        // Short codes are often pasted into the ID field — resolve by join code first.
+        if (LooksLikeJoinCode(raw))
+            return await JoinGroupByCodeAsync(raw);
+
+        var normalized = NormalizeGroupId(raw);
         if (string.IsNullOrWhiteSpace(normalized))
             throw new InvalidOperationException("Enter a group ID.");
 
+        // Firestore rules / token claims need a fresh ID token on device.
         try
         {
-            var snapshot = await firebase.Firestore
+            await auth.RefreshEmailVerificationStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"JoinGroupByIdAsync token refresh: {ex.Message}");
+        }
+
+        try
+        {
+            var docRef = firebase.Firestore
                 .GetCollection(FirestorePaths.Groups)
-                .GetDocument(normalized)
-                .GetDocumentSnapshotAsync<GroupFirestoreDocument>();
+                .GetDocument(normalized);
+
+            IDocumentSnapshot<GroupFirestoreDocument> snapshot = null;
+            try
+            {
+                snapshot = await docRef.GetDocumentSnapshotAsync<GroupFirestoreDocument>(Source.Server);
+            }
+            catch (Exception serverEx)
+            {
+                Debug.WriteLine($"JoinGroupByIdAsync server get failed: {serverEx.Message}");
+                snapshot = await docRef.GetDocumentSnapshotAsync<GroupFirestoreDocument>();
+            }
 
             if (snapshot?.Data == null)
-                throw new InvalidOperationException("No group found with that ID.");
+            {
+                // Typed deserialize can fail; try untyped then map.
+                var loose = await TryReadGroupLooseAsync(docRef, normalized);
+                if (loose != null)
+                {
+                    await AddCurrentUserToGroupAsync(loose);
+                    return loose;
+                }
 
-            var group = FirestoreMappers.ToWorshipGroup(snapshot.Data);
+                Debug.WriteLine($"JoinGroupByIdAsync miss for id='{normalized}' len={normalized.Length}");
+                throw new InvalidOperationException(
+                    normalized.Length == 32
+                        ? "No group found with that ID. If this ID is correct, ask a leader for the 6-letter join code, or confirm Firestore rules are deployed."
+                        : $"No group found with that ID ({normalized.Length} chars; expected 32). Copy the document ID again, or use the join code.");
+            }
+
+            var group = ToWorshipGroup(snapshot, normalized);
             await AddCurrentUserToGroupAsync(group);
             return group;
         }
@@ -137,14 +211,86 @@ public sealed class GroupService : IGroupService
         {
             Debug.WriteLine($"JoinGroupByIdAsync failed: {ex.Message}");
             if (ex.Message?.Contains("PERMISSION_DENIED", StringComparison.OrdinalIgnoreCase) == true
-                || ex.Message?.Contains("permission", StringComparison.OrdinalIgnoreCase) == true)
+                || ex.Message?.Contains("permission", StringComparison.OrdinalIgnoreCase) == true
+                || ex.Message?.Contains("Missing or insufficient", StringComparison.OrdinalIgnoreCase) == true)
             {
                 throw new InvalidOperationException(
-                    "Could not access that group. Make sure your email is verified and Firestore rules are up to date.");
+                    "Could not access that group. Verify your email, then try again. If it still fails, deploy updated Firestore rules.");
             }
 
             throw new InvalidOperationException("Unable to join group. Check the ID and try again.");
         }
+    }
+
+    async Task<WorshipGroup> TryReadGroupLooseAsync(IDocumentReference docRef, string fallbackId)
+    {
+        try
+        {
+            var snapshot = await docRef.GetDocumentSnapshotAsync<Dictionary<string, object>>(Source.Server);
+            var data = snapshot?.Data;
+            if (data == null || data.Count == 0)
+                return null;
+
+            return new WorshipGroup
+            {
+                Id = snapshot.Reference?.Id ?? fallbackId,
+                Name = data.TryGetValue("name", out var name) ? name?.ToString() ?? string.Empty : string.Empty,
+                JoinCode = data.TryGetValue("joinCode", out var code) ? code?.ToString() ?? string.Empty : string.Empty,
+                CreatedBy = data.TryGetValue("createdBy", out var by) ? by?.ToString() ?? string.Empty : string.Empty,
+            };
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"TryReadGroupLooseAsync failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    static WorshipGroup ToWorshipGroup(IDocumentSnapshot<GroupFirestoreDocument> snapshot, string fallbackId = null)
+    {
+        var group = FirestoreMappers.ToWorshipGroup(snapshot?.Data);
+        if (string.IsNullOrWhiteSpace(group.Id))
+            group.Id = snapshot?.Reference?.Id ?? fallbackId ?? string.Empty;
+        return group;
+    }
+
+    static string NormalizeGroupId(string groupId)
+    {
+        if (string.IsNullOrWhiteSpace(groupId))
+            return string.Empty;
+
+        // Strip paste artifacts (spaces, dashes, zero-width chars).
+        var chars = groupId.Trim()
+            .Where(c => !char.IsWhiteSpace(c)
+                && !char.IsControl(c)
+                && c != '-'
+                && c != '\u200B'
+                && c != '\u200C'
+                && c != '\u200D'
+                && c != '\uFEFF'
+                && c != '\u00A0')
+            .ToArray();
+        var normalized = new string(chars);
+
+        // Document ids from CreateGroup are Guid "N" (lowercase hex).
+        if (normalized.Length == 32 && normalized.All(Uri.IsHexDigit))
+            return normalized.ToLowerInvariant();
+
+        return normalized;
+    }
+
+    static string NormalizeJoinCode(string joinCode) =>
+        joinCode?.Trim().ToUpperInvariant() ?? string.Empty;
+
+    static bool LooksLikeJoinCode(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var code = NormalizeJoinCode(value);
+        // Join codes are 6 chars from a limited alphabet; group ids are 32 hex chars.
+        return code.Length is >= 4 and <= 8
+            && code.All(c => char.IsLetterOrDigit(c));
     }
 
     public async Task InviteByEmailAsync(string groupId, string email)
@@ -182,6 +328,51 @@ public sealed class GroupService : IGroupService
             .ToList() ?? new List<GroupMember>();
     }
 
+    public async Task<bool> IsGroupNotificationsMutedAsync(string groupId)
+    {
+        EnsureSignedIn();
+        var normalized = groupId?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return false;
+
+        var prefKey = GroupMutePrefKey(normalized);
+        if (Preferences.Default.ContainsKey(prefKey))
+            return Preferences.Default.Get(prefKey, false);
+
+        var uid = auth.CurrentUserId;
+        var snap = await firebase.Firestore
+            .GetCollection(FirestorePaths.Groups)
+            .GetDocument(normalized)
+            .GetCollection(FirestorePaths.Members)
+            .GetDocument(uid)
+            .GetDocumentSnapshotAsync<MemberFirestoreDocument>();
+
+        var muted = snap?.Data?.NotificationsMuted == true;
+        Preferences.Default.Set(prefKey, muted);
+        return muted;
+    }
+
+    public async Task SetGroupNotificationsMutedAsync(string groupId, bool muted)
+    {
+        EnsureSignedIn();
+        var normalized = groupId?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            throw new InvalidOperationException("Group not found.");
+
+        var uid = auth.CurrentUserId;
+        await firebase.Firestore
+            .GetCollection(FirestorePaths.Groups)
+            .GetDocument(normalized)
+            .GetCollection(FirestorePaths.Members)
+            .GetDocument(uid)
+            .UpdateDataAsync(("notificationsMuted", muted));
+
+        Preferences.Default.Set(GroupMutePrefKey(normalized), muted);
+    }
+
+    static string GroupMutePrefKey(string groupId) =>
+        PreferencesVar.GROUP_NOTIFICATIONS_MUTED_PREFIX + groupId;
+
     public async Task LeaveGroupAsync(string groupId)
     {
         EnsureSignedIn();
@@ -206,6 +397,8 @@ public sealed class GroupService : IGroupService
 
         profile.GroupIds.Remove(normalized);
         await profileService.SaveProfileAsync(profile);
+        InvalidateGroupsCache();
+        Preferences.Default.Remove(GroupMutePrefKey(normalized));
 
         var boardContext = ServiceHelper.Get<BoardContext>();
         if (string.Equals(boardContext.ActiveGroupId, normalized, StringComparison.Ordinal))
@@ -225,15 +418,31 @@ public sealed class GroupService : IGroupService
         try
         {
             var email = auth.CurrentEmail.Trim().ToLowerInvariant();
+            var lastCheckedTicks = Preferences.Default.Get(PreferencesVar.PENDING_INVITES_CHECKED_AT, 0L);
+            if (lastCheckedTicks > 0)
+            {
+                var lastChecked = new DateTime(lastCheckedTicks, DateTimeKind.Utc);
+                if (DateTime.UtcNow - lastChecked < PendingInvitesCheckInterval)
+                    return joined;
+            }
+
             var snapshot = await firebase.Firestore
                 .GetCollection(FirestorePaths.Invites)
                 .WhereEqualsTo("email", email)
+                .LimitedTo(40)
                 .GetDocumentsAsync<InviteFirestoreDocument>();
+
+            Preferences.Default.Set(PreferencesVar.PENDING_INVITES_CHECKED_AT, DateTime.UtcNow.Ticks);
 
             if (snapshot?.Documents == null)
                 return joined;
 
-            foreach (var doc in snapshot.Documents.Where(d => string.Equals(d.Data?.Status, "pending", StringComparison.OrdinalIgnoreCase)))
+            var pending = snapshot.Documents
+                .Where(d => string.Equals(d.Data?.Status, "pending", StringComparison.OrdinalIgnoreCase))
+                .Take(10)
+                .ToList();
+
+            foreach (var doc in pending)
             {
                 var invite = doc.Data;
                 if (invite == null || string.IsNullOrWhiteSpace(invite.GroupId))
@@ -253,6 +462,9 @@ public sealed class GroupService : IGroupService
                 await firebase.Firestore.GetCollection(FirestorePaths.Invites).GetDocument(invite.Id)
                     .UpdateDataAsync(("status", "accepted"));
             }
+
+            if (joined.Count > 0)
+                InvalidateGroupsCache();
         }
         catch (Exception ex)
         {

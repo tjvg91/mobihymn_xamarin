@@ -23,12 +23,17 @@ service cloud.firestore {
       allow update: if isVerified() && request.auth.uid == userId;
 
       match /fcmTokens/{tokenId} {
-        allow read, write: if isVerified() && request.auth.uid == userId;
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
       }
 
       match /notifications/{notificationId} {
-        allow read, update: if isVerified() && request.auth.uid == userId;
+        allow read, update: if isSignedIn() && request.auth.uid == userId;
         allow create, delete: if false;
+      }
+
+      // Local app settings backup (reader prefs, bookmarks, history).
+      match /appData/{docId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
       }
     }
 
@@ -49,9 +54,10 @@ service cloud.firestore {
     }
 
     match /groups/{groupId} {
-      // Verified users may read group metadata to join by ID or join code.
-      // Boards and other subcollections still require membership.
-      allow read: if isGroupMember(groupId) || isVerified();
+      // get: any signed-in user can open a group doc by ID to join.
+      // list: verified users can query (e.g. joinCode). Boards still require membership.
+      allow get: if isSignedIn();
+      allow list: if isGroupMember(groupId) || isVerified();
       allow create: if isVerified() && hasLeadershipRole(request.auth.uid);
       allow update: if isVerified()
         && isGroupMember(groupId)

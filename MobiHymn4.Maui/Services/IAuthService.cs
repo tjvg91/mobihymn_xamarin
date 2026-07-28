@@ -17,6 +17,8 @@ public interface IAuthService
     Task SignUpWithEmailAsync(string email, string password);
     Task SignInWithEmailAsync(string email, string password);
     Task SignInWithGoogleAsync();
+    Task SendPasswordResetEmailAsync(string email);
+    Task UpdatePasswordAsync(string newPassword);
     Task SendEmailVerificationAsync();
     Task RefreshEmailVerificationStatusAsync();
     Task SignOutAsync();

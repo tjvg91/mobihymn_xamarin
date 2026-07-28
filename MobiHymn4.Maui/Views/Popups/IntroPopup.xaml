@@ -12,42 +12,40 @@
 
     <Grid
         Background="{StaticResource PrimaryText}"
-        Padding="20,50,20,8"
+        Padding="{OnIdiom Tablet='24,40,24,0', Default='20,50,20,0'}"
         RowDefinitions="*,Auto"
         RowSpacing="0">
 
-        <VerticalStackLayout
+        <Grid
             Grid.Row="0"
-            Spacing="0"
+            RowDefinitions="*,Auto"
+            RowSpacing="8"
             HorizontalOptions="Fill"
-            VerticalOptions="Center">
-            <elements:AnimatingView
-                x:Name="introAnimation"
-                HorizontalOptions="Center"
-                VerticalOptions="Center">
-                <elements:AnimatingView.GestureRecognizers>
-                    <SwipeGestureRecognizer Direction="Left" Swiped="IntroAnimation_Swiped" />
-                    <SwipeGestureRecognizer Direction="Right" Swiped="IntroAnimation_Swiped" />
-                </elements:AnimatingView.GestureRecognizers>
-            </elements:AnimatingView>
+            VerticalOptions="Fill">
 
             <CarouselView
                 x:Name="carouselIntro"
+                Grid.Row="0"
                 ItemsSource="{Binding IntroSlides}"
                 IndicatorView="{x:Reference introIndicator}"
-                HeightRequest="82"
-                Margin="0,18,0,0"
-                VerticalOptions="Start"
+                VerticalOptions="Fill"
                 HorizontalOptions="Fill"
+                Loop="False"
                 Position="{Binding CurrentSlideIndex, Mode=TwoWay}"
-                PositionChanged="CarouselIntro_PositionChanged">
+                PositionChanged="CarouselIntro_PositionChanged"
+                CurrentItemChanged="CarouselIntro_CurrentItemChanged">
                 <CarouselView.ItemTemplate>
-                    <DataTemplate>
+                    <DataTemplate x:DataType="ViewModels:IntroSlide">
                         <VerticalStackLayout
-                            Spacing="10"
+                            Spacing="14"
                             VerticalOptions="Center"
                             HorizontalOptions="Fill"
-                            Padding="0">
+                            Padding="8,0">
+                            <elements:AnimatingView
+                                Source="{Binding Image}"
+                                Size="{Binding Size}"
+                                HorizontalOptions="Center"
+                                VerticalOptions="Center"/>
                             <Label
                                 Text="{Binding Title}"
                                 FontSize="Large"
@@ -65,21 +63,34 @@
 
             <IndicatorView
                 x:Name="introIndicator"
+                Grid.Row="1"
                 HorizontalOptions="Center"
                 IndicatorColor="#66FFFFFF"
                 SelectedIndicatorColor="{StaticResource Primary}"
-                Margin="0,8,0,0" />
-        </VerticalStackLayout>
+                Margin="0,0,0,4" />
+        </Grid>
 
-        <!-- Skip / Done -->
-        <Button
-            x:Name="btnSkipDone"
+        <!-- Bottom actions — padding includes Android tablet taskbar inset (set in code). -->
+        <Grid
+            x:Name="bottomBar"
             Grid.Row="1"
-            Style="{StaticResource Button-Clear}"
-            Text="Skip"
-            Clicked="Button_Clicked"
-            HorizontalOptions="End"
-            VerticalOptions="End"
-            Margin="{OnPlatform Android='0,0,0,8', Default=0}"/>
+            Padding="0,12,0,16"
+            ColumnDefinitions="*,Auto"
+            ColumnSpacing="12">
+            <Button
+                x:Name="btnSkip"
+                Grid.Column="0"
+                Style="{StaticResource Button-Clear}"
+                Text="Skip"
+                HorizontalOptions="Start"
+                Clicked="Skip_Clicked"/>
+            <Button
+                x:Name="btnSkipDone"
+                Grid.Column="1"
+                Style="{StaticResource Button-Clear}"
+                Text="Next"
+                HorizontalOptions="End"
+                Clicked="Button_Clicked"/>
+        </Grid>
     </Grid>
 </toolkit:Popup>

@@ -12,8 +12,8 @@
 
     <ApplicationTitle>MobiHymn</ApplicationTitle>
     <ApplicationId>com.tjapps.mobihymn</ApplicationId>
-    <ApplicationDisplayVersion>0.8.4</ApplicationDisplayVersion>
-    <ApplicationVersion>4</ApplicationVersion>
+    <ApplicationDisplayVersion>0.9.0</ApplicationDisplayVersion>
+    <ApplicationVersion>5</ApplicationVersion>
 
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">11.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
@@ -23,6 +23,18 @@
 
   <PropertyGroup Condition="$(TargetFramework.Contains('-android'))">
     <AndroidUninstallApplicationBeforeInstall>false</AndroidUninstallApplicationBeforeInstall>
+  </PropertyGroup>
+
+  <!--
+    Release signing: copy Signing.local.props.example → Signing.local.props
+    and fill in store/key passwords. Signing.local.props is gitignored.
+  -->
+  <Import Project="Signing.local.props" Condition="Exists('Signing.local.props')" />
+
+  <PropertyGroup Condition="$(TargetFramework.Contains('-android')) and '$(Configuration)' == 'Release' and '$(AndroidSigningStorePass)' != ''">
+    <AndroidKeyStore>True</AndroidKeyStore>
+    <AndroidSigningKeyStore Condition="'$(AndroidSigningKeyStore)' == ''">$(MSBuildThisFileDirectory)mobihymn_keystore.p12</AndroidSigningKeyStore>
+    <AndroidSigningKeyAlias Condition="'$(AndroidSigningKeyAlias)' == ''">coindo_prod</AndroidSigningKeyAlias>
   </PropertyGroup>
 
   <ItemGroup>

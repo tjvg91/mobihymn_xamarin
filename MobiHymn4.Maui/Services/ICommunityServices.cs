@@ -17,7 +17,7 @@ public interface IProfileService
     Task<UserProfile> LoadProfileAsync(string uid);
     Task SaveProfileAsync(UserProfile profile);
     Task SetNotificationsMutedAsync(bool muted);
-    Task RefreshCurrentProfileAsync();
+    Task RefreshCurrentProfileAsync(bool force = false);
 }
 
 public interface IGroupService
@@ -28,6 +28,8 @@ public interface IGroupService
     Task<WorshipGroup> JoinGroupByIdAsync(string groupId);
     Task InviteByEmailAsync(string groupId, string email);
     Task<IReadOnlyList<GroupMember>> GetMembersAsync(string groupId);
+    Task<bool> IsGroupNotificationsMutedAsync(string groupId);
+    Task SetGroupNotificationsMutedAsync(string groupId, bool muted);
     Task LeaveGroupAsync(string groupId);
     Task<IReadOnlyList<WorshipGroup>> AcceptPendingInvitesAsync();
 }
@@ -36,7 +38,10 @@ public interface IBoardService
 {
     event EventHandler<GroupHymnList> HymnListChanged;
 
-    Task<IReadOnlyList<GroupHymnListSummary>> ListHymnListsAsync(string groupId);
+    Task<BoardListsPage> ListHymnListsAsync(
+        string groupId,
+        GroupHymnListSummary startAfter = null,
+        int pageSize = BoardListsPage.DefaultPageSize);
     Task<GroupHymnList> CreateHymnListAsync(string groupId, DateTime date);
     Task<bool> HymnListExistsForDateAsync(string groupId, DateTime date, string excludeListId = null);
     Task<GroupHymnList> UpdateHymnListDateAsync(string groupId, string listId, DateTime date);
@@ -82,15 +87,39 @@ public interface IAddToBoardService
 public interface IGroupDashboardService
 {
     event EventHandler IsOpenChanged;
+    event EventHandler UnreadListsChanged;
 
     bool IsOpen { get; }
     bool HasUnreadNotifications { get; }
+    int UnreadNotificationCount { get; }
 
     void Open(string groupId = null, string listId = null);
     void Close();
     void Toggle();
     void MarkNotificationsRead();
     void SetUnreadNotifications(bool hasUnread);
+    void SetUnreadLists(IReadOnlyDictionary<string, BoardListUnreadInfo> unreadByListKey);
+    int GetListUnreadCount(string groupId, string listId);
+    DateTime GetListUnreadSinceUtc(string groupId, string listId);
+    IReadOnlyList<BoardDeletedHymnInfo> GetListDeletedHymns(string groupId, string listId);
+}
+
+public sealed class BoardDeletedHymnInfo
+{
+    public string Id { get; init; } = string.Empty;
+    public string HymnNumber { get; init; } = string.Empty;
+    public string Notes { get; init; } = string.Empty;
+    public int SortOrder { get; init; }
+    public string DeletedByName { get; init; } = string.Empty;
+    public DateTime DeletedAtUtc { get; init; }
+}
+
+public sealed class BoardListUnreadInfo
+{
+    public int NewHymnCount { get; init; }
+    public DateTime OldestCreatedAtUtc { get; init; }
+    public IReadOnlyList<BoardDeletedHymnInfo> DeletedHymns { get; init; }
+        = Array.Empty<BoardDeletedHymnInfo>();
 }
 
 public interface IBoardNotificationService
@@ -99,4 +128,5 @@ public interface IBoardNotificationService
     Task StopAsync();
     Task RegisterTokenAsync();
     Task MarkAllReadAsync();
+    Task MarkListReadAsync(string groupId, string listId);
 }

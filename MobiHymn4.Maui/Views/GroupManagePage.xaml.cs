@@ -1,3 +1,4 @@
+using System;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Controls.Xaml;
 
@@ -16,5 +17,13 @@ public partial class GroupManagePage : ContentPage
         base.OnAppearing();
         if (BindingContext is ViewModels.GroupManageViewModel vm)
             vm.RefreshCommand.Execute(null);
+    }
+
+    async void NotificationsSwitch_Toggled(object sender, ToggledEventArgs e)
+    {
+        if (BindingContext is not ViewModels.GroupManageViewModel vm)
+            return;
+
+        await vm.OnNotificationsEnabledToggledAsync(e.Value);
     }
 }

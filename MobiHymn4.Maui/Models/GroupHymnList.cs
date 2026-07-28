@@ -72,8 +72,39 @@ public class GroupHymnListSummary : INotifyPropertyChanged
 
     bool canManage;
 
+    int unreadCount;
+    /// <summary>New hymn updates since last visit (from unread notifications).</summary>
+    public int UnreadCount
+    {
+        get => unreadCount;
+        set
+        {
+            if (unreadCount == value)
+                return;
+            unreadCount = value < 0 ? 0 : value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasUnread));
+            OnPropertyChanged(nameof(UnreadBadgeText));
+        }
+    }
+
+    public bool HasUnread => unreadCount > 0;
+
+    public string UnreadBadgeText =>
+        unreadCount > 99 ? "99+" : unreadCount.ToString();
+
     public event PropertyChangedEventHandler PropertyChanged;
 
     void OnPropertyChanged([CallerMemberName] string propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+}
+
+public sealed class BoardListsPage
+{
+    public const int DefaultPageSize = 30;
+
+    public static BoardListsPage Empty { get; } = new();
+
+    public IReadOnlyList<GroupHymnListSummary> Items { get; init; } = Array.Empty<GroupHymnListSummary>();
+    public bool HasMore { get; init; }
 }

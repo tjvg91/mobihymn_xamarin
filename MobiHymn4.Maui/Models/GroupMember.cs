@@ -15,6 +15,7 @@ public class GroupMember
     public List<UserRole> Roles { get; set; } = new();
     public DateTime JoinedAt { get; set; }
     public string InvitedBy { get; set; } = string.Empty;
+    public bool NotificationsMuted { get; set; }
 
     public string DisplayName =>
         !string.IsNullOrWhiteSpace(Nickname)
@@ -41,6 +42,8 @@ public class GroupMember
             member.JoinedAt = dt;
         if (data.TryGetValue("invitedBy", out var invitedBy))
             member.InvitedBy = invitedBy?.ToString() ?? string.Empty;
+        if (data.TryGetValue("notificationsMuted", out var muted) && muted is bool mutedValue)
+            member.NotificationsMuted = mutedValue;
 
         return member;
     }
@@ -56,6 +59,7 @@ public class GroupMember
             ["roles"] = Roles?.Select(r => r.ToStorageKey()).ToList() ?? new List<string>(),
             ["joinedAt"] = JoinedAt == default ? DateTime.UtcNow : JoinedAt,
             ["invitedBy"] = InvitedBy ?? string.Empty,
+            ["notificationsMuted"] = NotificationsMuted,
         };
     }
 }

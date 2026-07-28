@@ -17,13 +17,14 @@ public class AuthViewModel : BaseViewModel
     string confirmPassword = string.Empty;
     string statusMessage = string.Empty;
     bool isSignUpMode;
+    bool statusIsError = true;
 
     public AuthViewModel()
     {
         auth = ServiceHelper.Get<IAuthService>();
         SignInCommand = new Command(async () => await SignInAsync(), () => CanSubmit);
         SignUpCommand = new Command(async () => await SignUpAsync(), () => CanSubmit);
-        GoogleSignInCommand = new Command(async () => await GoogleSignInAsync(), () => !IsBusy);
+        ForgotPasswordCommand = new Command(async () => await ForgotPasswordAsync(), () => CanForgotPassword);
         ToggleModeCommand = new Command(ToggleMode);
     }
 
@@ -67,6 +68,12 @@ public class AuthViewModel : BaseViewModel
         }
     }
 
+    public bool StatusIsError
+    {
+        get => statusIsError;
+        set => SetProperty(ref statusIsError, value);
+    }
+
     public bool IsSignUpMode
     {
         get => isSignUpMode;
@@ -82,19 +89,22 @@ public class AuthViewModel : BaseViewModel
                 OnPropertyChanged(nameof(ShowSignInButton));
                 OnPropertyChanged(nameof(ShowSignUpButton));
                 OnPropertyChanged(nameof(ShowConfirmPassword));
+                OnPropertyChanged(nameof(ShowForgotPassword));
                 OnPropertyChanged(nameof(ToggleLinkText));
+                RefreshCommands();
             }
         }
     }
 
     public string ModeTitle => IsSignUpMode ? "Create Account" : "Welcome Back";
     public string ModeSubtitle => IsSignUpMode
-        ? "Sign up with email or Google to join your worship community."
+        ? "Sign up with email to join your worship community."
         : "Sign in to access groups, boards, and your profile.";
     public string PrimaryActionText => IsSignUpMode ? "Sign Up" : "Sign In";
     public bool ShowSignInButton => !IsSignUpMode;
     public bool ShowSignUpButton => IsSignUpMode;
     public bool ShowConfirmPassword => IsSignUpMode;
+    public bool ShowForgotPassword => !IsSignUpMode;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
     public string ToggleLinkText => IsSignUpMode
         ? "Already have an account? Sign in"
@@ -102,13 +112,15 @@ public class AuthViewModel : BaseViewModel
 
     public ICommand SignInCommand { get; }
     public ICommand SignUpCommand { get; }
-    public ICommand GoogleSignInCommand { get; }
+    public ICommand ForgotPasswordCommand { get; }
     public ICommand ToggleModeCommand { get; }
 
     bool CanSubmit => !IsBusy
         && !string.IsNullOrWhiteSpace(Email)
         && !string.IsNullOrWhiteSpace(Password)
         && (!IsSignUpMode || !string.IsNullOrWhiteSpace(ConfirmPassword));
+
+    bool CanForgotPassword => !IsBusy && !IsSignUpMode && !string.IsNullOrWhiteSpace(Email);
 
     void ToggleMode()
     {
@@ -120,7 +132,13 @@ public class AuthViewModel : BaseViewModel
     {
         (SignInCommand as Command)?.ChangeCanExecute();
         (SignUpCommand as Command)?.ChangeCanExecute();
-        (GoogleSignInCommand as Command)?.ChangeCanExecute();
+        (ForgotPasswordCommand as Command)?.ChangeCanExecute();
+    }
+
+    void SetStatus(string message, bool isError)
+    {
+        StatusIsError = isError;
+        StatusMessage = message;
     }
 
     async Task SignInAsync()
@@ -138,7 +156,7 @@ public class AuthViewModel : BaseViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = ex.Message;
+            SetStatus(ex.Message, isError: true);
         }
         finally
         {
@@ -154,7 +172,7 @@ public class AuthViewModel : BaseViewModel
 
         if (Password != ConfirmPassword)
         {
-            StatusMessage = "Passwords do not match.";
+            SetStatus("Passwords do not match.", isError: true);
             return;
         }
 
@@ -168,7 +186,7 @@ public class AuthViewModel : BaseViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = ex.Message;
+            SetStatus(ex.Message, isError: true);
         }
         finally
         {
@@ -177,19 +195,24 @@ public class AuthViewModel : BaseViewModel
         }
     }
 
-    async Task GoogleSignInAsync()
+    async Task ForgotPasswordAsync()
     {
+        if (!CanForgotPassword)
+            return;
+
         try
         {
             IsBusy = true;
             RefreshCommands();
             StatusMessage = string.Empty;
-            await auth.SignInWithGoogleAsync();
-            await AuthNavigationHelper.NavigateForAuthStateAsync();
+            await auth.SendPasswordResetEmailAsync(Email.Trim());
+            SetStatus(
+                "Password reset email sent. Check your inbox for a link to choose a new password.",
+                isError: false);
         }
         catch (Exception ex)
         {
-            StatusMessage = FriendlyMessage(ex.Message);
+            SetStatus(FriendlyAuthMessage(ex.Message), isError: true);
         }
         finally
         {
@@ -198,23 +221,18 @@ public class AuthViewModel : BaseViewModel
         }
     }
 
-    // Strip bare numeric status codes that leak from the platform layer.
-    static string FriendlyMessage(string raw)
+    static string FriendlyAuthMessage(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
             return "An error occurred.";
 
-        var code = raw.Split(':')[0].Trim();
-        if (int.TryParse(code, out _))
-        {
-            return code switch
-            {
-                "10"    => "Google Sign-In is not configured for this build.",
-                "7"     => "Network error. Check your connection.",
-                "12501" => "Sign-in was cancelled.",
-                _       => $"Sign-in error (code {code})."
-            };
-        }
+        var lower = raw.ToLowerInvariant();
+        if (lower.Contains("user-not-found") || lower.Contains("no user"))
+            return "No account found for that email.";
+        if (lower.Contains("invalid-email"))
+            return "Enter a valid email address.";
+        if (lower.Contains("network"))
+            return "Network error. Check your connection.";
 
         return raw;
     }

@@ -8,6 +8,7 @@ using MobiHymn4.Models;
 using MobiHymn4.Services;
 using MobiHymn4.Utils;
 using MobiHymn4.ViewModels;
+using MobiHymn4.Views;
 using MobiHymn4.Views.Popups;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
@@ -47,8 +48,11 @@ public partial class App : Application
         {
             MainThread.BeginInvokeOnMainThread(async () =>
             {
-                await globalInstance.EnsureSettingsLoadedAsync();
-                DeviceDisplay.KeepScreenOn = globalInstance.KeepAwake;
+                await globalInstance.EnsureSettingsLoadedAsync().ConfigureAwait(false);
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                {
+                    DeviceDisplay.KeepScreenOn = globalInstance.KeepAwake;
+                });
             });
 
             if (!fromFirebaseNotif)
@@ -123,10 +127,12 @@ public partial class App : Application
 
             if (auth.IsSignedIn)
             {
-                await profile.RefreshCurrentProfileAsync();
-                var joinedGroups = await groups.AcceptPendingInvitesAsync();
-                foreach (var group in joinedGroups)
-                    GroupJoinWelcomePresenter.ScheduleShow(group);
+                // Auth listener usually already loaded the profile; skip a redundant round-trip.
+                if (profile.CurrentProfile == null)
+                    await profile.RefreshCurrentProfileAsync();
+
+                // Invites are not on the critical path for reader/catalog startup.
+                _ = AcceptPendingInvitesInBackgroundAsync(groups);
             }
         }
         catch (Exception ex)
@@ -136,7 +142,23 @@ public partial class App : Application
 
         await globalInstance.RefreshMissingHymnCountAsync();
         await globalInstance.RefreshCatalogDiffAsync();
-        CommunitySignInPresenter.ScheduleShow();
+        // Never compete with the first-run intro slider — signup is scheduled from IntroPopup_Dismissed.
+        if (!Preferences.Get(PreferencesVar.IS_NEW, true))
+            CommunitySignInPresenter.ScheduleShow();
+    }
+
+    static async Task AcceptPendingInvitesInBackgroundAsync(IGroupService groups)
+    {
+        try
+        {
+            var joinedGroups = await groups.AcceptPendingInvitesAsync();
+            foreach (var group in joinedGroups)
+                GroupJoinWelcomePresenter.ScheduleShow(group);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"AcceptPendingInvites background failed: {ex.Message}");
+        }
     }
 
     async Task CheckForAppUpdateAsync()
@@ -217,7 +239,63 @@ public partial class App : Application
         globalInstance.RefreshIncompleteDownloadState();
         if (DownloadPopupPresenter.IsDownloadRecoveryPending())
             DownloadPopupPresenter.ShowWithRetry();
-        MainThread.BeginInvokeOnMainThread(async () => await RecoverUiAfterBackgroundAsync());
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            await RecoverUiAfterBackgroundAsync();
+            await RefreshVerificationOnResumeAsync();
+        });
+    }
+
+    async Task RefreshVerificationOnResumeAsync()
+    {
+        try
+        {
+#if ANDROID
+            if (MainActivity.ConsumePendingAuthContinue())
+            {
+                await HandleAuthEmailContinueCoreAsync();
+                return;
+            }
+#endif
+            var page = Shell.Current?.CurrentPage;
+            if (page is VerifyEmailPage verifyPage)
+            {
+                await verifyPage.RefreshOnAppResumeAsync();
+                return;
+            }
+
+            if (page is AccountPage && page.BindingContext is AccountViewModel accountVm)
+                await accountVm.RefreshOnAppearAsync();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"RefreshVerificationOnResumeAsync failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Called when the user returns from a Firebase email-action Continue link.
+    /// </summary>
+    public static void HandleAuthEmailContinueAsync() =>
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            try
+            {
+                await HandleAuthEmailContinueCoreAsync();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"HandleAuthEmailContinueAsync failed: {ex.Message}");
+            }
+        });
+
+    static async Task HandleAuthEmailContinueCoreAsync()
+    {
+        var auth = ServiceHelper.Get<IAuthService>();
+        if (auth.IsSignedIn)
+            await auth.RefreshEmailVerificationStatusAsync();
+
+        await AuthNavigationHelper.NavigateForAuthStateAsync();
     }
 
     async Task RecoverUiAfterBackgroundAsync()
@@ -246,6 +324,7 @@ public partial class App : Application
             return;
 
         _ = globalInstance.RefreshCatalogDiffAsync();
+        CommunitySignInPresenter.ScheduleShow();
 
         if (globalInstance.ActiveHymn == null || globalInstance.HymnList == null || globalInstance.HymnList.Count == 0)
             return;
@@ -253,6 +332,12 @@ public partial class App : Application
         ServiceHelper.Get<BoardNavigationContext>().TryApplyCurrentHymnToReader();
 
 #if ANDROID
+        if (MobiHymn4.MainActivity.ConsumePendingAuthContinue())
+        {
+            HandleAuthEmailContinueAsync();
+            return;
+        }
+
         var pending = MobiHymn4.MainActivity.PendingHymnNumber;
         if (!string.IsNullOrEmpty(pending))
         {

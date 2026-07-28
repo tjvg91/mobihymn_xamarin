@@ -1,10 +1,10 @@
 using System.Threading.Tasks;
-using MobiHymn4.Services;
 
-namespace MobiHymn4.Platforms;
+namespace MobiHymn4.Services;
 
-public sealed class GoogleSignInService : IGoogleSignInService
+/// <summary>Stub used while Google Sign-In is temporarily disabled.</summary>
+public sealed class UnavailableGoogleSignInService : IGoogleSignInService
 {
     public Task<GoogleSignInResult> SignInAsync() =>
-        Task.FromResult(GoogleSignInResult.Failed("Google Sign-In is not available on this platform."));
+        Task.FromResult(GoogleSignInResult.Failed("Google Sign-In is not available right now."));
 }

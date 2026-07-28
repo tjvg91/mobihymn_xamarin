@@ -97,14 +97,11 @@ public static class MauiProgram
         builder.Services.AddSingleton<IAddToBoardService, AddToBoardService>();
         builder.Services.AddSingleton<IGroupDashboardService, GroupDashboardService>();
         builder.Services.AddSingleton<IBoardNotificationService, BoardNotificationService>();
+        builder.Services.AddSingleton<IUserSettingsSyncService, UserSettingsSyncService>();
+        builder.Services.AddSingleton<IGoogleSignInService, UnavailableGoogleSignInService>();
 #if ANDROID
         builder.Services.AddSingleton<IVoiceRecognitionService, AndroidVoiceRecognitionService>();
         builder.Services.AddSingleton<IDownloadNotificationService, DownloadNotificationService>();
-        builder.Services.AddSingleton<IGoogleSignInService, Platforms.Android.GoogleSignInService>();
-#elif IOS
-        builder.Services.AddSingleton<IGoogleSignInService, Platforms.iOS.GoogleSignInService>();
-#else
-        builder.Services.AddSingleton<IGoogleSignInService, UnavailableGoogleSignInService>();
 #endif
 
 #if DEBUG
@@ -113,11 +110,13 @@ public static class MauiProgram
 
         var app = builder.Build();
         ServiceHelper.Initialize(app.Services);
+        // Resolve once so auth listener is attached for cloud settings sync.
+        _ = app.Services.GetService<IUserSettingsSyncService>();
 
 #if ANDROID
         app.Services.GetService<IDownloadNotificationService>();
 #endif
-        _ = app.Services.GetService<IBoardNotificationService>()?.StartAsync();
+        // Board FCM starts from App / MainActivity after first frame — avoid double StartAsync here.
 
         return app;
     }

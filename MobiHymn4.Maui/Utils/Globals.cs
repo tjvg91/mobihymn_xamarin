@@ -6,6 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using MobiHymn4.Models;
+using MobiHymn4.Models.Firestore;
+using MobiHymn4.Services;
 using MobiHymn4.Views.Popups;
 
 using Microsoft.Maui.Controls;
@@ -58,6 +60,9 @@ namespace MobiHymn4.Utils
         private bool suppressSettingsSave;
 
         [JsonIgnore]
+        private bool suppressCloudPush;
+
+        [JsonIgnore]
         private bool settingsHydratedFromDisk;
 
         [JsonIgnore]
@@ -80,6 +85,12 @@ namespace MobiHymn4.Utils
 
         [JsonIgnore]
         public bool InitInProgress => Volatile.Read(ref downloadInFlight) != 0;
+
+        /// <summary>Max hymns kept in reading history (local + cloud sync).</summary>
+        public const int MaxHistoryCount = 10;
+
+        [JsonIgnore]
+        public bool SettingsHydrated => settingsHydratedFromDisk;
 
         [JsonIgnore]
         public bool HasIncompleteDownloadOnDisk { get; private set; }
@@ -424,7 +435,7 @@ namespace MobiHymn4.Utils
                     };
                     HistoryList = HistoryList.Where(x => x.Number != newHymn.Number).ToObservableRangeCollection();
                     HistoryList.Insert(0, newHymn);
-                    if (HistoryList.Count > 10) HistoryList.RemoveAt(HistoryList.Count - 1);
+                    TrimHistoryInPlace();
                     OnActiveHymnChanged(value);
                     OnHistoryChanged(HistoryList);
                     SaveSettings();
@@ -1365,7 +1376,14 @@ namespace MobiHymn4.Utils
 
             if (initComplete && HymnList?.Count > 0 && checkpoint == null)
             {
-                OnInitFinished(null);
+                try
+                {
+                    OnInitFinished(null);
+                }
+                finally
+                {
+                    EndDownloadOperation();
+                }
                 return;
             }
 
@@ -1433,9 +1451,46 @@ namespace MobiHymn4.Utils
             if ((settingsLoaded || !settingsFileExists) && settingsHydratedFromDisk && !WouldSaveEmptyOverExistingUserData())
                 SaveSettings();
             RefreshIncompleteDownloadState();
+
+            // Full downloads never went through ApplyPendingCatalogChanges, so the catalog
+            // hash was left empty and the next RefreshCatalogDiff treated the fresh library
+            // as "updates available" — hence the Settings flyout badge after first install.
+            await MarkDownloadedCatalogCurrentAsync().ConfigureAwait(false);
+
             if (isUserSync)
                 _ = RefreshCatalogDiffAsync();
             OnInitFinished(isUserSync ? "sync" : null);
+        }
+
+        /// <summary>
+        /// After a successful download/sync, adopt the server catalog hash and clear any
+        /// pending-diff badge so Settings doesn't claim updates right after we just synced.
+        /// </summary>
+        async Task MarkDownloadedCatalogCurrentAsync()
+        {
+            await MainThread.InvokeOnMainThreadAsync(() => PendingCatalogDiff = null)
+                .ConfigureAwait(false);
+
+            if (!HttpHelper.IsConnected())
+                return;
+
+            try
+            {
+                var meta = await new HttpHelper()
+                    .GetCatalogMetaAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                if (meta?.Total > 0)
+                    Preferences.Default.Set(PreferencesVar.HYMN_TOTAL, meta.Total);
+
+                if (!string.IsNullOrWhiteSpace(meta?.CatalogHash))
+                    Preferences.Default.Set(PreferencesVar.HYMN_CATALOG_HASH, meta.CatalogHash);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"MarkDownloadedCatalogCurrentAsync failed: {ex.Message}");
+            }
         }
 
         static HymnList SortHymnList(HymnList list)
@@ -1520,17 +1575,32 @@ namespace MobiHymn4.Utils
 
         void RestoreActiveHymnFromList(bool rebindOnly = false)
         {
+            RestoreActiveHymnByNumber(preferredNumber: null, rebindOnly);
+        }
+
+        /// <summary>
+        /// Rebind the reader to a hymn number from the catalog.
+        /// When <paramref name="preferredNumber"/> is set, it wins over the in-memory active hymn
+        /// (needed after cloud sync, which updates Preferences before restoring).
+        /// </summary>
+        void RestoreActiveHymnByNumber(string preferredNumber, bool rebindOnly = false)
+        {
             if (HymnList == null || HymnList.Count == 0)
                 return;
 
-            var number = activeHymn?.Number;
-            if (string.IsNullOrEmpty(number))
+            var number = preferredNumber;
+            if (string.IsNullOrWhiteSpace(number))
+                number = activeHymn?.Number;
+            if (string.IsNullOrWhiteSpace(number))
                 number = Preferences.Get(PreferencesVar.LAST_HYMN_NUMBER, string.Empty);
 
-            var hymn = string.IsNullOrEmpty(number)
+            var hymn = string.IsNullOrWhiteSpace(number)
                 ? HymnList[0]
                 : HymnList.FirstOrDefault(h => string.Equals(h?.Number, number, StringComparison.OrdinalIgnoreCase))
                   ?? HymnList[0];
+
+            if (!string.IsNullOrWhiteSpace(hymn?.Number))
+                Preferences.Set(PreferencesVar.LAST_HYMN_NUMBER, hymn.Number);
 
             if (rebindOnly)
             {
@@ -1637,6 +1707,17 @@ namespace MobiHymn4.Utils
 
         public async void SaveSettings()
         {
+            await SaveSettingsCoreAsync(scheduleCloudPush: true);
+        }
+
+        /// <summary>Persist locally without queueing another cloud upload (used during sync).</summary>
+        public async void SaveSettingsWithoutCloudPush()
+        {
+            await SaveSettingsCoreAsync(scheduleCloudPush: false);
+        }
+
+        async Task SaveSettingsCoreAsync(bool scheduleCloudPush)
+        {
             if (suppressSettingsSave)
                 return;
 
@@ -1670,6 +1751,8 @@ namespace MobiHymn4.Utils
 
                 await File.WriteAllTextAsync(filePath, settings);
                 settingsHydratedFromDisk = true;
+                if (scheduleCloudPush && !suppressCloudPush)
+                    TryScheduleCloudSettingsPush();
             }
             catch (Exception)
             {
@@ -1678,6 +1761,18 @@ namespace MobiHymn4.Utils
             {
                 if (settingsSaveLock.CurrentCount == 0)
                     settingsSaveLock.Release();
+            }
+        }
+
+        void TryScheduleCloudSettingsPush()
+        {
+            try
+            {
+                ServiceHelper.Get<IUserSettingsSyncService>()?.SchedulePush();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Cloud settings push schedule skipped: {ex.Message}");
             }
         }
 
@@ -1698,8 +1793,8 @@ namespace MobiHymn4.Utils
 
                 if (File.Exists(filePath))
                 {
-                    var settings = await File.ReadAllTextAsync(filePath);
-                    var json = await Task.Run(() => JsonConvert.DeserializeObject<Dictionary<string, object>>(settings));
+                    var settings = await File.ReadAllTextAsync(filePath).ConfigureAwait(false);
+                    var json = await Task.Run(() => JsonConvert.DeserializeObject<Dictionary<string, object>>(settings)).ConfigureAwait(false);
                     if (json?.Count > 0)
                         loadedAny = LoadSettingsEntries(json);
 
@@ -1708,9 +1803,9 @@ namespace MobiHymn4.Utils
                         var backupPath = filePath + ".bak";
                         if (File.Exists(backupPath))
                         {
-                            var backupSettings = await File.ReadAllTextAsync(backupPath);
+                            var backupSettings = await File.ReadAllTextAsync(backupPath).ConfigureAwait(false);
                             var backupJson = await Task.Run(() =>
-                                JsonConvert.DeserializeObject<Dictionary<string, object>>(backupSettings));
+                                JsonConvert.DeserializeObject<Dictionary<string, object>>(backupSettings)).ConfigureAwait(false);
                             if (backupJson?.Count > 0)
                                 loadedAny = LoadSettingsEntries(backupJson);
                         }
@@ -1875,7 +1970,16 @@ namespace MobiHymn4.Utils
                     return true;
                 case nameof(ActiveHymn):
                     activeHymn = ((JObject)(entry.Value)).ToObject<Hymn>();
+                    if (!string.IsNullOrWhiteSpace(activeHymn?.Number))
+                        Preferences.Set(PreferencesVar.LAST_HYMN_NUMBER, activeHymn.Number);
                     return true;
+                case "LastHymnNumber":
+                    {
+                        var number = entry.Value?.ToString();
+                        if (!string.IsNullOrWhiteSpace(number))
+                            Preferences.Set(PreferencesVar.LAST_HYMN_NUMBER, number);
+                        return true;
+                    }
                 case nameof(ActiveReadTheme):
                     activeReadTheme = ParseSavedColor(entry.Value);
                     return true;
@@ -2007,11 +2111,337 @@ namespace MobiHymn4.Utils
             return $"#{r:X2}{g:X2}{b:X2}";
         }
 
+        void TrimHistoryInPlace()
+        {
+            while (HistoryList != null && HistoryList.Count > MaxHistoryCount)
+                HistoryList.RemoveAt(HistoryList.Count - 1);
+        }
+
+        /// <summary>Snapshot of local settings for Firestore backup (history capped at MaxHistoryCount).</summary>
+        public UserSettingsFirestoreDocument BuildCloudSettingsDocument()
+        {
+            TrimHistoryInPlace();
+
+            return new UserSettingsFirestoreDocument
+            {
+                Id = FirestorePaths.SettingsDoc,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                HymnInputType = (int)hymnInputType,
+                LastHymnNumber = ResolveLastHymnNumber(),
+                ActiveReadTheme = ColorToStorageHex(activeReadTheme),
+                ActiveAlignment = (int)activeAlignment,
+                ActiveFontSize = activeFontSize,
+                ActiveFont = activeFont ?? string.Empty,
+                ActiveLetterSpacing = activeLetterSpacing,
+                ActiveLineSpacing = activeLineSpacing,
+                DarkMode = darkMode,
+                KeepAwake = keepAwake,
+                IsOrientationLocked = isOrientationLocked,
+                AgentMode = (int)agentMode,
+                AgentChatLimit = agentChatLimit,
+                History = (HistoryList ?? new ObservableRangeCollection<ShortHymn>())
+                    .Take(MaxHistoryCount)
+                    .Select(ToCloudHymn)
+                    .Where(x => x != null)
+                    .ToList(),
+                Bookmarks = (BookmarkList ?? new ObservableRangeCollection<ShortHymn>())
+                    .Select(ToCloudHymn)
+                    .Where(x => x != null)
+                    .ToList(),
+                Searches = (SearchList ?? new ObservableRangeCollection<string>())
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Take(MaxHistoryCount)
+                    .ToList(),
+            };
+        }
+
+        /// <summary>
+        /// Merge cloud backup into local state. Bookmarks are unioned; history keeps
+        /// the newest MaxHistoryCount entries by timestamp.
+        /// </summary>
+        public void MergeCloudSettings(UserSettingsFirestoreDocument cloud)
+        {
+            if (cloud == null)
+                return;
+
+            suppressSettingsSave = true;
+            try
+            {
+                var cloudUpdated = cloud.UpdatedAt.UtcDateTime;
+                var localUpdatedText = Preferences.Get(PreferencesVar.CLOUD_SETTINGS_UPDATED_AT, string.Empty);
+                var cloudIsNewer = !DateTime.TryParse(
+                        localUpdatedText,
+                        null,
+                        System.Globalization.DateTimeStyles.RoundtripKind,
+                        out var localUpdated)
+                    || cloudUpdated > localUpdated.ToUniversalTime();
+
+                if (cloudIsNewer)
+                {
+                    hymnInputType = Enum.IsDefined(typeof(InputType), cloud.HymnInputType)
+                        ? (InputType)cloud.HymnInputType
+                        : hymnInputType;
+                    activeReadTheme = ParseSavedColor(cloud.ActiveReadTheme);
+                    activeAlignment = Enum.IsDefined(typeof(TextAlignment), cloud.ActiveAlignment)
+                        ? (TextAlignment)cloud.ActiveAlignment
+                        : activeAlignment;
+                    if (cloud.ActiveFontSize > 0)
+                        activeFontSize = cloud.ActiveFontSize;
+                    if (!string.IsNullOrWhiteSpace(cloud.ActiveFont))
+                        activeFont = cloud.ActiveFont;
+                    activeLetterSpacing = Math.Clamp(cloud.ActiveLetterSpacing, 0, 1);
+                    if (cloud.ActiveLineSpacing > 0)
+                        activeLineSpacing = cloud.ActiveLineSpacing;
+                    darkMode = cloud.DarkMode;
+                    keepAwake = cloud.KeepAwake;
+                    isOrientationLocked = cloud.IsOrientationLocked;
+                    agentMode = Enum.IsDefined(typeof(AgentMode), cloud.AgentMode)
+                        ? (AgentMode)cloud.AgentMode
+                        : agentMode;
+                    agentChatLimit = SnapAgentChatLimit(cloud.AgentChatLimit);
+
+                    if (!string.IsNullOrWhiteSpace(cloud.LastHymnNumber))
+                        Preferences.Set(PreferencesVar.LAST_HYMN_NUMBER, cloud.LastHymnNumber);
+                }
+
+                BookmarkList = MergeBookmarks(
+                    BookmarkList ?? new ObservableRangeCollection<ShortHymn>(),
+                    cloud.Bookmarks).ToObservableRangeCollection();
+                NormalizeBookmarkGroups();
+
+                HistoryList = MergeHistory(
+                    HistoryList ?? new ObservableRangeCollection<ShortHymn>(),
+                    cloud.History).ToObservableRangeCollection();
+
+                SearchList = MergeSearches(
+                    SearchList ?? new ObservableRangeCollection<string>(),
+                    cloud.Searches).ToObservableRangeCollection();
+
+                PersistReaderPreferences();
+                ApplyLoadedSettingsToRuntime();
+                RaiseOnMainThread(() =>
+                {
+                    BookmarksChanged?.Invoke(BookmarkList, EventArgs.Empty);
+                    OnHistoryChanged(HistoryList);
+                });
+
+                // Prefer explicit cloud last-hymn when cloud won; otherwise keep local /
+                // fall back to newest merged history entry.
+                var restoreNumber = cloudIsNewer && !string.IsNullOrWhiteSpace(cloud.LastHymnNumber)
+                    ? cloud.LastHymnNumber
+                    : null;
+                if (string.IsNullOrWhiteSpace(restoreNumber)
+                    && string.IsNullOrWhiteSpace(activeHymn?.Number)
+                    && HistoryList?.Count > 0)
+                    restoreNumber = HistoryList[0].Number;
+
+                if (HymnList?.Count > 0)
+                    RestoreActiveHymnByNumber(restoreNumber, rebindOnly: true);
+            }
+            finally
+            {
+                suppressSettingsSave = false;
+            }
+        }
+
+        /// <summary>
+        /// Replace account-scoped local data with a cloud backup (no union with previous account).
+        /// Pass null to clear bookmarks/history/searches for a new account with no cloud doc yet.
+        /// </summary>
+        public void AdoptCloudSettings(UserSettingsFirestoreDocument cloud)
+        {
+            suppressSettingsSave = true;
+            try
+            {
+                if (cloud == null)
+                {
+                    BookmarkList = new ObservableRangeCollection<ShortHymn>();
+                    HistoryList = new ObservableRangeCollection<ShortHymn>();
+                    SearchList = new ObservableRangeCollection<string>();
+                }
+                else
+                {
+                    hymnInputType = Enum.IsDefined(typeof(InputType), cloud.HymnInputType)
+                        ? (InputType)cloud.HymnInputType
+                        : hymnInputType;
+                    activeReadTheme = ParseSavedColor(cloud.ActiveReadTheme);
+                    activeAlignment = Enum.IsDefined(typeof(TextAlignment), cloud.ActiveAlignment)
+                        ? (TextAlignment)cloud.ActiveAlignment
+                        : activeAlignment;
+                    if (cloud.ActiveFontSize > 0)
+                        activeFontSize = cloud.ActiveFontSize;
+                    if (!string.IsNullOrWhiteSpace(cloud.ActiveFont))
+                        activeFont = cloud.ActiveFont;
+                    activeLetterSpacing = Math.Clamp(cloud.ActiveLetterSpacing, 0, 1);
+                    if (cloud.ActiveLineSpacing > 0)
+                        activeLineSpacing = cloud.ActiveLineSpacing;
+                    darkMode = cloud.DarkMode;
+                    keepAwake = cloud.KeepAwake;
+                    isOrientationLocked = cloud.IsOrientationLocked;
+                    agentMode = Enum.IsDefined(typeof(AgentMode), cloud.AgentMode)
+                        ? (AgentMode)cloud.AgentMode
+                        : agentMode;
+                    agentChatLimit = SnapAgentChatLimit(cloud.AgentChatLimit);
+
+                    if (!string.IsNullOrWhiteSpace(cloud.LastHymnNumber))
+                        Preferences.Set(PreferencesVar.LAST_HYMN_NUMBER, cloud.LastHymnNumber);
+
+                    BookmarkList = (cloud.Bookmarks ?? Array.Empty<ShortHymnFirestoreDocument>())
+                        .Select(FromCloudHymn)
+                        .Where(x => x != null)
+                        .OrderByDescending(x => x.TimeStamp)
+                        .ToObservableRangeCollection();
+                    NormalizeBookmarkGroups();
+
+                    HistoryList = (cloud.History ?? Array.Empty<ShortHymnFirestoreDocument>())
+                        .Select(FromCloudHymn)
+                        .Where(x => x != null)
+                        .GroupBy(x => x.Number, StringComparer.OrdinalIgnoreCase)
+                        .Select(g => g.OrderByDescending(x => x.TimeStamp).First())
+                        .OrderByDescending(x => x.TimeStamp)
+                        .Take(MaxHistoryCount)
+                        .ToObservableRangeCollection();
+
+                    SearchList = (cloud.Searches ?? Array.Empty<string>())
+                        .Where(s => !string.IsNullOrWhiteSpace(s))
+                        .Select(s => s.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Take(MaxHistoryCount)
+                        .ToObservableRangeCollection();
+                }
+
+                PersistReaderPreferences();
+                ApplyLoadedSettingsToRuntime();
+                RaiseOnMainThread(() =>
+                {
+                    BookmarksChanged?.Invoke(BookmarkList, EventArgs.Empty);
+                    OnHistoryChanged(HistoryList);
+                });
+
+                var restoreNumber = cloud != null && !string.IsNullOrWhiteSpace(cloud.LastHymnNumber)
+                    ? cloud.LastHymnNumber
+                    : HistoryList?.FirstOrDefault()?.Number;
+                if (HymnList?.Count > 0)
+                    RestoreActiveHymnByNumber(restoreNumber, rebindOnly: true);
+            }
+            finally
+            {
+                suppressSettingsSave = false;
+            }
+        }
+
+        static ShortHymnFirestoreDocument ToCloudHymn(ShortHymn hymn)
+        {
+            if (hymn == null)
+                return null;
+
+            var stamp = hymn.TimeStamp.Kind == DateTimeKind.Unspecified
+                ? DateTime.SpecifyKind(hymn.TimeStamp, DateTimeKind.Utc)
+                : hymn.TimeStamp.ToUniversalTime();
+
+            return new ShortHymnFirestoreDocument
+            {
+                Number = hymn.Number,
+                Line = hymn.Line,
+                TimeStamp = new DateTimeOffset(stamp),
+                BookmarkGroup = string.IsNullOrWhiteSpace(hymn.BookmarkGroup) ? "General" : hymn.BookmarkGroup,
+            };
+        }
+
+        static ShortHymn FromCloudHymn(ShortHymnFirestoreDocument doc)
+        {
+            if (doc == null || string.IsNullOrWhiteSpace(doc.Number))
+                return null;
+
+            return new ShortHymn
+            {
+                Number = doc.Number,
+                Line = doc.Line,
+                TimeStamp = doc.TimeStamp.UtcDateTime,
+                BookmarkGroup = string.IsNullOrWhiteSpace(doc.BookmarkGroup) ? "General" : doc.BookmarkGroup,
+            };
+        }
+
+        static IEnumerable<ShortHymn> MergeBookmarks(
+            IEnumerable<ShortHymn> local,
+            IEnumerable<ShortHymnFirestoreDocument> cloud)
+        {
+            var map = new Dictionary<string, ShortHymn>(StringComparer.OrdinalIgnoreCase);
+
+            void Upsert(ShortHymn item)
+            {
+                if (item == null || string.IsNullOrWhiteSpace(item.Number))
+                    return;
+
+                var group = string.IsNullOrWhiteSpace(item.BookmarkGroup) ? "General" : item.BookmarkGroup.Trim();
+                item.BookmarkGroup = group;
+                var key = $"{item.Number}|{group}";
+                if (!map.TryGetValue(key, out var existing) || item.TimeStamp > existing.TimeStamp)
+                    map[key] = item;
+            }
+
+            foreach (var item in local ?? Enumerable.Empty<ShortHymn>())
+                Upsert(item);
+            foreach (var doc in cloud ?? Enumerable.Empty<ShortHymnFirestoreDocument>())
+                Upsert(FromCloudHymn(doc));
+
+            return map.Values.OrderByDescending(x => x.TimeStamp);
+        }
+
+        static IEnumerable<ShortHymn> MergeHistory(
+            IEnumerable<ShortHymn> local,
+            IEnumerable<ShortHymnFirestoreDocument> cloud)
+        {
+            var map = new Dictionary<string, ShortHymn>(StringComparer.OrdinalIgnoreCase);
+
+            void Upsert(ShortHymn item)
+            {
+                if (item == null || string.IsNullOrWhiteSpace(item.Number))
+                    return;
+
+                if (!map.TryGetValue(item.Number, out var existing) || item.TimeStamp > existing.TimeStamp)
+                    map[item.Number] = item;
+            }
+
+            foreach (var item in local ?? Enumerable.Empty<ShortHymn>())
+                Upsert(item);
+            foreach (var doc in cloud ?? Enumerable.Empty<ShortHymnFirestoreDocument>())
+                Upsert(FromCloudHymn(doc));
+
+            return map.Values
+                .OrderByDescending(x => x.TimeStamp)
+                .Take(MaxHistoryCount);
+        }
+
+        static IEnumerable<string> MergeSearches(
+            IEnumerable<string> local,
+            IEnumerable<string> cloud)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var merged = new List<string>();
+
+            foreach (var term in (local ?? Enumerable.Empty<string>())
+                .Concat(cloud ?? Enumerable.Empty<string>()))
+            {
+                if (string.IsNullOrWhiteSpace(term))
+                    continue;
+                var trimmed = term.Trim();
+                if (!seen.Add(trimmed))
+                    continue;
+                merged.Add(trimmed);
+                if (merged.Count >= MaxHistoryCount)
+                    break;
+            }
+
+            return merged;
+        }
+
         Dictionary<string, object> BuildSettingsPayload() =>
             new()
             {
                 [nameof(HymnInputType)] = (int)hymnInputType,
                 [nameof(ActiveHymn)] = activeHymn,
+                ["LastHymnNumber"] = ResolveLastHymnNumber(),
                 [nameof(ActiveReadTheme)] = ColorToStorageHex(activeReadTheme),
                 [nameof(ActiveAlignment)] = (int)activeAlignment,
                 [nameof(HistoryList)] = HistoryList,
@@ -2025,6 +2455,18 @@ namespace MobiHymn4.Utils
                 [nameof(KeepAwake)] = keepAwake,
                 [nameof(IsOrientationLocked)] = isOrientationLocked,
             };
+
+        string ResolveLastHymnNumber()
+        {
+            if (!string.IsNullOrWhiteSpace(activeHymn?.Number))
+                return activeHymn.Number;
+
+            var preferred = Preferences.Get(PreferencesVar.LAST_HYMN_NUMBER, string.Empty);
+            if (!string.IsNullOrWhiteSpace(preferred))
+                return preferred;
+
+            return HistoryList?.FirstOrDefault()?.Number ?? string.Empty;
+        }
 
         sealed class ReaderSettingsState
         {

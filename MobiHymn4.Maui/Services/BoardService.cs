@@ -13,17 +13,22 @@ namespace MobiHymn4.Services;
 
 public sealed class BoardService : IBoardService
 {
+    public const int DefaultBoardListPageSize = BoardListsPage.DefaultPageSize;
+
     readonly IFirebaseFirestoreAccessor firebase;
     readonly IAuthService auth;
     readonly IProfileService profileService;
-    readonly Dictionary<string, (DateTime LoadedAt, IReadOnlyList<GroupHymnListSummary> Summaries)> summaryCache = new(StringComparer.Ordinal);
+    readonly Dictionary<string, (DateTime LoadedAt, BoardListsPage Page)> summaryCache = new(StringComparer.Ordinal);
     readonly Dictionary<string, (DateTime LoadedAt, BoardSectionTemplate Template)> templateCache = new(StringComparer.Ordinal);
     string cachedListGroupId;
     string cachedListId;
     GroupHymnList cachedList;
     DateTime cachedListLoadedAt;
-    static readonly TimeSpan BoardCacheTtl = TimeSpan.FromSeconds(60);
+    static readonly TimeSpan BoardCacheTtl = TimeSpan.FromMinutes(2);
     static readonly TimeSpan ListCacheTtl = TimeSpan.FromSeconds(45);
+    static readonly TimeSpan ListHymnListsTimeout = TimeSpan.FromSeconds(12);
+    static readonly TimeSpan HymnListFetchTimeout = TimeSpan.FromSeconds(10);
+    static readonly TimeSpan HymnListInitialDefaultTimeout = TimeSpan.FromSeconds(4);
 
     public BoardService(IFirebaseFirestoreAccessor firebase, IAuthService auth, IProfileService profileService)
     {
@@ -34,57 +39,177 @@ public sealed class BoardService : IBoardService
 
     public event EventHandler<GroupHymnList> HymnListChanged;
 
-    public async Task<IReadOnlyList<GroupHymnListSummary>> ListHymnListsAsync(string groupId)
+    public async Task<BoardListsPage> ListHymnListsAsync(
+        string groupId,
+        GroupHymnListSummary startAfter = null,
+        int pageSize = DefaultBoardListPageSize)
     {
-        if (TryGetCachedSummaries(groupId, out var cached))
+        if (startAfter == null && TryGetCachedSummaries(groupId, out var cached))
             return cached;
 
+        var size = Math.Clamp(pageSize, 1, 100);
         try
         {
-            var snapshot = await firebase.Firestore
+            var collection = firebase.Firestore
                 .GetCollection(FirestorePaths.Groups)
                 .GetDocument(groupId)
-                .GetCollection(FirestorePaths.Boards)
-                .GetDocumentsAsync<BoardFirestoreDocument>();
+                .GetCollection(FirestorePaths.Boards);
 
-            var summaries = snapshot?.Documents?
-                .Select(d => FirestoreMappers.ToGroupHymnListSummary(d.Data?.Id ?? string.Empty, d.Data))
-                .OrderByDescending(l => l.CreatedAt)
-                .ToList() ?? new List<GroupHymnListSummary>();
+            IQuery query = collection.OrderBy("createdAt", descending: true);
+            if (startAfter != null)
+            {
+                var cursor = ToCreatedAtCursor(startAfter);
+                query = query.StartingAfter(cursor);
+            }
 
-            CacheSummaries(groupId, summaries);
-            return summaries;
+            query = query.LimitedTo(size + 1);
+            // BoardFirestoreDocument keeps hymns[] available so legacy docs without hymnCount still show real totals.
+            var snapshot = await query
+                .GetDocumentsAsync<BoardFirestoreDocument>()
+                .WaitAsync(ListHymnListsTimeout);
+            var page = ToBoardListsPage(snapshot, size);
+
+            // OrderBy(createdAt) silently drops docs that lack the field — retry without ordering.
+            if (startAfter == null && page.Items.Count == 0)
+            {
+                Debug.WriteLine("ListHymnListsAsync ordered query returned 0 docs; trying unordered fallback.");
+                page = await ListHymnListsFallbackAsync(groupId, startAfter, size);
+            }
+
+            if (startAfter == null && page.Items.Count > 0)
+                CacheSummaries(groupId, page);
+
+            return page;
+        }
+        catch (TimeoutException)
+        {
+            Debug.WriteLine("ListHymnListsAsync timed out.");
+            throw;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"ListHymnListsAsync failed: {ex.Message}");
-            return Array.Empty<GroupHymnListSummary>();
+            Debug.WriteLine($"ListHymnListsAsync ordered query failed: {ex.Message}");
+            try
+            {
+                var page = await ListHymnListsFallbackAsync(groupId, startAfter, size);
+                if (startAfter == null && page.Items.Count > 0)
+                    CacheSummaries(groupId, page);
+                return page;
+            }
+            catch (TimeoutException)
+            {
+                Debug.WriteLine("ListHymnListsAsync fallback timed out.");
+                throw;
+            }
+            catch (Exception fallbackEx)
+            {
+                Debug.WriteLine($"ListHymnListsAsync fallback failed: {fallbackEx.Message}");
+                return BoardListsPage.Empty;
+            }
         }
+    }
+
+    async Task<BoardListsPage> ListHymnListsFallbackAsync(
+        string groupId,
+        GroupHymnListSummary startAfter,
+        int size)
+    {
+        // Bound the download — never pull the entire boards collection.
+        var snapshot = await firebase.Firestore
+            .GetCollection(FirestorePaths.Groups)
+            .GetDocument(groupId)
+            .GetCollection(FirestorePaths.Boards)
+            .LimitedTo(Math.Max(size + 1, 50))
+            .GetDocumentsAsync<BoardFirestoreDocument>()
+            .WaitAsync(ListHymnListsTimeout);
+
+        var all = snapshot?.Documents?
+            .Select(ToSummary)
+            .OrderByDescending(l => l.CreatedAt)
+            .ToList() ?? new List<GroupHymnListSummary>();
+
+        IEnumerable<GroupHymnListSummary> window = all;
+        if (startAfter != null)
+        {
+            var idx = all.FindIndex(l => string.Equals(l.Id, startAfter.Id, StringComparison.Ordinal));
+            window = idx >= 0 ? all.Skip(idx + 1) : all.Where(l => l.CreatedAt < startAfter.CreatedAt);
+        }
+
+        var batch = window.Take(size + 1).ToList();
+        var hasMore = batch.Count > size || all.Count > size;
+        return new BoardListsPage
+        {
+            Items = hasMore ? batch.Take(size).ToList() : batch,
+            HasMore = hasMore,
+        };
+    }
+
+    static GroupHymnListSummary ToSummary(IDocumentSnapshot<BoardFirestoreDocument> doc)
+    {
+        var listId = doc?.Reference?.Id
+            ?? doc?.Data?.Id
+            ?? string.Empty;
+        return FirestoreMappers.ToGroupHymnListSummary(listId, doc?.Data);
+    }
+
+    static BoardListsPage ToBoardListsPage(IQuerySnapshot<BoardFirestoreDocument> snapshot, int pageSize)
+    {
+        var docs = snapshot?.Documents?.ToList();
+        if (docs == null || docs.Count == 0)
+            return BoardListsPage.Empty;
+
+        var hasMore = docs.Count > pageSize;
+        var take = hasMore ? docs.Take(pageSize) : docs;
+        var items = take.Select(ToSummary).ToList();
+
+        return new BoardListsPage
+        {
+            Items = items,
+            HasMore = hasMore,
+        };
     }
 
     public async Task<bool> HymnListExistsForDateAsync(string groupId, DateTime date, string excludeListId = null)
     {
         var target = date.Date;
+        var dateKey = GroupHymnListDates.ToDateKey(target);
         try
         {
-            var snapshot = await firebase.Firestore
+            var boards = firebase.Firestore
                 .GetCollection(FirestorePaths.Groups)
                 .GetDocument(groupId)
-                .GetCollection(FirestorePaths.Boards)
-                .GetDocumentsAsync<BoardFirestoreDocument>();
+                .GetCollection(FirestorePaths.Boards);
 
-            if (snapshot?.Documents == null)
+            var byId = await boards
+                .GetDocument(dateKey)
+                .GetDocumentSnapshotAsync<BoardListSummaryFirestoreDocument>();
+
+            if (byId?.Data != null)
+            {
+                var existingId = byId.Data.Id ?? dateKey;
+                if (string.IsNullOrWhiteSpace(excludeListId)
+                    || !string.Equals(existingId, excludeListId, StringComparison.Ordinal))
+                    return true;
+            }
+
+            // Legacy lists may use a non-date document id with a formatted name.
+            var name = GroupHymnListDates.FormatName(target);
+            var byName = await boards
+                .WhereEqualsTo("name", name)
+                .LimitedTo(8)
+                .GetDocumentsAsync<BoardListSummaryFirestoreDocument>();
+
+            if (byName?.Documents == null)
                 return false;
 
-            foreach (var doc in snapshot.Documents)
+            foreach (var doc in byName.Documents)
             {
-                var listId = doc.Data?.Id ?? string.Empty;
+                var listId = doc.Reference?.Id ?? doc.Data?.Id ?? string.Empty;
                 if (!string.IsNullOrWhiteSpace(excludeListId)
                     && string.Equals(listId, excludeListId, StringComparison.Ordinal))
                     continue;
 
-                var name = doc.Data?.Name;
-                if (GroupHymnListDates.TryGetScheduledDate(listId, name, out var existing)
+                if (GroupHymnListDates.TryGetScheduledDate(listId, doc.Data?.Name, out var existing)
                     && existing.Date == target)
                     return true;
             }
@@ -95,6 +220,18 @@ public sealed class BoardService : IBoardService
         }
 
         return false;
+    }
+
+    static object ToCreatedAtCursor(GroupHymnListSummary summary)
+    {
+        var created = summary?.CreatedAt ?? default;
+        if (created == default)
+            return DateTimeOffset.MinValue;
+
+        var utc = created.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(created, DateTimeKind.Utc)
+            : created.ToUniversalTime();
+        return new DateTimeOffset(utc);
     }
 
     public async Task<GroupHymnList> CreateHymnListAsync(string groupId, DateTime date)
@@ -190,11 +327,17 @@ public sealed class BoardService : IBoardService
                 .GetDocument(groupId)
                 .GetCollection(FirestorePaths.Boards)
                 .GetDocument(listId)
-                .GetDocumentSnapshotAsync<BoardFirestoreDocument>();
+                .GetDocumentSnapshotAsync<BoardFirestoreDocument>()
+                .WaitAsync(HymnListFetchTimeout);
 
             var list = FirestoreMappers.ToGroupHymnList(groupId, listId, snapshot?.Data);
             CacheList(groupId, listId, list);
             return list;
+        }
+        catch (TimeoutException)
+        {
+            Debug.WriteLine($"GetHymnListAsync timed out for {groupId}/{listId}.");
+            return FirestoreMappers.ToGroupHymnList(groupId, listId, null);
         }
         catch (Exception ex)
         {
@@ -211,7 +354,7 @@ public sealed class BoardService : IBoardService
     {
         var tcs = new TaskCompletionSource<GroupHymnList>(TaskCreationOptions.RunContinuationsAsynchronously);
         var initialDelivered = 0;
-        var timeout = initialTimeout ?? TimeSpan.FromSeconds(8);
+        var timeout = initialTimeout ?? HymnListInitialDefaultTimeout;
 
         IDisposable registration = firebase.Firestore
             .GetCollection(FirestorePaths.Groups)
@@ -242,6 +385,20 @@ public sealed class BoardService : IBoardService
 
         var disposable = new SubscriptionDisposable(() => registration?.Dispose());
 
+        // Race a direct get with the first snapshot so slow listeners do not block first paint.
+        var getTask = GetHymnListAsync(groupId, listId);
+        _ = getTask.ContinueWith(
+            t =>
+            {
+                if (t.Status != TaskStatus.RanToCompletion || t.Result == null)
+                    return;
+                if (Interlocked.CompareExchange(ref initialDelivered, 1, 0) == 0)
+                    tcs.TrySetResult(t.Result);
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+
         try
         {
             var initial = await tcs.Task.WaitAsync(timeout);
@@ -249,7 +406,17 @@ public sealed class BoardService : IBoardService
         }
         catch (TimeoutException)
         {
-            var fallback = await GetHymnListAsync(groupId, listId);
+            Debug.WriteLine($"SubscribeHymnListWithInitialAsync timed out for {groupId}/{listId}.");
+            GroupHymnList fallback;
+            try
+            {
+                fallback = await getTask.WaitAsync(TimeSpan.FromSeconds(2));
+            }
+            catch
+            {
+                fallback = FirestoreMappers.ToGroupHymnList(groupId, listId, null);
+            }
+
             if (Interlocked.CompareExchange(ref initialDelivered, 1, 0) == 0)
                 tcs.TrySetResult(fallback);
             return (disposable, fallback);
@@ -758,9 +925,9 @@ public sealed class BoardService : IBoardService
         InvalidateBoardCache(groupId);
     }
 
-    bool TryGetCachedSummaries(string groupId, out IReadOnlyList<GroupHymnListSummary> summaries)
+    bool TryGetCachedSummaries(string groupId, out BoardListsPage page)
     {
-        summaries = null;
+        page = null;
         if (!summaryCache.TryGetValue(groupId, out var entry))
             return false;
 
@@ -770,8 +937,8 @@ public sealed class BoardService : IBoardService
             return false;
         }
 
-        summaries = entry.Summaries;
-        return true;
+        page = entry.Page;
+        return page != null;
     }
 
     bool TryGetCachedTemplate(string groupId, out BoardSectionTemplate template)
@@ -790,8 +957,8 @@ public sealed class BoardService : IBoardService
         return true;
     }
 
-    void CacheSummaries(string groupId, IReadOnlyList<GroupHymnListSummary> summaries) =>
-        summaryCache[groupId] = (DateTime.UtcNow, summaries);
+    void CacheSummaries(string groupId, BoardListsPage page) =>
+        summaryCache[groupId] = (DateTime.UtcNow, page);
 
     void CacheTemplate(string groupId, BoardSectionTemplate template) =>
         templateCache[groupId] = (DateTime.UtcNow, template);

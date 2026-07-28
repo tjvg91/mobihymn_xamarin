@@ -2,9 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using MobiHymn4.Models;
+using MobiHymn4.Services;
 using MobiHymn4.Utils;
 using MvvmHelpers;
+using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
+using Microsoft.Maui.Storage;
 
 namespace MobiHymn4.ViewModels
 {
@@ -202,6 +205,27 @@ namespace MobiHymn4.ViewModels
             }
         }
 
+        private bool isCloudSyncing;
+        public bool IsCloudSyncing
+        {
+            get => isCloudSyncing;
+            set => SetProperty(ref isCloudSyncing, value);
+        }
+
+        private string cloudSyncStatus = string.Empty;
+        public string CloudSyncStatus
+        {
+            get => cloudSyncStatus;
+            set => SetProperty(ref cloudSyncStatus, value);
+        }
+
+        private bool canCloudSync;
+        public bool CanCloudSync
+        {
+            get => canCloudSync;
+            set => SetProperty(ref canCloudSync, value);
+        }
+
         private ObservableRangeCollection<SyncChangeItem> syncChangeItems = new();
         public ObservableRangeCollection<SyncChangeItem> SyncChangeItems
         {
@@ -223,12 +247,67 @@ namespace MobiHymn4.ViewModels
 
             badgeCatalogHash = globalInstance.PendingCatalogDiff?.CatalogHash;
             UpdateCatalogSummary();
+            RefreshCloudSyncState();
 
             globalInstance.DarkModeChanged += GlobalInstance_DarkModeChanged;
             globalInstance.KeepAwakeChanged += GlobalInstance_KeepAwakeChanged;
             globalInstance.OrientationLockedChanged += GlobalInstance_OrientationLockedChanged;
             globalInstance.IsFetchingSyncDetailsChanged += GlobalInstance_IsFetchingSyncDetailsChanged;
             globalInstance.CatalogDiffChanged += GlobalInstance_CatalogDiffChanged;
+
+            try
+            {
+                var cloudSync = ServiceHelper.Get<IUserSettingsSyncService>();
+                cloudSync.SyncStateChanged += (_, _) =>
+                    MainThread.BeginInvokeOnMainThread(RefreshCloudSyncState);
+                ServiceHelper.Get<IAuthService>().AuthStateChanged += (_, _) =>
+                    MainThread.BeginInvokeOnMainThread(RefreshCloudSyncState);
+            }
+            catch
+            {
+            }
+        }
+
+        public void RefreshCloudSyncState()
+        {
+            try
+            {
+                var auth = ServiceHelper.Get<IAuthService>();
+                var sync = ServiceHelper.Get<IUserSettingsSyncService>();
+                CanCloudSync = auth.IsSignedIn;
+                IsCloudSyncing = sync.IsSyncing;
+                if (!auth.IsSignedIn)
+                {
+                    CloudSyncStatus = "Sign in to back up settings, bookmarks, and history.";
+                    return;
+                }
+
+                if (Preferences.Get(PreferencesVar.CLOUD_SETTINGS_PENDING, false) && !sync.IsSyncing)
+                {
+                    CloudSyncStatus = string.IsNullOrWhiteSpace(sync.LastSyncStatus)
+                        ? "Saved offline — will sync when online."
+                        : sync.LastSyncStatus;
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(sync.LastSyncStatus))
+                    CloudSyncStatus = sync.LastSyncStatus;
+                else if (sync.LastSyncedAt.HasValue)
+                    CloudSyncStatus = $"Last synced {sync.LastSyncedAt.Value.ToLocalTime():g}";
+                else
+                {
+                    var stored = Preferences.Get(PreferencesVar.CLOUD_SETTINGS_UPDATED_AT, string.Empty);
+                    CloudSyncStatus = DateTime.TryParse(stored, null,
+                        System.Globalization.DateTimeStyles.RoundtripKind, out var at)
+                        ? $"Last synced {at.ToLocalTime():g}"
+                        : "Not synced yet.";
+                }
+            }
+            catch
+            {
+                CanCloudSync = false;
+                CloudSyncStatus = "Cloud sync unavailable.";
+            }
         }
 
         private void GlobalInstance_CatalogDiffChanged(object sender, EventArgs e)

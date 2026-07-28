@@ -26,6 +26,16 @@ public static class AuthNavigationHelper
 
     public static async Task SignOutAndNavigateAsync()
     {
+        try
+        {
+            // Flush this account's pending backup before uid becomes null.
+            await ServiceHelper.Get<IUserSettingsSyncService>().PushAsync();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Sign-out settings flush skipped: {ex.Message}");
+        }
+
         await ServiceHelper.Get<IAuthService>().SignOutAsync();
         await NavigateForAuthStateAsync();
     }

@@ -18,108 +18,176 @@
         </Style>
     </ContentPage.Resources>
 
-    <ScrollView>
-        <VerticalStackLayout Padding="24,40,24,28" Spacing="20">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                <VerticalStackLayout Grid.Column="0" Spacing="6">
-                    <Label Text="{Binding ModeTitle}" Style="{StaticResource Title}" FontAttributes="Bold" FontSize="22"/>
-                    <Label Text="{Binding ModeSubtitle}" Style="{StaticResource Subtitle}" LineBreakMode="WordWrap"/>
-                </VerticalStackLayout>
-                <ImageButton
-                    Grid.Column="1"
-                    WidthRequest="40"
-                    HeightRequest="40"
-                    Padding="8"
-                    BackgroundColor="Transparent"
-                    VerticalOptions="Start"
-                    HorizontalOptions="End"
-                    Clicked="Close_Clicked">
-                    <ImageButton.Source>
-                        <FontImageSource
-                            FontFamily="FAS"
-                            Glyph="{x:Static fontawesome:FontAwesomeIcons.Xmark}"
-                            Size="20"
-                            Color="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
-                    </ImageButton.Source>
-                </ImageButton>
-            </Grid>
-
-            <VerticalStackLayout Spacing="14">
-                <VerticalStackLayout Spacing="4">
-                    <Label Text="Email" Style="{StaticResource Title}"/>
-                    <Border x:Name="emailBorder" Style="{StaticResource InputBorder}">
-                        <Entry
-                            Style="{StaticResource FormEntry}"
-                            Text="{Binding Email}"
-                            Keyboard="Email"
-                            Placeholder="you@example.com"
-                            Focused="Entry_Focused"
-                            Unfocused="Entry_Unfocused"/>
-                    </Border>
-                </VerticalStackLayout>
-
-                <VerticalStackLayout Spacing="4">
-                    <Label Text="Password" Style="{StaticResource Title}"/>
-                    <Border x:Name="passwordBorder" Style="{StaticResource InputBorder}">
-                        <Entry
-                            Style="{StaticResource FormEntry}"
-                            Text="{Binding Password}"
-                            IsPassword="True"
-                            Placeholder="Password"
-                            Focused="Entry_Focused"
-                            Unfocused="Entry_Unfocused"/>
-                    </Border>
-                </VerticalStackLayout>
-
+    <!-- Root fills the page; inner host matches that height so the form can Center vertically. -->
+    <Grid
+        x:Name="rootLayout"
+        SizeChanged="RootLayout_SizeChanged">
+        <ScrollView
+            x:Name="loginScroll"
+            VerticalOptions="Fill"
+            HorizontalOptions="Fill"
+            Orientation="Vertical"
+            SizeChanged="RootLayout_SizeChanged">
+            <Grid
+                x:Name="viewportHost"
+                Padding="24,28"
+                RowDefinitions="*,Auto,*"
+                VerticalOptions="Fill"
+                HorizontalOptions="Fill">
                 <VerticalStackLayout
-                    Spacing="4"
-                    IsVisible="{Binding ShowConfirmPassword}">
-                    <Label Text="Confirm Password" Style="{StaticResource Title}"/>
-                    <Border x:Name="confirmPasswordBorder" Style="{StaticResource InputBorder}">
-                        <Entry
-                            Style="{StaticResource FormEntry}"
-                            Text="{Binding ConfirmPassword}"
-                            IsPassword="True"
-                            Placeholder="Re-enter password"
-                            Focused="Entry_Focused"
-                            Unfocused="Entry_Unfocused"/>
-                    </Border>
+                    Grid.Row="1"
+                    Spacing="20"
+                    VerticalOptions="Center"
+                    HorizontalOptions="Fill"
+                    MaximumWidthRequest="480">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <VerticalStackLayout Grid.Column="0" Spacing="6">
+                            <Label Text="{Binding ModeTitle}" Style="{StaticResource Title}" FontAttributes="Bold" FontSize="22"/>
+                            <Label Text="{Binding ModeSubtitle}" Style="{StaticResource Subtitle}" LineBreakMode="WordWrap"/>
+                        </VerticalStackLayout>
+                        <ImageButton
+                            Grid.Column="1"
+                            WidthRequest="40"
+                            HeightRequest="40"
+                            Padding="8"
+                            BackgroundColor="Transparent"
+                            VerticalOptions="Start"
+                            HorizontalOptions="End"
+                            Clicked="Close_Clicked">
+                            <ImageButton.Source>
+                                <FontImageSource
+                                    FontFamily="FAS"
+                                    Glyph="{x:Static fontawesome:FontAwesomeIcons.Xmark}"
+                                    Size="20"
+                                    Color="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+                            </ImageButton.Source>
+                        </ImageButton>
+                    </Grid>
+
+                    <VerticalStackLayout Spacing="14">
+                        <VerticalStackLayout Spacing="4">
+                            <Label Text="Email" Style="{StaticResource Title}"/>
+                            <Border x:Name="emailBorder" Style="{StaticResource InputBorder}">
+                                <Entry
+                                    Style="{StaticResource FormEntry}"
+                                    Text="{Binding Email}"
+                                    Keyboard="Email"
+                                    Placeholder="you@example.com"
+                                    Focused="Entry_Focused"
+                                    Unfocused="Entry_Unfocused"/>
+                            </Border>
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout Spacing="4">
+                            <Label Text="Password" Style="{StaticResource Title}"/>
+                            <Border x:Name="passwordBorder" Style="{StaticResource InputBorder}">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Entry
+                                        x:Name="entryPassword"
+                                        Style="{StaticResource FormEntry}"
+                                        Text="{Binding Password}"
+                                        IsPassword="True"
+                                        Placeholder="Password"
+                                        Focused="Entry_Focused"
+                                        Unfocused="Entry_Unfocused"/>
+                                    <ImageButton
+                                        x:Name="btnTogglePassword"
+                                        Grid.Column="1"
+                                        WidthRequest="40"
+                                        HeightRequest="40"
+                                        Padding="8"
+                                        BackgroundColor="Transparent"
+                                        VerticalOptions="Center"
+                                        Clicked="TogglePassword_Clicked">
+                                        <ImageButton.Source>
+                                            <FontImageSource
+                                                x:Name="passwordVisibilityIcon"
+                                                FontFamily="FAS"
+                                                Glyph="{x:Static fontawesome:FontAwesomeIcons.Eye}"
+                                                Size="16"
+                                                Color="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                        </ImageButton.Source>
+                                    </ImageButton>
+                                </Grid>
+                            </Border>
+                            <Button
+                                Text="Forgot password?"
+                                Style="{StaticResource Button-Clear}"
+                                HorizontalOptions="End"
+                                Padding="0"
+                                HeightRequest="36"
+                                FontSize="13"
+                                IsVisible="{Binding ShowForgotPassword}"
+                                Command="{Binding ForgotPasswordCommand}"/>
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout
+                            Spacing="4"
+                            IsVisible="{Binding ShowConfirmPassword}">
+                            <Label Text="Confirm Password" Style="{StaticResource Title}"/>
+                            <Border x:Name="confirmPasswordBorder" Style="{StaticResource InputBorder}">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Entry
+                                        x:Name="entryConfirmPassword"
+                                        Style="{StaticResource FormEntry}"
+                                        Text="{Binding ConfirmPassword}"
+                                        IsPassword="True"
+                                        Placeholder="Re-enter password"
+                                        Focused="Entry_Focused"
+                                        Unfocused="Entry_Unfocused"/>
+                                    <ImageButton
+                                        x:Name="btnToggleConfirmPassword"
+                                        Grid.Column="1"
+                                        WidthRequest="40"
+                                        HeightRequest="40"
+                                        Padding="8"
+                                        BackgroundColor="Transparent"
+                                        VerticalOptions="Center"
+                                        Clicked="ToggleConfirmPassword_Clicked">
+                                        <ImageButton.Source>
+                                            <FontImageSource
+                                                x:Name="confirmPasswordVisibilityIcon"
+                                                FontFamily="FAS"
+                                                Glyph="{x:Static fontawesome:FontAwesomeIcons.Eye}"
+                                                Size="16"
+                                                Color="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                        </ImageButton.Source>
+                                    </ImageButton>
+                                </Grid>
+                            </Border>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+
+                    <Label
+                        Text="{Binding StatusMessage}"
+                        Style="{StaticResource Subsubtitle}"
+                        IsVisible="{Binding HasStatusMessage}"
+                        LineBreakMode="WordWrap">
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding StatusIsError}" Value="True">
+                                <Setter Property="TextColor" Value="{StaticResource Red}"/>
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding StatusIsError}" Value="False">
+                                <Setter Property="TextColor" Value="#2E7D32"/>
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+
+                    <VerticalStackLayout Spacing="10">
+                        <Button Text="Sign In" Command="{Binding SignInCommand}" IsVisible="{Binding ShowSignInButton}"/>
+                        <Button Text="Sign Up" Command="{Binding SignUpCommand}" IsVisible="{Binding ShowSignUpButton}"/>
+                    </VerticalStackLayout>
+
+                    <BoxView/>
+
+                    <Button
+                        Text="{Binding ToggleLinkText}"
+                        Style="{StaticResource Button-Clear}"
+                        Command="{Binding ToggleModeCommand}"/>
+
+                    <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" Color="{StaticResource Primary}"/>
                 </VerticalStackLayout>
-            </VerticalStackLayout>
-
-            <Label
-                Text="{Binding StatusMessage}"
-                Style="{StaticResource Subsubtitle}"
-                TextColor="{StaticResource Red}"
-                IsVisible="{Binding HasStatusMessage}"
-                LineBreakMode="WordWrap"/>
-
-            <VerticalStackLayout Spacing="10">
-                <Button Text="Sign In" Command="{Binding SignInCommand}" IsVisible="{Binding ShowSignInButton}"/>
-                <Button Text="Sign Up" Command="{Binding SignUpCommand}" IsVisible="{Binding ShowSignUpButton}"/>
-                <Button
-                    Text="Continue with Google"
-                    Style="{StaticResource Button-Outline}"
-                    ContentLayout="Left, 10"
-                    Command="{Binding GoogleSignInCommand}">
-                    <Button.ImageSource>
-                        <FontImageSource
-                            FontFamily="FAB"
-                            Glyph="&#xf1a0;"
-                            Size="18"
-                            Color="{AppThemeBinding Light={StaticResource PrimaryText}, Dark={StaticResource PrimaryText}}"/>
-                    </Button.ImageSource>
-                </Button>
-            </VerticalStackLayout>
-
-            <BoxView/>
-
-            <Button
-                Text="{Binding ToggleLinkText}"
-                Style="{StaticResource Button-Clear}"
-                Command="{Binding ToggleModeCommand}"/>
-
-            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" Color="{StaticResource Primary}"/>
-        </VerticalStackLayout>
-    </ScrollView>
+            </Grid>
+        </ScrollView>
+    </Grid>
 </ContentPage>

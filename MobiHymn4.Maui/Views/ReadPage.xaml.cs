@@ -42,10 +42,15 @@ namespace MobiHymn4.Views
         bool? boardToolbarSignedIn;
         bool settingsOverlayBuilt;
         bool settingsOverlayBuildQueued;
+        bool isNavigatingAway;
+        bool homeNavInFlight;
+        int lastBoardIconUnread = int.MinValue;
+        Color lastBoardIconColor;
         Border settingsCard;
         VerticalStackLayout settingsContent;
         Label settingsTitleLabel;
         CancellationTokenSource setupLogoPulseCts;
+        Animation setupLogoPulseAnimation;
         List<(Border Box, Label Label, TextAlignment Value)> alignmentOptions;
         List<(Border Box, Label Label, Color Value)> themeOptions;
         List<(Border Box, Label Label, string Value)> fontOptions;
@@ -147,6 +152,8 @@ namespace MobiHymn4.Views
 
         protected override async void OnAppearing()
         {
+            isNavigatingAway = false;
+            homeNavInFlight = false;
             base.OnAppearing();
 
             if (initializationException != null)
@@ -166,8 +173,6 @@ namespace MobiHymn4.Views
             if (settingsOverlayBuilt)
                 UpdateSelectedStates();
             ShowIntroIfNeeded();
-            if (!Preferences.Get(PreferencesVar.IS_NEW, true))
-                CommunitySignInPresenter.ScheduleShow(this);
             ShowDownloadPopupIfNeeded();
             QueueInitStarted();
             ScheduleDownloadPopupRetries();
@@ -175,12 +180,18 @@ namespace MobiHymn4.Views
 
             UpdateBoardChrome();
             UpdateSetupLogoPulse();
-            QueueSettingsOverlayBuild();
+            // Settings overlay is built on first open / after lyrics are ready — not during load.
+            if (model?.IsLoadingLyrics != true)
+                QueueSettingsOverlayBuild();
+
+            // Returning users already have lyrics — offer signup once the page is up.
+            TryScheduleSignupAfterReaderReady();
         }
 
         protected override void OnDisappearing()
         {
             base.OnDisappearing();
+            isNavigatingAway = true;
             StopSetupLogoPulse();
             audioPlayer?.Pause();
             isPlaying = false;
@@ -241,6 +252,7 @@ namespace MobiHymn4.Views
         {
             Preferences.Set(PreferencesVar.IS_NEW, false);
             globalInstance.Init();
+            // Signup waits for NotifyReaderContentReady (lyrics on screen), not intro dismiss.
             CommunitySignInPresenter.ScheduleShow(this);
         }
 
@@ -275,18 +287,35 @@ namespace MobiHymn4.Views
         {
             if (e.PropertyName == nameof(ReadViewModel.BookmarkFont)
                 || e.PropertyName is nameof(ReadViewModel.IsSelectable) or nameof(ReadViewModel.ShowLyricsContent))
-                RefreshToolbarIcons();
-            else if (e.PropertyName == nameof(ReadViewModel.IsLoadingLyrics))
-                UpdateSetupLogoPulse();
+            {
+                if (!isNavigatingAway)
+                    RefreshToolbarIcons();
+            }
+            else if (e.PropertyName is nameof(ReadViewModel.IsLoadingLyrics)
+                or nameof(ReadViewModel.ShowLyricsContent)
+                or nameof(ReadViewModel.HasLyrics))
+            {
+                if (e.PropertyName == nameof(ReadViewModel.IsLoadingLyrics))
+                {
+                    UpdateSetupLogoPulse();
+                    if (model?.IsLoadingLyrics != true)
+                        QueueSettingsOverlayBuild();
+                }
+
+                TryScheduleSignupAfterReaderReady();
+            }
             else if (e.PropertyName == nameof(ReadViewModel.IsReadView))
-                UpdateBoardNavArrows();
+            {
+                if (!isNavigatingAway)
+                    UpdateBoardNavArrows();
+            }
         }
 
         // Android can scramble FontImageSource glyphs when only one ToolbarItem icon is
         // replaced, so always reassign the full set together.
         void RefreshToolbarIcons()
         {
-            if (initializationException != null)
+            if (initializationException != null || isNavigatingAway)
                 return;
 
             var color = (Color)Application.Current.Resources["PrimaryText"];
@@ -308,7 +337,7 @@ namespace MobiHymn4.Views
 
         void UpdateSelectionToolbar(Color color)
         {
-            if (tbSelection == null)
+            if (tbSelection == null || isNavigatingAway)
                 return;
 
             var showOnAndroid = DeviceInfo.Platform == DevicePlatform.Android
@@ -316,7 +345,8 @@ namespace MobiHymn4.Views
                 && model.ShowLyricsContent;
             if (!showOnAndroid)
             {
-                ToolbarItems.Remove(tbSelection);
+                if (ToolbarItems.Contains(tbSelection))
+                    ToolbarItems.Remove(tbSelection);
                 return;
             }
 
@@ -544,7 +574,26 @@ namespace MobiHymn4.Views
 
         async void btnHome_Clicked(System.Object sender, System.EventArgs e)
         {
-            await Shell.Current.GoToAsync($"//{Routes.HOME}");
+            if (homeNavInFlight || isNavigatingAway)
+                return;
+
+            homeNavInFlight = true;
+            isNavigatingAway = true;
+            try
+            {
+                // Avoid racing Shell ActionBar reveal (cursor/board icons) on Android.
+                await Task.Delay(180);
+                if (Shell.Current == null)
+                    return;
+
+                await Shell.Current.GoToAsync($"//{Routes.HOME}", animate: false);
+            }
+            catch (Exception ex)
+            {
+                isNavigatingAway = false;
+                homeNavInFlight = false;
+                System.Diagnostics.Debug.WriteLine($"btnHome_Clicked failed: {ex.Message}");
+            }
         }
 
         async void tbSearch_Clicked(System.Object sender, System.EventArgs e)
@@ -560,6 +609,9 @@ namespace MobiHymn4.Views
 
         void UpdateBoardChrome()
         {
+            if (isNavigatingAway)
+                return;
+
             if (model != null)
                 model.IsBoardPaneOpen = dashboardService.IsOpen;
 
@@ -602,20 +654,26 @@ namespace MobiHymn4.Views
 
         void UpdateBoardToolbarIcon()
         {
-            if (tbBoard == null || !authService.IsSignedIn)
+            if (tbBoard == null || !authService.IsSignedIn || isNavigatingAway)
                 return;
 
-            var unread = dashboardService.HasUnreadNotifications;
-            tbBoard.IconImageSource = new FontImageSource
-            {
-                FontFamily = "FAS",
-                Glyph = unread ? "\uf0a2" : "\uf46d", // bell vs chalkboard
-                Size = 17,
-                Color = unread
-                    ? Color.FromArgb("#C62828")
-                    : GetNavBarIconColor(),
-            };
+            var unread = dashboardService.UnreadNotificationCount;
+            var color = GetNavBarIconColor();
+            if (unread == lastBoardIconUnread
+                && lastBoardIconColor != null
+                && ColorsEqual(lastBoardIconColor, color))
+                return;
+
+            lastBoardIconUnread = unread;
+            lastBoardIconColor = color;
+            tbBoard.IconImageSource = BoardToolbarIconFactory.Create(unread, color);
         }
+
+        static bool ColorsEqual(Color a, Color b) =>
+            Math.Abs(a.Red - b.Red) < 0.001
+            && Math.Abs(a.Green - b.Green) < 0.001
+            && Math.Abs(a.Blue - b.Blue) < 0.001
+            && Math.Abs(a.Alpha - b.Alpha) < 0.001;
 
         /// <summary>
         /// Handles Android back for reader overlays (settings / board) before shell history.
@@ -747,11 +805,12 @@ namespace MobiHymn4.Views
 
         void QueueSettingsOverlayBuild()
         {
-            if (settingsOverlayBuilt || settingsOverlayBuildQueued)
+            if (settingsOverlayBuilt || settingsOverlayBuildQueued || isNavigatingAway)
                 return;
 
             settingsOverlayBuildQueued = true;
-            Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(500), EnsureSettingsOverlayBuilt);
+            // After lyrics are visible, build off the critical path with a short idle delay.
+            Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(800), EnsureSettingsOverlayBuilt);
         }
 
         void EnsureSettingsOverlayBuilt()
@@ -1184,7 +1243,22 @@ namespace MobiHymn4.Views
             if (sender is string tag && tag == "sync")
                 return;
 
-            MainThread.BeginInvokeOnMainThread(ApplyBoardOrActiveHymnState);
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                ApplyBoardOrActiveHymnState();
+                // Lyrics may already be bound after init — notify when the reader paints them.
+                Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(400),
+                    TryScheduleSignupAfterReaderReady);
+            });
+        }
+
+        void TryScheduleSignupAfterReaderReady()
+        {
+            // ShowLyricsContent = has lyrics and download overlay is gone.
+            if (model?.ShowLyricsContent != true)
+                return;
+
+            CommunitySignInPresenter.NotifyReaderContentReady(this);
         }
 
         void GlobalInstance_SettingsLoaded(object sender, EventArgs e)
@@ -1397,68 +1471,64 @@ namespace MobiHymn4.Views
 
         void StartSetupLogoPulse()
         {
-            if (setupLogoPulseCts != null || setupLogoPulse == null || setupLogo == null)
+            if (setupLogoPulseAnimation != null || setupLogoPulse == null)
                 return;
 
-            setupLogoPulseCts = new CancellationTokenSource();
-            _ = RunSetupLogoPulseAsync(setupLogoPulseCts.Token);
+            setupLogoPulse.Scale = 1;
+            setupLogoPulse.Opacity = 0.18;
+
+            // Single composition animation on the halo only — smoother under UI load
+            // than restarting dual ScaleTo tasks every half-cycle.
+            setupLogoPulseAnimation = new Animation();
+            setupLogoPulseAnimation.Add(0, 0.5, new Animation(v =>
+            {
+                setupLogoPulse.Scale = v;
+                setupLogoPulse.Opacity = 0.12 + (v - 1) * 0.9;
+            }, 1, 1.14, Easing.SinInOut));
+            setupLogoPulseAnimation.Add(0.5, 1, new Animation(v =>
+            {
+                setupLogoPulse.Scale = v;
+                setupLogoPulse.Opacity = 0.12 + (v - 1) * 0.9;
+            }, 1.14, 1, Easing.SinInOut));
+
+            setupLogoPulseAnimation.Commit(
+                setupLogoPulse,
+                "SetupLogoPulse",
+                length: 1400,
+                easing: Easing.Linear,
+                finished: (_, canceled) =>
+                {
+                    if (canceled || model?.IsLoadingLyrics != true)
+                        return;
+                    setupLogoPulseAnimation = null;
+                    StartSetupLogoPulse();
+                },
+                repeat: () => false);
         }
 
         void StopSetupLogoPulse()
         {
             var cts = setupLogoPulseCts;
             setupLogoPulseCts = null;
-
             if (cts != null)
             {
                 cts.Cancel();
                 cts.Dispose();
             }
 
-            if (setupLogoPulse == null)
-                return;
+            setupLogoPulseAnimation = null;
+            setupLogoPulse?.AbortAnimation("SetupLogoPulse");
+            setupLogoPulse?.AbortAnimation("ScaleTo");
+            setupLogo?.AbortAnimation("ScaleTo");
 
-            setupLogoPulse.AbortAnimation("ScaleTo");
-            setupLogoPulse.Scale = 1;
-            setupLogoPulse.Opacity = 0.2;
-
-            if (setupLogo == null)
-                return;
-
-            setupLogo.AbortAnimation("ScaleTo");
-            setupLogo.Scale = 1;
-        }
-
-        async Task RunSetupLogoPulseAsync(CancellationToken token)
-        {
-            while (!token.IsCancellationRequested && model?.IsLoadingLyrics == true)
+            if (setupLogoPulse != null)
             {
-                try
-                {
-                    if (setupLogoPulse == null || setupLogo == null)
-                        break;
-
-                    setupLogoPulse.Opacity = 0.25;
-                    setupLogoPulse.Scale = 1;
-                    setupLogo.Scale = 1;
-
-                    await Task.WhenAll(
-                        setupLogoPulse.ScaleTo(1.15, 650, Easing.CubicOut),
-                        setupLogo.ScaleTo(1.06, 650, Easing.CubicOut));
-
-                    if (token.IsCancellationRequested)
-                        break;
-
-                    setupLogoPulse.Opacity = 0.08;
-                    await Task.WhenAll(
-                        setupLogoPulse.ScaleTo(1, 650, Easing.CubicIn),
-                        setupLogo.ScaleTo(1, 650, Easing.CubicIn));
-                }
-                catch
-                {
-                    break;
-                }
+                setupLogoPulse.Scale = 1;
+                setupLogoPulse.Opacity = 0.2;
             }
+
+            if (setupLogo != null)
+                setupLogo.Scale = 1;
         }
     }
 }

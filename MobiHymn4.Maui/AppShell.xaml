@@ -280,26 +280,27 @@
 
     <Shell.FlyoutFooter>
         <Grid
-            x:Name="flyoutSignOutFooter"
-            IsVisible="False"
+            x:Name="flyoutAuthFooter"
             Padding="15,20"
             ColumnDefinitions="40,*"
             ColumnSpacing="12"
             BackgroundColor="Transparent">
             <Grid.GestureRecognizers>
-                <TapGestureRecognizer Tapped="FlyoutSignOut_Tapped"/>
+                <TapGestureRecognizer Tapped="FlyoutAuthFooter_Tapped"/>
             </Grid.GestureRecognizers>
             <Label
+                x:Name="flyoutAuthIcon"
                 Grid.Column="0"
                 FontFamily="FAS"
-                Text="{x:Static fontawesome:FontAwesomeIcons.RightFromBracket}"
+                Text="{x:Static fontawesome:FontAwesomeIcons.RightToBracket}"
                 FontSize="16"
                 HorizontalOptions="Center"
                 VerticalOptions="Center"
                 TextColor="{AppThemeBinding Dark=White, Light={StaticResource PrimaryText}}"/>
             <Label
+                x:Name="flyoutAuthLabel"
                 Grid.Column="1"
-                Text="Sign out"
+                Text="Log In"
                 FontSize="14"
                 VerticalOptions="Center"
                 TextColor="{AppThemeBinding Dark=White, Light={StaticResource PrimaryText}}"/>

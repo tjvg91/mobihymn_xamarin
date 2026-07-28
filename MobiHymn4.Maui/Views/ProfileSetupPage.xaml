@@ -110,8 +110,29 @@
                 IsVisible="{Binding HasStatusMessage}"
                 LineBreakMode="WordWrap"/>
 
-            <Button Text="Save profile" Command="{Binding SaveCommand}"/>
-            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" Color="{StaticResource Primary}"/>
+            <Grid HeightRequest="48">
+                <Button
+                    Text="Save profile"
+                    Command="{Binding SaveCommand}"
+                    VerticalOptions="Fill">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsBusy}" Value="True">
+                            <Setter Property="Text" Value="Saving…"/>
+                            <Setter Property="Opacity" Value="0.85"/>
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+                <ActivityIndicator
+                    IsRunning="{Binding IsBusy}"
+                    IsVisible="{Binding IsBusy}"
+                    Color="{StaticResource PrimaryText}"
+                    WidthRequest="22"
+                    HeightRequest="22"
+                    HorizontalOptions="End"
+                    VerticalOptions="Center"
+                    Margin="0,0,16,0"
+                    InputTransparent="True"/>
+            </Grid>
         </VerticalStackLayout>
     </ScrollView>
 </ContentPage>

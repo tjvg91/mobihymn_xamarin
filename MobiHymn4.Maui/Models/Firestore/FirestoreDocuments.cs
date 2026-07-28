@@ -80,6 +80,9 @@ public sealed class MemberFirestoreDocument : IFirestoreObject
 
     [FirestoreProperty("invitedBy")]
     public string InvitedBy { get; set; }
+
+    [FirestoreProperty("notificationsMuted")]
+    public bool NotificationsMuted { get; set; }
 }
 
 public sealed class InviteFirestoreDocument : IFirestoreObject
@@ -125,6 +128,33 @@ public sealed class BoardFirestoreDocument : IFirestoreObject
 
     [FirestoreProperty("hymns")]
     public IList<BoardHymnFirestoreDocument> Hymns { get; set; } = new List<BoardHymnFirestoreDocument>();
+
+    [FirestoreProperty("hymnCount")]
+    public long HymnCount { get; set; }
+
+    [FirestoreProperty("entryCount")]
+    public long EntryCount { get; set; }
+}
+
+/// <summary>
+/// Lightweight board doc for overview listing — omits <c>hymns</c> so nested entries are not deserialized.
+/// </summary>
+public sealed class BoardListSummaryFirestoreDocument : IFirestoreObject
+{
+    [FirestoreDocumentId]
+    public string Id { get; set; }
+
+    [FirestoreProperty("name")]
+    public string Name { get; set; }
+
+    [FirestoreProperty("createdAt")]
+    public DateTimeOffset CreatedAt { get; set; }
+
+    [FirestoreProperty("createdBy")]
+    public string CreatedBy { get; set; }
+
+    [FirestoreProperty("updatedAt")]
+    public DateTimeOffset UpdatedAt { get; set; }
 
     [FirestoreProperty("hymnCount")]
     public long HymnCount { get; set; }
@@ -222,9 +252,127 @@ public sealed class BoardNotificationFirestoreDocument : IFirestoreObject
     [FirestoreProperty("groupName")]
     public string GroupName { get; set; }
 
+    [FirestoreProperty("updatedBy")]
+    public string UpdatedBy { get; set; }
+
+    [FirestoreProperty("updatedByName")]
+    public string UpdatedByName { get; set; }
+
+    [FirestoreProperty("changeAction")]
+    public string ChangeAction { get; set; }
+
+    [FirestoreProperty("newHymnCount")]
+    public long NewHymnCount { get; set; }
+
+    [FirestoreProperty("deletedHymns")]
+    public IList<BoardDeletedHymnFirestoreDocument> DeletedHymns { get; set; }
+
+    [FirestoreProperty("title")]
+    public string Title { get; set; }
+
+    [FirestoreProperty("body")]
+    public string Body { get; set; }
+
+    /// <summary>True when the recipient muted global/group notifications — tray must stay silent.</summary>
+    [FirestoreProperty("suppressPush")]
+    public bool SuppressPush { get; set; }
+
     [FirestoreProperty("read")]
     public bool Read { get; set; }
 
     [FirestoreProperty("createdAt")]
     public DateTimeOffset CreatedAt { get; set; }
+}
+
+public sealed class BoardDeletedHymnFirestoreDocument : IFirestoreObject
+{
+    [FirestoreProperty("id")]
+    public string Id { get; set; }
+
+    [FirestoreProperty("hymnNumber")]
+    public string HymnNumber { get; set; }
+
+    [FirestoreProperty("notes")]
+    public string Notes { get; set; }
+
+    [FirestoreProperty("sortOrder")]
+    public long SortOrder { get; set; }
+
+    [FirestoreProperty("addedByName")]
+    public string AddedByName { get; set; }
+}
+
+/// <summary>Bookmark / history item stored under users/{uid}/appData/settings.</summary>
+/// Must implement <see cref="IFirestoreObject"/> so nested list items serialize on Android/iOS.
+public sealed class ShortHymnFirestoreDocument : IFirestoreObject
+{
+    [FirestoreProperty("number")]
+    public string Number { get; set; }
+
+    [FirestoreProperty("line")]
+    public string Line { get; set; }
+
+    [FirestoreProperty("timeStamp")]
+    public DateTimeOffset TimeStamp { get; set; }
+
+    [FirestoreProperty("bookmarkGroup")]
+    public string BookmarkGroup { get; set; }
+}
+
+/// <summary>Synced reader settings, bookmarks, and recent history.</summary>
+public sealed class UserSettingsFirestoreDocument : IFirestoreObject
+{
+    [FirestoreDocumentId]
+    public string Id { get; set; }
+
+    [FirestoreProperty("updatedAt")]
+    public DateTimeOffset UpdatedAt { get; set; }
+
+    [FirestoreProperty("hymnInputType")]
+    public int HymnInputType { get; set; }
+
+    [FirestoreProperty("lastHymnNumber")]
+    public string LastHymnNumber { get; set; }
+
+    [FirestoreProperty("activeReadTheme")]
+    public string ActiveReadTheme { get; set; }
+
+    [FirestoreProperty("activeAlignment")]
+    public int ActiveAlignment { get; set; }
+
+    [FirestoreProperty("activeFontSize")]
+    public double ActiveFontSize { get; set; }
+
+    [FirestoreProperty("activeFont")]
+    public string ActiveFont { get; set; }
+
+    [FirestoreProperty("activeLetterSpacing")]
+    public double ActiveLetterSpacing { get; set; }
+
+    [FirestoreProperty("activeLineSpacing")]
+    public double ActiveLineSpacing { get; set; }
+
+    [FirestoreProperty("darkMode")]
+    public bool DarkMode { get; set; }
+
+    [FirestoreProperty("keepAwake")]
+    public bool KeepAwake { get; set; }
+
+    [FirestoreProperty("isOrientationLocked")]
+    public bool IsOrientationLocked { get; set; }
+
+    [FirestoreProperty("agentMode")]
+    public int AgentMode { get; set; }
+
+    [FirestoreProperty("agentChatLimit")]
+    public int AgentChatLimit { get; set; }
+
+    [FirestoreProperty("history")]
+    public IList<ShortHymnFirestoreDocument> History { get; set; } = new List<ShortHymnFirestoreDocument>();
+
+    [FirestoreProperty("bookmarks")]
+    public IList<ShortHymnFirestoreDocument> Bookmarks { get; set; } = new List<ShortHymnFirestoreDocument>();
+
+    [FirestoreProperty("searches")]
+    public IList<string> Searches { get; set; } = new List<string>();
 }

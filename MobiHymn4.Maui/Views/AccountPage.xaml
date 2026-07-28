@@ -127,6 +127,32 @@
 
             <BoxView/>
 
+            <Grid
+                Padding="15,12"
+                ColumnDefinitions="*,Auto"
+                ColumnSpacing="12"
+                IsVisible="{Binding CanManagePassword}">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding PasswordOptionsCommand}"/>
+                </Grid.GestureRecognizers>
+                <VerticalStackLayout Spacing="4" VerticalOptions="Center">
+                    <Label Text="Password" Style="{StaticResource Title}"/>
+                    <Label
+                        Text="Change your account password."
+                        Style="{StaticResource Subtitle}"
+                        LineBreakMode="WordWrap"/>
+                </VerticalStackLayout>
+                <Label
+                    Grid.Column="1"
+                    FontFamily="FAS"
+                    Text="&#xf054;"
+                    FontSize="14"
+                    TextColor="{StaticResource Primary}"
+                    VerticalOptions="Center"/>
+            </Grid>
+
+            <BoxView IsVisible="{Binding CanManagePassword}"/>
+
             <Grid Padding="15,12" ColumnDefinitions="*,Auto" ColumnSpacing="12">
                 <VerticalStackLayout Spacing="4">
                     <Label Text="{Binding NotificationsToggleTitle}" Style="{StaticResource Title}"/>
