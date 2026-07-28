@@ -47,19 +47,42 @@ namespace MobiHymn4.Utils
 
         public static Color? ToColor(this JObject jObject)
         {
-            double ReadChannel(string upper, string lower)
+            double ReadChannel(params string[] names)
             {
-                if (jObject[upper] != null)
-                    return double.Parse(jObject[upper] + "");
-                if (jObject[lower] != null)
-                    return double.Parse(jObject[lower] + "");
+                foreach (var name in names)
+                {
+                    var token = jObject[name];
+                    if (token == null || token.Type == JTokenType.Null)
+                        continue;
+
+                    if (double.TryParse(token.ToString(), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out var value))
+                        return value;
+                }
+
                 return -1;
             }
 
-            var r = ReadChannel("R", "r");
-            var g = ReadChannel("G", "g");
-            var b = ReadChannel("B", "b");
-            var a = ReadChannel("A", "a");
+            var hex = jObject["HexString"]?.ToString()
+                ?? jObject["hexString"]?.ToString()
+                ?? jObject["ToHex"]?.ToString();
+            if (!string.IsNullOrWhiteSpace(hex))
+            {
+                try
+                {
+                    if (!hex.StartsWith("#", StringComparison.Ordinal))
+                        hex = "#" + hex;
+                    return Color.FromArgb(hex);
+                }
+                catch
+                {
+                }
+            }
+
+            var r = ReadChannel("R", "r", "Red", "red");
+            var g = ReadChannel("G", "g", "Green", "green");
+            var b = ReadChannel("B", "b", "Blue", "blue");
+            var a = ReadChannel("A", "a", "Alpha", "alpha");
 
             if (r >= 0 && g >= 0 && b >= 0)
             {

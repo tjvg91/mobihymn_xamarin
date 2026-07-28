@@ -117,7 +117,7 @@ namespace MobiHymn4.ViewModels
             }
             catch
             {
-                AppVersion = "Version 0.8.4";
+                AppVersion = "Version 0.9.0";
             }
 
             Revisions = new ObservableRangeCollection<Timeline>();
@@ -170,6 +170,18 @@ namespace MobiHymn4.ViewModels
                 return;
             }
 
+            Revisions.Add(new Timeline
+            {
+                Header = "0.9.0",
+                Details =
+                {
+                    "Optimize downloading and syncing",
+                    "More details on hymns",
+                    "AI search and agent",
+                    "Signing in and worship groups"
+                },
+                Height = 110
+            });
             Revisions.Add(new Timeline
             {
                 Header = "0.8.4",

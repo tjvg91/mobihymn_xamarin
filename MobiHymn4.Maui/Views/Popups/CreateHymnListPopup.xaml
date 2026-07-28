@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<toolkit:Popup
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    x:Class="MobiHymn4.Views.Popups.CreateHymnListPopup"
+    Color="Transparent"
+    CanBeDismissedByTappingOutsideOfPopup="True">
+
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill">
+        <ContentView
+            BackgroundColor="#8C000000"
+            HorizontalOptions="Fill"
+            VerticalOptions="Fill">
+            <ContentView.GestureRecognizers>
+                <TapGestureRecognizer Tapped="Overlay_Tapped"/>
+            </ContentView.GestureRecognizers>
+        </ContentView>
+
+        <Border
+            Padding="20"
+            StrokeThickness="1"
+            Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+            BackgroundColor="{AppThemeBinding Light=White, Dark=#333333}"
+            StrokeShape="RoundRectangle 16"
+            WidthRequest="320"
+            MaximumWidthRequest="400"
+            Margin="24,0"
+            HorizontalOptions="Center"
+            VerticalOptions="Center">
+            <Border.Shadow>
+                <Shadow Brush="Black" Offset="0,6" Radius="24" Opacity="0.35"/>
+            </Border.Shadow>
+
+            <VerticalStackLayout Spacing="14">
+                <Label
+                    x:Name="lblTitle"
+                    Text="New hymn list"
+                    FontAttributes="Bold"
+                    FontSize="17"
+                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+
+                <Label
+                    x:Name="lblMessage"
+                    Text="Choose a date for this hymn list."
+                    FontSize="14"
+                    LineBreakMode="WordWrap"
+                    TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+
+                <VerticalStackLayout Spacing="6">
+                    <Label
+                        Text="Date"
+                        FontSize="12"
+                        FontAttributes="Bold"
+                        TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                    <Border
+                        Padding="12,4"
+                        StrokeThickness="1"
+                        Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                        BackgroundColor="{AppThemeBinding Light=#F5F5F5, Dark=#2A2A2A}"
+                        StrokeShape="RoundRectangle 10">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" MinimumHeightRequest="44">
+                            <DatePicker
+                                x:Name="datePicker"
+                                Grid.Column="0"
+                                FontSize="16"
+                                HorizontalOptions="Fill"
+                                VerticalOptions="Center"
+                                BackgroundColor="Transparent"
+                                TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                                DateSelected="DatePicker_DateSelected"/>
+                            <Label
+                                x:Name="lblCalendarIcon"
+                                Grid.Column="1"
+                                Text="&#xf133;"
+                                FontFamily="FAS"
+                                FontSize="16"
+                                Padding="8,8"
+                                VerticalOptions="Center"
+                                TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}">
+                                <Label.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="CalendarIcon_Tapped"/>
+                                </Label.GestureRecognizers>
+                            </Label>
+                        </Grid>
+                    </Border>
+                </VerticalStackLayout>
+                <Label
+                    x:Name="lblError"
+                    IsVisible="False"
+                    FontSize="13"
+                    LineBreakMode="WordWrap"
+                    TextColor="{StaticResource Red}"/>
+
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="12" Margin="0,4,0,0">
+                    <Button
+                        Grid.Column="0"
+                        Text="Cancel"
+                        HeightRequest="44"
+                        CornerRadius="10"
+                        FontSize="15"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                        Clicked="Cancel_Clicked"/>
+                    <Button
+                        x:Name="btnConfirm"
+                        Grid.Column="1"
+                        Text="Create"
+                        HeightRequest="44"
+                        CornerRadius="10"
+                        FontSize="15"
+                        FontAttributes="Bold"
+                        BackgroundColor="{StaticResource Primary}"
+                        TextColor="{StaticResource PrimaryText}"
+                        Clicked="Create_Clicked"/>
+                </Grid>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</toolkit:Popup>

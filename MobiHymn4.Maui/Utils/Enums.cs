@@ -31,6 +31,32 @@ namespace MobiHymn4.Utils
 		Audio = 1
 	}
 
+	public enum UserRole
+	{
+		Pastor = 0,
+		WorshipLeader = 1,
+		Projector = 2,
+		Accompaniment = 3,
+		Congregant = 4,
+	}
+
+	public enum SectionApplyFrequency
+	{
+		Daily = 0,
+		Weekly = 1,
+		Monthly = 2,
+		Yearly = 3,
+	}
+
+	public enum SectionSortMode
+	{
+		AddedOrder = 0,
+		DateNewest = 1,
+		DateOldest = 2,
+		NameAsc = 3,
+		NameDesc = 4,
+	}
+
 	public enum SearchType
 	{
 		Lyrics = 0,
@@ -50,4 +76,3 @@ namespace MobiHymn4.Utils
 		Cloud = 2
 	}
 }
-

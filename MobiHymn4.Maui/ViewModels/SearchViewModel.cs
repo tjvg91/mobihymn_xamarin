@@ -9,6 +9,7 @@ using System.Windows.Input;
 
 using HtmlAgilityPack;
 using MobiHymn4.Models;
+using MobiHymn4.Services;
 using MobiHymn4.Utils;
 
 using Microsoft.Maui.ApplicationModel;
@@ -451,6 +452,7 @@ namespace MobiHymn4.ViewModels
             {
                 return searchItemSelected ?? (searchItemSelected = new Microsoft.Maui.Controls.Command<ShortHymn>(async (shortHymn) =>
                 {
+                    BoardNavigationContext.ClearExternalNavigation();
                     globalInstance.ActiveHymn = (from x in globalInstance.HymnList
                                                 where x.Number == shortHymn.Number
                                                 select x).First();

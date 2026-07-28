@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<toolkit:Popup
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    x:Class="MobiHymn4.Views.Popups.RemoveSectionPopup"
+    Color="Transparent"
+    CanBeDismissedByTappingOutsideOfPopup="True">
+
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill">
+        <ContentView
+            BackgroundColor="#8C000000"
+            HorizontalOptions="Fill"
+            VerticalOptions="Fill">
+            <ContentView.GestureRecognizers>
+                <TapGestureRecognizer Tapped="Overlay_Tapped"/>
+            </ContentView.GestureRecognizers>
+        </ContentView>
+
+        <Border
+            Padding="20"
+            StrokeThickness="1"
+            Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+            BackgroundColor="{AppThemeBinding Light=White, Dark=#333333}"
+            StrokeShape="RoundRectangle 16"
+            WidthRequest="320"
+            MaximumWidthRequest="400"
+            Margin="24,0"
+            HorizontalOptions="Center"
+            VerticalOptions="Center">
+            <Border.Shadow>
+                <Shadow Brush="Black" Offset="0,6" Radius="24" Opacity="0.35"/>
+            </Border.Shadow>
+
+            <VerticalStackLayout Spacing="14">
+                <Label
+                    x:Name="lblTitle"
+                    FontAttributes="Bold"
+                    FontSize="17"
+                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+
+                <Label
+                    x:Name="lblMessage"
+                    FontSize="14"
+                    LineBreakMode="WordWrap"
+                    TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+
+                <HorizontalStackLayout x:Name="deleteHymnsRow" Spacing="10" IsVisible="False">
+                    <CheckBox
+                        x:Name="chkDeleteHymns"
+                        VerticalOptions="Center"
+                        Color="{StaticResource Primary}"/>
+                    <Label
+                        x:Name="lblDeleteHymns"
+                        FontSize="14"
+                        VerticalOptions="Center"
+                        LineBreakMode="WordWrap"
+                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="DeleteHymnsLabel_Tapped"/>
+                        </Label.GestureRecognizers>
+                    </Label>
+                </HorizontalStackLayout>
+
+                <HorizontalStackLayout x:Name="currentDateOnlyRow" Spacing="10" IsVisible="False">
+                    <CheckBox
+                        x:Name="chkCurrentDateOnly"
+                        VerticalOptions="Center"
+                        Color="{StaticResource Primary}"/>
+                    <Label
+                        Text="Current date only"
+                        FontSize="14"
+                        VerticalOptions="Center"
+                        LineBreakMode="WordWrap"
+                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="CurrentDateOnlyLabel_Tapped"/>
+                        </Label.GestureRecognizers>
+                    </Label>
+                </HorizontalStackLayout>
+
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="12" Margin="0,4,0,0">
+                    <Button
+                        Grid.Column="0"
+                        Text="Cancel"
+                        HeightRequest="44"
+                        CornerRadius="10"
+                        FontSize="15"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                        Clicked="Cancel_Clicked"/>
+                    <Button
+                        Grid.Column="1"
+                        Text="Remove"
+                        HeightRequest="44"
+                        CornerRadius="10"
+                        FontSize="15"
+                        FontAttributes="Bold"
+                        BackgroundColor="#C62828"
+                        TextColor="White"
+                        Clicked="Remove_Clicked"/>
+                </Grid>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</toolkit:Popup>

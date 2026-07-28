@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<toolkit:Popup
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    xmlns:elements="clr-namespace:MobiHymn4.Elements"
+    xmlns:models="clr-namespace:MobiHymn4.Models"
+    x:Class="MobiHymn4.Views.Popups.GroupMembersPopup"
+    Color="Transparent"
+    CanBeDismissedByTappingOutsideOfPopup="True">
+
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill">
+        <ContentView
+            BackgroundColor="#8C000000"
+            HorizontalOptions="Fill"
+            VerticalOptions="Fill">
+            <ContentView.GestureRecognizers>
+                <TapGestureRecognizer Tapped="Overlay_Tapped"/>
+            </ContentView.GestureRecognizers>
+        </ContentView>
+
+        <Border
+            Padding="20"
+            StrokeThickness="1"
+            Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+            BackgroundColor="{AppThemeBinding Light=White, Dark=#333333}"
+            StrokeShape="RoundRectangle 16"
+            WidthRequest="320"
+            MaximumWidthRequest="400"
+            MaximumHeightRequest="480"
+            Margin="24,0"
+            HorizontalOptions="Center"
+            VerticalOptions="Center">
+            <Border.Shadow>
+                <Shadow Brush="Black" Offset="0,6" Radius="24" Opacity="0.35"/>
+            </Border.Shadow>
+
+            <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12">
+                <VerticalStackLayout Grid.Row="0" Spacing="4">
+                    <Label
+                        Text="Members"
+                        FontAttributes="Bold"
+                        FontSize="17"
+                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+                    <Label
+                        x:Name="lblGroupName"
+                        FontSize="13"
+                        LineBreakMode="TailTruncation"
+                        MaxLines="1"
+                        TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                </VerticalStackLayout>
+
+                <Grid Grid.Row="1">
+                    <ActivityIndicator
+                        x:Name="loader"
+                        IsRunning="True"
+                        IsVisible="True"
+                        Color="{StaticResource Primary}"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center"/>
+                    <CollectionView
+                        x:Name="membersList"
+                        IsVisible="False"
+                        SelectionMode="None">
+                        <CollectionView.EmptyView>
+                            <Label
+                                Text="No members found."
+                                FontSize="14"
+                                HorizontalTextAlignment="Center"
+                                Margin="0,20"
+                                TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                        </CollectionView.EmptyView>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="models:GroupMember">
+                                <Grid Padding="0,8" ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                    <elements:RoleAvatarView
+                                        Grid.Column="0"
+                                        Roles="{Binding Roles}"
+                                        Size="40"
+                                        VerticalOptions="Center"/>
+                                    <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                        <Label
+                                            Text="{Binding DisplayName}"
+                                            FontSize="14"
+                                            FontAttributes="Bold"
+                                            LineBreakMode="TailTruncation"
+                                            MaxLines="1"
+                                            TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+                                        <Label
+                                            Text="{Binding Email}"
+                                            FontSize="12"
+                                            LineBreakMode="TailTruncation"
+                                            MaxLines="1"
+                                            TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                    </VerticalStackLayout>
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                    <Label
+                        x:Name="lblError"
+                        IsVisible="False"
+                        FontSize="13"
+                        HorizontalTextAlignment="Center"
+                        VerticalOptions="Center"
+                        LineBreakMode="WordWrap"
+                        TextColor="{StaticResource Red}"/>
+                </Grid>
+
+                <Button
+                    Grid.Row="2"
+                    Text="Close"
+                    HeightRequest="44"
+                    CornerRadius="10"
+                    FontSize="15"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                    Clicked="Close_Clicked"/>
+            </Grid>
+        </Border>
+    </Grid>
+</toolkit:Popup>

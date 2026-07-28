@@ -25,6 +25,31 @@
             <Color x:Key="Purple">#7237C5</Color>
             <Color x:Key="Pink">#FF0073</Color>
 
+            <Style x:Key="InputBorder" TargetType="Border">
+                <Setter Property="Padding" Value="8,4"/>
+                <Setter Property="StrokeThickness" Value="1.5"/>
+                <Setter Property="StrokeShape" Value="RoundRectangle 6"/>
+                <Setter Property="BackgroundColor" Value="Transparent"/>
+                <Setter Property="Stroke">
+                    <Setter.Value>
+                        <AppThemeBinding>
+                            <AppThemeBinding.Light>
+                                <SolidColorBrush Color="#d0d0d0"/>
+                            </AppThemeBinding.Light>
+                            <AppThemeBinding.Dark>
+                                <SolidColorBrush Color="#888888"/>
+                            </AppThemeBinding.Dark>
+                        </AppThemeBinding>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="FormEntry" TargetType="Entry">
+                <Setter Property="BackgroundColor" Value="Transparent"/>
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=#FFFFFF}"/>
+                <Setter Property="PlaceholderColor" Value="{AppThemeBinding Light={StaticResource Gray}, Dark=#888888}"/>
+            </Style>
+
             <Style TargetType="Button">
                 <Setter Property="VisualStateManager.VisualStateGroups">
                     <VisualStateGroupList>
@@ -101,13 +126,13 @@
                             <VisualState x:Name="Normal">
                                 <VisualState.Setters>
                                     <Setter Property="BackgroundColor" Value="Transparent" />
-                                    <Setter Property="TextColor" Value="{StaticResource Primary}" />
+                                    <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Brown}, Dark={StaticResource Primary}}" />
                                 </VisualState.Setters>
                             </VisualState>
                             <VisualState x:Name="Disabled">
                                 <VisualState.Setters>
                                     <Setter Property="BackgroundColor" Value="Transparent" />
-                                    <Setter Property="TextColor" Value="{StaticResource PrimaryLight}" />
+                                    <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource PrimaryLight}}" />
                                 </VisualState.Setters>
                             </VisualState>
                         </VisualStateGroup>
@@ -246,6 +271,16 @@
                 <Setter Property="HeightRequest" Value="60"/>
                 <Setter Property="CornerRadius" Value="30"/>
                 <Setter Property="FontSize" Value="19"/>
+            </Style>
+
+            <Style TargetType="Button" x:Key="NumpadLandscape" BasedOn="{StaticResource Numpad}">
+                <Setter Property="CornerRadius" Value="0"/>
+                <Setter Property="WidthRequest" Value="-1"/>
+                <Setter Property="HeightRequest" Value="-1"/>
+                <Setter Property="HorizontalOptions" Value="Fill"/>
+                <Setter Property="VerticalOptions" Value="Fill"/>
+                <Setter Property="Margin" Value="0"/>
+                <Setter Property="Padding" Value="0"/>
             </Style>
 
             <Style TargetType="CollectionView">

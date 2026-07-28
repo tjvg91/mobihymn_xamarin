@@ -6,7 +6,7 @@ namespace MobiHymn4.Models
 	public class HymnList: List<Hymn>
 	{
         public HymnList() : base() { }
-        public HymnList(IEnumerable	<Hymn> hymns) : base()
+        public HymnList(IEnumerable<Hymn> hymns) : base()
 		{
 			this.AddRange(hymns);
 		}
@@ -23,4 +23,3 @@ namespace MobiHymn4.Models
         }
 	}
 }
-

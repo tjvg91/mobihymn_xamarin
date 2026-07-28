@@ -2,10 +2,15 @@ using Android.App;
 using Android.Content;
 using Android.Content.PM;
 using Android.OS;
+using AndroidX.Activity;
 using AndroidX.AppCompat.App;
+using System;
+using System.Threading.Tasks;
+using MobiHymn4.Services;
 using MobiHymn4.Utils;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
+using Plugin.Firebase.Core.Platforms.Android;
 
 namespace MobiHymn4;
 
@@ -19,16 +24,54 @@ namespace MobiHymn4;
     Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
     DataScheme = "mobihymn",
     DataHost = "hymn")]
+[IntentFilter(
+    new[] { Intent.ActionView },
+    Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+    DataScheme = "mobihymn",
+    DataHost = "auth")]
+// Only the post-verify Continue URL — do NOT claim /__/auth/action (browser must handle oobCode).
+[IntentFilter(
+    new[] { Intent.ActionView },
+    Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
+    DataSchemes = new[] { "https", "http" },
+    DataHosts = new[] { "mobihymn.firebaseapp.com", "mobihymn.web.app" },
+    DataPathPrefix = "/auth")]
 public class MainActivity : MauiAppCompatActivity
 {
+    public static MainActivity Instance { get; private set; }
+    public event Action<int, Result, Intent> ActivityResult;
+    AppBackPressedCallback backPressedCallback;
+
     public static string PendingHymnNumber { get; private set; }
+    public static bool PendingAuthContinue { get; private set; }
 
     public static void ConsumePendingHymnNumber() => PendingHymnNumber = null;
 
+    public static bool ConsumePendingAuthContinue()
+    {
+        if (!PendingAuthContinue)
+            return false;
+        PendingAuthContinue = false;
+        return true;
+    }
+
     protected override void OnCreate(Bundle savedInstanceState)
     {
+        Instance = this;
         AppCompatDelegate.DefaultNightMode = AppCompatDelegate.ModeNightNo;
         base.OnCreate(savedInstanceState);
+
+        CrossFirebase.Initialize(this);
+        Platforms.Android.GoogleSignInService.Initialize();
+
+        HandleFirebaseMessagingIntent(Intent);
+        CreateBoardNotificationChannel();
+
+        // MauiProgram may call StartAsync before Firebase is ready — register token now.
+        _ = RegisterBoardFcmTokenAsync();
+
+        backPressedCallback = new AppBackPressedCallback(this);
+        OnBackPressedDispatcher.AddCallback(this, backPressedCallback);
 
         if (OperatingSystem.IsAndroidVersionAtLeast(33))
             _ = RequestNotificationPermissionAsync();
@@ -37,18 +80,128 @@ public class MainActivity : MauiAppCompatActivity
         HandleDeepLinkIntent(Intent, alreadyLoaded: false);
     }
 
-    protected override void OnNewIntent(Intent? intent)
+    sealed class AppBackPressedCallback : OnBackPressedCallback
+    {
+        readonly MainActivity activity;
+
+        public AppBackPressedCallback(MainActivity activity)
+            : base(enabled: true)
+        {
+            this.activity = activity;
+        }
+
+        public override void HandleOnBackPressed()
+        {
+            // Let CommunityToolkit / MAUI dismiss blocking popups first.
+            if (DownloadPopupPresenter.IsPopupOpen)
+            {
+                Enabled = false;
+                try
+                {
+                    activity.OnBackPressedDispatcher.OnBackPressed();
+                }
+                finally
+                {
+                    Enabled = true;
+                }
+                return;
+            }
+
+            if (AppBackHandler.TryHandle())
+                return;
+
+            // Root of history — send the app to the background instead of exiting.
+            activity.MoveTaskToBack(true);
+        }
+    }
+
+    protected override void OnNewIntent(Intent intent)
     {
         base.OnNewIntent(intent);
         Intent = intent;
+        HandleFirebaseMessagingIntent(intent);
         HandleNotificationIntent(intent);
         HandleDeepLinkIntent(intent, alreadyLoaded: true);
     }
 
-    static void HandleDeepLinkIntent(Intent? intent, bool alreadyLoaded)
+    static void HandleFirebaseMessagingIntent(Intent intent)
+    {
+        try
+        {
+            Plugin.Firebase.CloudMessaging.FirebaseCloudMessagingImplementation.OnNewIntent(intent);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"FCM OnNewIntent failed: {ex.Message}");
+        }
+    }
+
+    void CreateBoardNotificationChannel()
+    {
+        try
+        {
+            var channelId = $"{PackageName}.board";
+
+            if (OperatingSystem.IsAndroidVersionAtLeast(26))
+            {
+                var channel = new NotificationChannel(
+                    channelId,
+                    "Worship board",
+                    NotificationImportance.High)
+                {
+                    Description = "Updates when your group hymn list changes",
+                };
+
+                var manager = (NotificationManager)GetSystemService(NotificationService);
+                // Recreate so importance upgrades apply (Android ignores edits to existing channels).
+                manager?.DeleteNotificationChannel(channelId);
+                manager?.CreateNotificationChannel(channel);
+            }
+
+            Plugin.Firebase.CloudMessaging.FirebaseCloudMessagingImplementation.ChannelId = channelId;
+            Plugin.Firebase.CloudMessaging.FirebaseCloudMessagingImplementation.SmallIconRef = Resource.Mipmap.ic_stat_logo;
+            // Plugin.Firebase auto-posts a tray item in the foreground; BoardLocalNotifier
+            // already does that from Firestore unread docs — suppress the Plugin duplicate.
+            Plugin.Firebase.CloudMessaging.FirebaseCloudMessagingImplementation.ShowLocalNotificationAction = _ => { };
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Board notification channel failed: {ex.Message}");
+        }
+    }
+
+    protected override void OnActivityResult(int requestCode, Result resultCode, Intent data)
+    {
+        base.OnActivityResult(requestCode, resultCode, data);
+        ActivityResult?.Invoke(requestCode, resultCode, data);
+    }
+
+    static void HandleDeepLinkIntent(Intent intent, bool alreadyLoaded)
     {
         var uri = intent?.Data;
-        if (uri?.Scheme != "mobihymn" || uri.Host != "hymn")
+        if (uri == null)
+            return;
+
+        System.Uri parsed = null;
+        try
+        {
+            parsed = new System.Uri(uri.ToString());
+        }
+        catch
+        {
+            return;
+        }
+
+        if (AuthEmailActionSettings.IsAuthContinueUri(parsed))
+        {
+            if (alreadyLoaded)
+                App.HandleAuthEmailContinueAsync();
+            else
+                PendingAuthContinue = true;
+            return;
+        }
+
+        if (uri.Scheme != "mobihymn" || uri.Host != "hymn")
             return;
 
         var number = uri.LastPathSegment;
@@ -61,7 +214,7 @@ public class MainActivity : MauiAppCompatActivity
             PendingHymnNumber = number;
     }
 
-    static void HandleNotificationIntent(Intent? intent)
+    static void HandleNotificationIntent(Intent intent)
     {
         if (intent?.GetBooleanExtra(DownloadForegroundService.ExtraShowDownloadPopup, false) != true)
             return;
@@ -110,13 +263,31 @@ public class MainActivity : MauiAppCompatActivity
         }
     }
 
+    static async Task RegisterBoardFcmTokenAsync()
+    {
+        try
+        {
+            // Let CrossFirebase finish wiring before requesting a token.
+            await Task.Delay(750);
+            await ServiceHelper.Get<IBoardNotificationService>().RegisterTokenAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"RegisterBoardFcmTokenAsync failed: {ex.Message}");
+        }
+    }
+
     static async Task RequestNotificationPermissionAsync()
     {
         try
         {
             var status = await Permissions.CheckStatusAsync<Permissions.PostNotifications>();
             if (status != PermissionStatus.Granted)
-                await Permissions.RequestAsync<Permissions.PostNotifications>();
+                status = await Permissions.RequestAsync<Permissions.PostNotifications>();
+
+            // Permission grant can unlock FCM token issuance on Android 13+.
+            if (status == PermissionStatus.Granted)
+                await ServiceHelper.Get<IBoardNotificationService>().RegisterTokenAsync();
         }
         catch (Exception ex)
         {

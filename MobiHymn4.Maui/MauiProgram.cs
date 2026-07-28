@@ -4,7 +4,15 @@ using MobiHymn4.Models;
 using MobiHymn4.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Plugin.Firebase.Auth;
+using Plugin.Firebase.Core;
 using SkiaSharp.Views.Maui.Controls.Hosting;
+#if ANDROID
+using Plugin.Firebase.Core.Platforms.Android;
+using Microsoft.Maui.Platform;
+#elif IOS
+using Plugin.Firebase.Core.Platforms.iOS;
+#endif
 
 namespace MobiHymn4;
 
@@ -17,10 +25,36 @@ public static class MauiProgram
             .UseMauiApp<App>()
             .UseMauiCommunityToolkit()
             .UseSkiaSharp()
+            .RegisterFirebaseServices()
             .ConfigureMauiHandlers(handlers =>
             {
 #if ANDROID || IOS
                 handlers.AddHandler<Elements.SelectableLabel, Handlers.SelectableLabelHandler>();
+#endif
+#if ANDROID
+                handlers.AddHandler<DatePicker, Platforms.Android.MobiHymnDatePickerHandler>();
+
+                Microsoft.Maui.Handlers.EntryHandler.Mapper.AppendToMapping(
+                    "TransparentUnderline",
+                    (handler, _) =>
+                        handler.PlatformView.BackgroundTintList =
+                            Android.Content.Res.ColorStateList.ValueOf(Android.Graphics.Color.Transparent));
+
+                Microsoft.Maui.Handlers.DatePickerHandler.Mapper.AppendToMapping(
+                    "MobiHymnDatePickerField",
+                    (handler, view) =>
+                    {
+                        if (handler.PlatformView is not MauiDatePicker platformView)
+                            return;
+
+                        var color = view.TextColor
+                            ?? (Application.Current?.RequestedTheme == AppTheme.Dark
+                                ? Colors.White
+                                : Colors.Black);
+                        platformView.SetTextColor(color.ToPlatform());
+                        platformView.BackgroundTintList =
+                            Android.Content.Res.ColorStateList.ValueOf(Android.Graphics.Color.Transparent);
+                    });
 #endif
             })
             .ConfigureFonts(fonts =>
@@ -53,6 +87,18 @@ public static class MauiProgram
         builder.Services.AddSingleton<IMidiHelper, MidiHelperPlatform>();
         builder.Services.AddSingleton<IPlayService, HymnAudioPlayer>();
         builder.Services.AddSingleton<IVoiceRecognitionService, UnavailableVoiceRecognitionService>();
+        builder.Services.AddSingleton<IFirebaseFirestoreAccessor, FirebaseFirestoreAccessor>();
+        builder.Services.AddSingleton<IAuthService, AuthService>();
+        builder.Services.AddSingleton<IProfileService, ProfileService>();
+        builder.Services.AddSingleton<IGroupService, GroupService>();
+        builder.Services.AddSingleton<IBoardService, BoardService>();
+        builder.Services.AddSingleton<BoardContext>();
+        builder.Services.AddSingleton<BoardNavigationContext>();
+        builder.Services.AddSingleton<IAddToBoardService, AddToBoardService>();
+        builder.Services.AddSingleton<IGroupDashboardService, GroupDashboardService>();
+        builder.Services.AddSingleton<IBoardNotificationService, BoardNotificationService>();
+        builder.Services.AddSingleton<IUserSettingsSyncService, UserSettingsSyncService>();
+        builder.Services.AddSingleton<IGoogleSignInService, UnavailableGoogleSignInService>();
 #if ANDROID
         builder.Services.AddSingleton<IVoiceRecognitionService, AndroidVoiceRecognitionService>();
         builder.Services.AddSingleton<IDownloadNotificationService, DownloadNotificationService>();
@@ -64,12 +110,20 @@ public static class MauiProgram
 
         var app = builder.Build();
         ServiceHelper.Initialize(app.Services);
+        // Resolve once so auth listener is attached for cloud settings sync.
+        _ = app.Services.GetService<IUserSettingsSyncService>();
 
 #if ANDROID
-        // Eagerly construct so Globals event subscriptions are wired before any download starts.
         app.Services.GetService<IDownloadNotificationService>();
 #endif
+        // Board FCM starts from App / MainActivity after first frame — avoid double StartAsync here.
 
         return app;
+    }
+
+    static MauiAppBuilder RegisterFirebaseServices(this MauiAppBuilder builder)
+    {
+        builder.Services.AddSingleton(_ => CrossFirebaseAuth.Current);
+        return builder;
     }
 }

@@ -2,11 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using CommunityToolkit.Maui.Views;
+using FontAwesome;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Controls.Shapes;
 using Microsoft.Maui.Devices;
 using Microsoft.Maui.Graphics;
-using Microsoft.Maui.Layouts;
 using MobiHymn4.Models;
 
 namespace MobiHymn4.Views.Popups
@@ -49,20 +49,20 @@ namespace MobiHymn4.Views.Popups
 
             detailsHost.Children.Clear();
 
-            var rows = new List<(string Label, IEnumerable<string> Values)>();
-            AddRow(rows, "First line", hymn.FirstLine);
-            AddRow(rows, "Author", hymn.Author);
-            AddRow(rows, "Metre", hymn.Metre);
-            AddRow(rows, "Tune", hymn.Tune);
-            AddRow(rows, "Composer", hymn.TuneComposer);
-            AddRow(rows, "Key", hymn.TuneKey);
-            AddRow(rows, "Verses", hymn.GetVerseReferences());
-            AddRow(rows, "Topic", hymn.Tags);
-            AddRow(rows, "Year", hymn.Year);
-            AddRow(rows, "Remark", hymn.Remark);
+            var rows = new List<(string Label, string Icon, IEnumerable<string> Values)>();
+            AddRow(rows, "First line", FontAwesomeIcons.QuoteLeft, hymn.FirstLine);
+            AddRow(rows, "Author", FontAwesomeIcons.PenNib, hymn.Author);
+            AddRow(rows, "Metre", FontAwesomeIcons.BookOpen, hymn.Metre);
+            AddRow(rows, "Tune", FontAwesomeIcons.Music, hymn.Tune);
+            AddRow(rows, "Composer", FontAwesomeIcons.User, hymn.TuneComposer);
+            AddRow(rows, "Key", FontAwesomeIcons.Key, hymn.TuneKey);
+            AddRow(rows, "Verses", FontAwesomeIcons.BookBible, hymn.GetVerseReferences());
+            AddRow(rows, "Topic", FontAwesomeIcons.Tags, hymn.Tags);
+            AddRow(rows, "Year", FontAwesomeIcons.Calendar, hymn.Year);
+            AddRow(rows, "Remark", FontAwesomeIcons.Comment, hymn.Remark);
 
             var added = 0;
-            foreach (var (label, values) in rows)
+            foreach (var (label, icon, values) in rows)
             {
                 var pills = values
                     .Where(v => !string.IsNullOrWhiteSpace(v))
@@ -71,21 +71,29 @@ namespace MobiHymn4.Views.Popups
                 if (pills.Count == 0)
                     continue;
 
-                detailsHost.Children.Add(BuildRow(label, pills));
+                detailsHost.Children.Add(BuildRow(label, icon, pills));
                 added++;
             }
 
             lblEmpty.IsVisible = added == 0 && string.IsNullOrWhiteSpace(hymn.Name);
         }
 
-        static void AddRow(List<(string Label, IEnumerable<string> Values)> rows, string label, string value)
+        static void AddRow(
+            List<(string Label, string Icon, IEnumerable<string> Values)> rows,
+            string label,
+            string icon,
+            string value)
         {
             if (string.IsNullOrWhiteSpace(value))
                 return;
-            rows.Add((label, new[] { value.Trim() }));
+            rows.Add((label, icon, new[] { value.Trim() }));
         }
 
-        static void AddRow(List<(string Label, IEnumerable<string> Values)> rows, string label, IEnumerable<string> values)
+        static void AddRow(
+            List<(string Label, string Icon, IEnumerable<string> Values)> rows,
+            string label,
+            string icon,
+            IEnumerable<string> values)
         {
             if (values == null)
                 return;
@@ -97,60 +105,96 @@ namespace MobiHymn4.Views.Popups
             if (pills.Count == 0)
                 return;
 
-            rows.Add((label, pills));
+            rows.Add((label, icon, pills));
         }
 
-        static View BuildRow(string label, IReadOnlyList<string> values)
+        static View BuildRow(string label, string icon, IReadOnlyList<string> values)
         {
             var isDark = Application.Current?.RequestedTheme == AppTheme.Dark;
-            var pillBg = isDark ? Color.FromArgb("#333333") : Color.FromArgb("#F0F0F0");
-            var pillText = isDark
-                ? Colors.White
-                : (Color)Application.Current.Resources["PrimaryText"];
-            var labelColor = isDark
-                ? (Color)Application.Current.Resources["GrayLight"]
-                : (Color)Application.Current.Resources["Gray"];
+            var resources = Application.Current.Resources;
+            var primary = (Color)resources["Primary"];
+            var primaryText = (Color)resources["PrimaryText"];
+            var gray = (Color)resources["Gray"];
+            var grayLight = (Color)resources["GrayLight"];
 
-            var pills = new FlexLayout
+            var cardBg = isDark ? Color.FromArgb("#333333") : Color.FromArgb("#F7F7F7");
+            var iconBg = isDark ? Color.FromArgb("#3D3D3D") : Color.FromArgb("#FFF5BC");
+            var valueColor = isDark ? Colors.White : primaryText;
+            var labelColor = isDark ? grayLight : gray;
+            var iconColor = isDark ? primary : primaryText;
+
+            var iconBadge = new Border
             {
-                Wrap = FlexWrap.Wrap,
-                Direction = FlexDirection.Row,
-                AlignItems = FlexAlignItems.Start,
-                JustifyContent = FlexJustify.Start,
+                WidthRequest = 36,
+                HeightRequest = 36,
+                StrokeThickness = 0,
+                BackgroundColor = iconBg,
+                StrokeShape = new RoundRectangle { CornerRadius = 10 },
+                VerticalOptions = LayoutOptions.Start,
+                Content = new Label
+                {
+                    Text = icon,
+                    FontFamily = "FAS",
+                    FontSize = 14,
+                    TextColor = iconColor,
+                    HorizontalOptions = LayoutOptions.Center,
+                    VerticalOptions = LayoutOptions.Center,
+                    HorizontalTextAlignment = TextAlignment.Center,
+                    VerticalTextAlignment = TextAlignment.Center
+                }
             };
 
+            var valueStack = new VerticalStackLayout { Spacing = 4 };
             foreach (var value in values)
             {
-                pills.Children.Add(new Border
+                valueStack.Children.Add(new Label
                 {
-                    Padding = new Thickness(10, 5),
-                    Margin = new Thickness(0, 0, 6, 6),
-                    StrokeThickness = 0,
-                    BackgroundColor = pillBg,
-                    StrokeShape = new RoundRectangle { CornerRadius = 12 },
-                    Content = new Label
-                    {
-                        Text = value,
-                        FontSize = 13,
-                        LineBreakMode = LineBreakMode.WordWrap,
-                        TextColor = pillText
-                    }
+                    Text = value,
+                    FontSize = 14,
+                    FontAttributes = FontAttributes.Bold,
+                    LineBreakMode = LineBreakMode.WordWrap,
+                    TextColor = valueColor
                 });
             }
 
-            return new VerticalStackLayout
+            var textColumn = new VerticalStackLayout
             {
-                Spacing = 6,
+                Spacing = 2,
+                VerticalOptions = LayoutOptions.Center,
                 Children =
                 {
                     new Label
                     {
-                        Text = label,
-                        FontSize = 12,
-                        TextColor = labelColor
+                        Text = label.ToUpperInvariant(),
+                        FontSize = 11,
+                        FontAttributes = FontAttributes.Bold,
+                        CharacterSpacing = 0.6,
+                        TextColor = labelColor,
+                        Opacity = 0.85
                     },
-                    pills
+                    valueStack
                 }
+            };
+
+            var grid = new Grid
+            {
+                ColumnSpacing = 12,
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition(GridLength.Auto),
+                    new ColumnDefinition(GridLength.Star)
+                }
+            };
+            grid.Add(iconBadge, 0, 0);
+            grid.Add(textColumn, 1, 0);
+
+            return new Border
+            {
+                Padding = new Thickness(12, 10),
+                StrokeThickness = 0,
+                BackgroundColor = cardBg,
+                StrokeShape = new RoundRectangle { CornerRadius = 14 },
+                Content = grid
             };
         }
 

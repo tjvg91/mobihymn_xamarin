@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FontAwesome;
 using MobiHymn4.Models;
+using MobiHymn4.Services;
 using MobiHymn4.Utils;
 using MobiHymn4.ViewModels;
 using CommunityToolkit.Maui.Views;
@@ -20,6 +21,7 @@ namespace MobiHymn4.Views
         bool isNewInput = true;
 
         NumSearchViewModel model;
+        readonly IAddToBoardService addToBoardService = ServiceHelper.Get<IAddToBoardService>();
         CancellationTokenSource voicePulseCts;
         CancellationTokenSource voiceListenCts;
 
@@ -44,6 +46,7 @@ namespace MobiHymn4.Views
             UpdateToolbarIcons();
             UpdateInputModeBar();
             UpdateBackIcon();
+            UpdateBoardToolbar();
             UpdateVoiceListeningAnimation();
             ShowDownloadPopupIfNeeded();
             ScheduleDownloadPopupRetries();
@@ -102,6 +105,36 @@ namespace MobiHymn4.Views
                     Color = iconColor,
                 };
             }
+
+            if (tbAddBoard != null)
+            {
+                tbAddBoard.IconImageSource = new FontImageSource
+                {
+                    FontFamily = "FAS",
+                    Glyph = FontAwesomeIcons.Plus,
+                    Size = 17,
+                    Color = iconColor,
+                };
+            }
+        }
+
+        void UpdateBoardToolbar()
+        {
+            if (tbAddBoard == null)
+                return;
+
+            ToolbarItems.Remove(tbAddBoard);
+            if (addToBoardService.CanAddToBoard)
+                ToolbarItems.Insert(0, tbAddBoard);
+        }
+
+        async void tbAddBoard_Clicked(object sender, EventArgs e)
+        {
+            var number = model?.HymnNum ?? globalInstance.ActiveHymn?.Number;
+            if (string.IsNullOrWhiteSpace(number))
+                return;
+
+            await addToBoardService.TryAddHymnAsync(number, this);
         }
 
         void UpdateInputModeBar()
@@ -236,6 +269,7 @@ namespace MobiHymn4.Views
                                 return;
                             }
 
+                            BoardNavigationContext.ClearExternalNavigation();
                             globalInstance.ActiveHymn = hymn;
                             isNewInput = true;
                             await Shell.Current.GoToAsync($"//{Routes.READ}");
@@ -331,6 +365,7 @@ namespace MobiHymn4.Views
                             continue;
                         }
 
+                        BoardNavigationContext.ClearExternalNavigation();
                         globalInstance.ActiveHymn = hymn;
                         await Shell.Current.GoToAsync($"//{Routes.READ}");
                         break;

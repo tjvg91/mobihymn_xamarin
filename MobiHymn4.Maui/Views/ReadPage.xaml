@@ -53,7 +53,7 @@
                 <FontImageSource
                     FontFamily="FAS"
                     Color="{StaticResource PrimaryText}"
-                    Size="Medium"
+                    Size="17"
                     Glyph="{x:Static fontawesome:FontAwesomeIcons.Search}"/>
             </ToolbarItem.IconImageSource>
         </ToolbarItem>
@@ -64,7 +64,7 @@
                 <FontImageSource
                     FontFamily="FAS"
                     Color="{StaticResource PrimaryText}"
-                    Size="Medium"
+                    Size="17"
                     Glyph="{x:Static fontawesome:FontAwesomeIcons.ICursor}"/>
             </ToolbarItem.IconImageSource>
         </ToolbarItem>
@@ -74,7 +74,7 @@
                     x:Name="fisBookmark"
                     FontFamily="FAR"
                     Color="{StaticResource PrimaryText}"
-                    Size="Medium"
+                    Size="17"
                     Glyph="{x:Static fontawesome:FontAwesomeIcons.Heart}" />
             </ToolbarItem.IconImageSource>
         </ToolbarItem>
@@ -83,7 +83,7 @@
                 <FontImageSource
                     FontFamily="FAS"
                     Color="{StaticResource PrimaryText}"
-                    Size="Medium"
+                    Size="17"
                     Glyph="{x:Static fontawesome:FontAwesomeIcons.Share}"/>
             </ToolbarItem.IconImageSource>
         </ToolbarItem>
@@ -92,8 +92,17 @@
                 <FontImageSource
                     FontFamily="FAS"
                     Color="{StaticResource PrimaryText}"
-                    Size="Medium"
+                    Size="17"
                     Glyph="{x:Static fontawesome:FontAwesomeIcons.Cog}"/>
+            </ToolbarItem.IconImageSource>
+        </ToolbarItem>
+        <ToolbarItem x:Name="tbBoard" Clicked="tbBoard_Clicked">
+            <ToolbarItem.IconImageSource>
+                <FontImageSource
+                    FontFamily="FAS"
+                    Glyph="&#xf46d;"
+                    Size="17"
+                    Color="{StaticResource PrimaryText}"/>
             </ToolbarItem.IconImageSource>
         </ToolbarItem>
 
@@ -121,6 +130,7 @@
     </ContentPage.Triggers>
 
     <ContentPage.Content>
+        <Grid>
         <Grid BackgroundColor="Transparent" RowDefinitions="*,Auto">
             <AbsoluteLayout
                 x:Name="readerStack"
@@ -194,9 +204,64 @@
                         <StackLayout.GestureRecognizers>
                             <TapGestureRecognizer Tapped="TapGestureRecognizer_Tapped" />
                             <PinchGestureRecognizer PinchUpdated="PinchGestureRecognizer_PinchUpdated" />
+                            <SwipeGestureRecognizer Direction="Left" Swiped="BoardNav_SwipedLeft" />
+                            <SwipeGestureRecognizer Direction="Right" Swiped="BoardNav_SwipedRight" />
                         </StackLayout.GestureRecognizers>
                     </StackLayout>
                 </ScrollView>
+
+                <Border
+                    x:Name="boardNavPrev"
+                    IsVisible="False"
+                    WidthRequest="40"
+                    HeightRequest="96"
+                    Padding="0"
+                    StrokeThickness="0"
+                    StrokeShape="RoundRectangle 20"
+                    BackgroundColor="#33000000"
+                    InputTransparent="False"
+                    AbsoluteLayout.LayoutFlags="YProportional"
+                    AbsoluteLayout.LayoutBounds="6,0.5,40,96">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="BoardNavPrev_Tapped"/>
+                    </Border.GestureRecognizers>
+                    <Label
+                        Text="&#xf053;"
+                        FontFamily="FAS"
+                        FontSize="20"
+                        TextColor="#B3FFFFFF"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center"
+                        HorizontalTextAlignment="Center"
+                        VerticalTextAlignment="Center"/>
+                </Border>
+
+                <Border
+                    x:Name="boardNavNext"
+                    IsVisible="False"
+                    WidthRequest="40"
+                    HeightRequest="96"
+                    Padding="0"
+                    StrokeThickness="0"
+                    StrokeShape="RoundRectangle 20"
+                    BackgroundColor="#33000000"
+                    InputTransparent="False"
+                    AnchorX="1"
+                    AbsoluteLayout.LayoutFlags="XProportional,YProportional"
+                    AbsoluteLayout.LayoutBounds="1,0.5,40,96">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="BoardNavNext_Tapped"/>
+                    </Border.GestureRecognizers>
+                    <Label
+                        Text="&#xf054;"
+                        FontFamily="FAS"
+                        FontSize="20"
+                        TextColor="#B3FFFFFF"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center"
+                        HorizontalTextAlignment="Center"
+                        VerticalTextAlignment="Center"/>
+                </Border>
 
                 <Button
                     Style="{StaticResource Button-FAB}"
@@ -355,19 +420,17 @@
                     
                 </elements:BottomDrawer>
 
-                <FlexLayout
+                <Grid
                     x:Name="loaderOverlay"
                     AbsoluteLayout.LayoutFlags="All"
                     AbsoluteLayout.LayoutBounds="0,0,1,1"
-                    AlignItems="Center"
-                    JustifyContent="Center"
-                    Direction="Column"
                     BackgroundColor="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}"
                     IsVisible="{Binding IsLoadingLyrics}">
                     <Grid
                         WidthRequest="110"
                         HeightRequest="110"
-                        HorizontalOptions="Center">
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center">
                         <Ellipse
                             x:Name="setupLogoPulse"
                             WidthRequest="96"
@@ -388,12 +451,7 @@
                             VerticalTextAlignment="Center"
                             LineHeight="1"/>
                     </Grid>
-                    <Label
-                        Text="Setting up..."
-                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
-                        FontSize="14"
-                        Margin="0,8,0,0"/>
-                </FlexLayout>
+                </Grid>
 
                 <Grid
                     x:Name="downloadOverlay"
@@ -552,6 +610,12 @@
                 IsVisible="False"
                 HorizontalOptions="FillAndExpand"
                 VerticalOptions="FillAndExpand"/>
+        </Grid>
+        <elements:GroupDashboardPane
+            x:Name="groupDashboardPane"
+            ZIndex="100"
+            HorizontalOptions="Fill"
+            VerticalOptions="Fill"/>
         </Grid>
     </ContentPage.Content>
 </ContentPage>

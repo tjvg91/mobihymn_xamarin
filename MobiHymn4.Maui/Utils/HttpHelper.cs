@@ -1121,14 +1121,17 @@ namespace MobiHymn4.Utils
             if (!File.Exists(filePath))
                 return new HymnList();
 
-            var settings = await File.ReadAllTextAsync(filePath);
+            var settings = await File.ReadAllTextAsync(filePath).ConfigureAwait(false);
             try
             {
-                var list = await Task.Run(() => JsonConvert.DeserializeObject<HymnList>(settings) ?? new HymnList());
-                foreach (var hymn in list)
+                return await Task.Run(() =>
                 {
-                    if (hymn != null)
+                    var list = JsonConvert.DeserializeObject<HymnList>(settings) ?? new HymnList();
+                    foreach (var hymn in list)
                     {
+                        if (hymn == null)
+                            continue;
+
                         hymn.Lyrics = SanitizeStoredLyrics(hymn.Lyrics);
                         hymn.Verses ??= Array.Empty<string>();
                         hymn.Tags ??= Array.Empty<string>();
@@ -1136,13 +1139,13 @@ namespace MobiHymn4.Utils
                         if (hymn.Verses.Length == 0 && !string.IsNullOrWhiteSpace(hymn.VerseRef))
                             hymn.Verses = new[] { hymn.VerseRef.Trim() };
                     }
-                }
-                return list;
+                    return list;
+                }).ConfigureAwait(false);
             }
             catch (JsonException ex)
             {
                 Debug.WriteLine($"ReadHymns corrupt file ({filePath}): {ex.Message}");
-                await ClearCorruptHymnCache();
+                await ClearCorruptHymnCache().ConfigureAwait(false);
                 return new HymnList();
             }
         }

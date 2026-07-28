@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Windows.Input;
 using MobiHymn4.Models;
+using MobiHymn4.Services;
 using MobiHymn4.Utils;
 using MvvmHelpers;
 
@@ -168,6 +169,7 @@ namespace MobiHymn4.ViewModels
                 return oneSelected ?? (oneSelected = new Command<Hymn>(async (val) =>
                 {
                     ActiveOnes = val;
+                    BoardNavigationContext.ClearExternalNavigation();
                     globalInstance.ActiveHymn = val;
                     await Shell.Current.GoToAsync($"//{Routes.READ}");
                 }));

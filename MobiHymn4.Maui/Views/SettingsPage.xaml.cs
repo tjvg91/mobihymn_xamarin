@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using FontAwesome;
+using MobiHymn4.Services;
 using MobiHymn4.Utils;
 using MobiHymn4.ViewModels;
 using MobiHymn4.Views.Popups;
@@ -43,8 +44,38 @@ namespace MobiHymn4.Views
         {
             base.OnAppearing();
             UpdateResyncIcons();
+            if (BindingContext is SettingsViewModel model)
+                model.RefreshCloudSyncState();
             if (!globalInstance.IsFetchingSyncDetails)
                 _ = globalInstance.RefreshCatalogDiffAsync();
+        }
+
+        async void btnCloudSync_Clicked(object sender, EventArgs e)
+        {
+            if (!await EnsureConnectedAsync())
+                return;
+
+            try
+            {
+                var auth = ServiceHelper.Get<IAuthService>();
+                if (!auth.IsSignedIn)
+                {
+                    await DisplayAlert("Cloud backup", "Sign in to sync your settings.", "OK");
+                    return;
+                }
+
+                await ServiceHelper.Get<IUserSettingsSyncService>().SyncNowAsync();
+                if (BindingContext is SettingsViewModel model)
+                    model.RefreshCloudSyncState();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Cloud sync failed: {ex.Message}");
+                await DisplayAlert(
+                    "Cloud backup",
+                    "Could not sync settings right now. Try again later.",
+                    "OK");
+            }
         }
 
         async void btnViewChanges_Clicked(object sender, EventArgs e)
@@ -107,7 +138,7 @@ namespace MobiHymn4.Views
         }
 
         void ResyncSection_Tapped(object sender, TappedEventArgs e) =>
-            AcknowledgeResyncBadge();
+            btnResyncAll_Clicked(sender, e);
 
         void AcknowledgeResyncBadge()
         {

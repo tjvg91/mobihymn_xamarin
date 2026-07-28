@@ -71,37 +71,54 @@
                 OnColor="{StaticResource PrimaryLight}"/>
         </Grid>
         <BoxView />
-        <VerticalStackLayout Padding="15,12" Spacing="14">
-            <VerticalStackLayout.GestureRecognizers>
-                <TapGestureRecognizer Tapped="ResyncSection_Tapped"/>
-            </VerticalStackLayout.GestureRecognizers>
+        <VerticalStackLayout Padding="15,12" Spacing="10">
             <VerticalStackLayout Spacing="4">
-                <HorizontalStackLayout Spacing="7">
-                    <Label Text="Resync" Style="{StaticResource Title}" FontAttributes="Bold"/>
-                    <Ellipse
-                        WidthRequest="7"
-                        HeightRequest="7"
-                        Fill="{StaticResource Primary}"
-                        VerticalOptions="Center"
-                        IsVisible="{Binding ShowResyncBadge}"/>
-                </HorizontalStackLayout>
+                <Label Text="Cloud backup" Style="{StaticResource Title}" FontAttributes="Bold"/>
                 <Label
-                    Text="Review server changes or re-download the full hymn library."
+                    Text="Automatically backs up reader settings, bookmarks, and the last 10 hymns in history. Works offline — uploads when you're back online."
                     Style="{StaticResource Subtitle}"
                     LineBreakMode="WordWrap"/>
             </VerticalStackLayout>
-
-            <Grid
-                ColumnDefinitions="*,Auto"
-                ColumnSpacing="10"
-                Margin="16,0,0,0">
-                <Grid.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="btnResyncAll_Clicked"/>
-                </Grid.GestureRecognizers>
+            <Label
+                Text="{Binding CloudSyncStatus}"
+                Style="{StaticResource Subtitle}"
+                LineBreakMode="WordWrap"/>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                <ActivityIndicator
+                    IsRunning="{Binding IsCloudSyncing}"
+                    IsVisible="{Binding IsCloudSyncing}"
+                    Color="{StaticResource Primary}"
+                    WidthRequest="20"
+                    HeightRequest="20"
+                    VerticalOptions="Center"
+                    HorizontalOptions="Start"/>
+                <Button
+                    Grid.Column="1"
+                    Text="Sync now"
+                    Padding="14,8"
+                    FontSize="13"
+                    IsEnabled="{Binding CanCloudSync}"
+                    Clicked="btnCloudSync_Clicked"/>
+            </Grid>
+        </VerticalStackLayout>
+        <BoxView />
+        <VerticalStackLayout Padding="15,12" Spacing="10">
+            <VerticalStackLayout.GestureRecognizers>
+                <TapGestureRecognizer Tapped="ResyncSection_Tapped"/>
+            </VerticalStackLayout.GestureRecognizers>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                 <VerticalStackLayout Spacing="4" VerticalOptions="Center">
-                    <Label Text="All hymns" Style="{StaticResource Title}"/>
+                    <HorizontalStackLayout Spacing="7">
+                        <Label Text="Resync" Style="{StaticResource Title}" FontAttributes="Bold"/>
+                        <Ellipse
+                            WidthRequest="7"
+                            HeightRequest="7"
+                            Fill="{StaticResource Primary}"
+                            VerticalOptions="Center"
+                            IsVisible="{Binding ShowResyncBadge}"/>
+                    </HorizontalStackLayout>
                     <Label
-                        Text="Replace local hymns with the latest catalog."
+                        Text="Review server changes or re-download the full hymn library."
                         Style="{StaticResource Subtitle}"
                         LineBreakMode="WordWrap"/>
                 </VerticalStackLayout>
@@ -112,8 +129,9 @@
                     HeightRequest="32"
                     Padding="4"
                     BackgroundColor="Transparent"
-                    VerticalOptions="Center"
-                    Clicked="btnResyncAll_Clicked"/>
+                    VerticalOptions="Start"
+                    HorizontalOptions="End"
+                    InputTransparent="True"/>
             </Grid>
 
             <Border

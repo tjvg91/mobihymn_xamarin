@@ -51,6 +51,8 @@ namespace MobiHymn4.Views.Popups
         {
             globalInstance.InitFinished -= GlobalInstance_InitFinished;
             model?.Detach();
+            DownloadPopupPresenter.ClearActivePopup();
+            CommunitySignInPresenter.ScheduleShow();
         }
 
         private async void GlobalInstance_InitFinished(object sender, EventArgs e)
