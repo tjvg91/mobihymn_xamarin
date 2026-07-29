@@ -66,6 +66,14 @@ namespace MobiHymn4.Views
             await addToBoardService.TryAddHymnAsync(hymn.Number, this);
         }
 
+        void AddBookmark_Invoked(object sender, EventArgs e)
+        {
+            if (sender is not SwipeItem swipe || swipe.BindingContext is not ShortHymn hymn)
+                return;
+
+            BookmarkSaveHelper.ShowSavePopup(this, hymn);
+        }
+
         void tbSettings_Clicked(object sender, EventArgs e)
         {
             Navigation.ShowPopup(new AgentChatSettingsPopup());

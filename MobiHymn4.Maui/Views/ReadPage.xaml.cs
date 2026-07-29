@@ -541,10 +541,19 @@ namespace MobiHymn4.Views
 
         private async void AddBookmark(string groupName)
         {
-            globalInstance.AddBookmark(groupName);
+            if (string.IsNullOrWhiteSpace(groupName))
+                return;
+
+            if (!globalInstance.AddBookmark(groupName))
+            {
+                if (globalInstance.IsBookmarked())
+                    Globals.ShowToastPopup("bookmark-saved", "Already bookmarked.",
+                        DeviceInfo.Platform == DevicePlatform.Android ? 120 : 0.5);
+                return;
+            }
 
             await System.Threading.Tasks.Task.Delay(500);
-            Globals.ShowToastPopup("bookmark-saved", "Bookmard added.",
+            Globals.ShowToastPopup("bookmark-saved", "Bookmark added.",
                     DeviceInfo.Platform == DevicePlatform.Android ? 120 : 0.5);
             model.BookmarkFont = "FAS";
         }

@@ -122,6 +122,15 @@
                                             </CollectionView.ItemsLayout>
                                             <CollectionView.ItemTemplate>
                                                 <DataTemplate>
+                                                    <SwipeView>
+                                                        <SwipeView.RightItems>
+                                                            <SwipeItems Mode="Reveal">
+                                                                <SwipeItem
+                                                                    Text="Bookmark"
+                                                                    BackgroundColor="{StaticResource Brown}"
+                                                                    Invoked="AddBookmark_Invoked"/>
+                                                            </SwipeItems>
+                                                        </SwipeView.RightItems>
                                                     <Border
                                                         Padding="12,10"
                                                         StrokeThickness="1"
@@ -178,6 +187,7 @@
                                                             </Border>
                                                         </VerticalStackLayout>
                                                     </Border>
+                                                    </SwipeView>
                                                 </DataTemplate>
                                             </CollectionView.ItemTemplate>
                                         </CollectionView>

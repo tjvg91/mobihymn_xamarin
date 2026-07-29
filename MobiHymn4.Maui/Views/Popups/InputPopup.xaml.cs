@@ -132,11 +132,17 @@ namespace MobiHymn4.Views.Popups
             }
             else if (groupPicker?.SelectedItem is string selectedGroup)
             {
-                val = selectedGroup;
+                val = selectedGroup?.Trim();
             }
             else
             {
-                val = string.IsNullOrWhiteSpace(model.SelectedGroup) ? "General" : model.SelectedGroup;
+                val = model.SelectedGroup?.Trim();
+            }
+
+            if (string.IsNullOrWhiteSpace(val))
+            {
+                model.ErrorString = "Group name is required.";
+                return;
             }
 
             if (isNewGroup)
