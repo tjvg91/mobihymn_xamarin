@@ -439,6 +439,7 @@
                     <SwipeView>
                         <SwipeView.RightItems>
                             <SwipeItems Mode="Reveal">
+                                <SwipeItem Text="Bookmark" BackgroundColor="{StaticResource Brown}" Invoked="AddBookmark_Invoked"/>
                                 <SwipeItem Text="Board" BackgroundColor="{StaticResource Primary}" Invoked="AddToBoard_Invoked"/>
                             </SwipeItems>
                         </SwipeView.RightItems>

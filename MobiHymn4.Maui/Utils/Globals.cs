@@ -1614,22 +1614,52 @@ namespace MobiHymn4.Utils
 
         public bool IsBookmarked()
         {
-            return (from x in BookmarkList where x.Number == ActiveHymn.Number select x).Any();
+            return ActiveHymn != null && IsBookmarked(ActiveHymn.Number);
         }
 
-        public void AddBookmark(string groupName = "General")
+        public bool IsBookmarked(string hymnNumber)
         {
-            if (!IsBookmarked())
+            if (string.IsNullOrWhiteSpace(hymnNumber) || BookmarkList == null)
+                return false;
+
+            return BookmarkList.Any(bk =>
+                string.Equals(bk.Number, hymnNumber, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>Bookmark the active hymn. Group name is required.</summary>
+        public bool AddBookmark(string groupName)
+        {
+            if (ActiveHymn == null)
+                return false;
+
+            return AddBookmark(ActiveHymn.Number, groupName, ActiveHymn.FirstLine);
+        }
+
+        /// <summary>Bookmark a hymn by number. Group name is required (no silent "General" fallback).</summary>
+        public bool AddBookmark(string hymnNumber, string groupName, string line = null)
+        {
+            if (string.IsNullOrWhiteSpace(hymnNumber))
+                return false;
+
+            groupName = groupName?.Trim();
+            if (string.IsNullOrWhiteSpace(groupName))
+                return false;
+
+            if (IsBookmarked(hymnNumber))
+                return false;
+
+            var resolvedLine = line;
+            if (string.IsNullOrWhiteSpace(resolvedLine))
+                resolvedLine = HymnList?[hymnNumber]?.FirstLine ?? string.Empty;
+
+            BookmarkList.Add(new Models.ShortHymn
             {
-                var val = new Models.ShortHymn
-                {
-                    Number = ActiveHymn.Number,
-                    Line = ActiveHymn.FirstLine,
-                    BookmarkGroup = groupName
-                };
-                BookmarkList.Add(val);
-                OnBookmarksChanged(BookmarkList);
-            }
+                Number = hymnNumber.Trim(),
+                Line = resolvedLine,
+                BookmarkGroup = groupName
+            });
+            OnBookmarksChanged(BookmarkList);
+            return true;
         }
 
         public bool RemoveBookmark(ShortHymn hymn)

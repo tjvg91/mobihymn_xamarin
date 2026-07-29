@@ -5,6 +5,7 @@ using FontAwesome;
 using MobiHymn4.Extensions;
 using MobiHymn4.Models;
 using MobiHymn4.Services;
+using MobiHymn4.Utils;
 using MobiHymn4.ViewModels;
 using MobiHymn4.Views.Popups;
 using Microsoft.Maui.Controls;
@@ -30,6 +31,14 @@ namespace MobiHymn4.Views
         void tbSettings_Clicked(object sender, EventArgs e)
         {
             Navigation.ShowPopup(new AgentChatSettingsPopup());
+        }
+
+        void AddBookmark_Invoked(object sender, EventArgs e)
+        {
+            if (sender is not SwipeItem swipe || swipe.BindingContext is not ShortHymn hymn)
+                return;
+
+            BookmarkSaveHelper.ShowSavePopup(this, hymn);
         }
 
         protected override void OnDisappearing()

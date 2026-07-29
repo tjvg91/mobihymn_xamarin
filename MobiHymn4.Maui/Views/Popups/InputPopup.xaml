@@ -85,7 +85,7 @@
                     Background="{AppThemeBinding Light=White, Dark={StaticResource PrimaryText}}">
                     <Entry
                         x:Name="entInput"
-                        Placeholder="New group name"
+                        Placeholder="Group name (required if creating new)"
                         PlaceholderColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"
                         FontSize="15"
                         TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
