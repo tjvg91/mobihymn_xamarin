@@ -1,0 +1,17 @@
+@page "/hymn/{Number}"
+@inject NavigationManager Nav
+
+@* MAUI: mobihymn://hymn/{number} → reader. Web alias redirects to /read/{number}. *@
+
+@code {
+    [Parameter] public string? Number { get; set; }
+
+    protected override void OnInitialized()
+    {
+        var n = (Number ?? "").Trim();
+        if (string.IsNullOrEmpty(n))
+            Nav.NavigateTo("/read", replace: true);
+        else
+            Nav.NavigateTo($"/read/{Uri.EscapeDataString(n)}", replace: true);
+    }
+}

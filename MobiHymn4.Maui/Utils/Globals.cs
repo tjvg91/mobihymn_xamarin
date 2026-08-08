@@ -1700,8 +1700,28 @@ namespace MobiHymn4.Utils
         {
             try
             {
-                var filtered = BookmarkList
-                                    .Where(bk => bk.Number == ActiveHymn.Number).First();
+                if (ActiveHymn == null)
+                    return false;
+                return RemoveBookmarkByNumber(ActiveHymn.Number);
+            }
+            catch (Exception)
+            {
+               return false;
+            }
+        }
+
+        public bool RemoveBookmarkByNumber(string hymnNumber)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(hymnNumber) || BookmarkList == null)
+                    return false;
+
+                var filtered = BookmarkList.FirstOrDefault(bk =>
+                    string.Equals(bk.Number, hymnNumber, StringComparison.OrdinalIgnoreCase));
+                if (filtered == null)
+                    return false;
+
                 var res = BookmarkList.Remove(filtered);
                 OnBookmarksChanged(BookmarkList);
                 return res;

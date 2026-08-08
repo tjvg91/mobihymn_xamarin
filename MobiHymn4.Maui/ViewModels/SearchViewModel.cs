@@ -518,8 +518,8 @@ namespace MobiHymn4.ViewModels
                                     continue;
 
                                 results.Add(new ShortHymn
-                                {
-                                    Number = hymn.Number,
+                           {
+                               Number = hymn.Number,
                                     Line = line.Trim()
                                 });
                             }
@@ -559,8 +559,8 @@ namespace MobiHymn4.ViewModels
                             .OrderBy(hymn => HymnSortNumber(hymn.Number))
                             .ThenBy(hymn => hymn.Number)
                             .Select(hymn => new ShortHymn
-                            {
-                                Number = hymn.Number,
+                                         {
+                                             Number = hymn.Number,
                                 Line = string.IsNullOrWhiteSpace(hymn.FirstLine)
                                     ? hymn.Name ?? "No first line available"
                                     : hymn.FirstLine

@@ -1,0 +1,508 @@
+@page "/agent"
+@inject IAgentApi AgentApi
+@inject AppState State
+@inject AgentUiState AgentUi
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+@implements IAsyncDisposable
+
+<PageTitle>Selah</PageTitle>
+
+<div class="selah-page">
+    <div class="selah-messages" @ref="messagesEl">
+        @foreach (var msg in Messages)
+        {
+            <div class="selah-msg">
+                @if (msg.IsTyping)
+                {
+                    <div class="selah-bubble selah-bubble-assistant selah-typing">
+                        <span></span><span></span><span></span>
+                    </div>
+                }
+                else if (msg.UseRichHtml)
+                {
+                    <div class="selah-bubble @(msg.Role == "user" ? "selah-bubble-user" : "selah-bubble-assistant") selah-bubble-md">
+                        @((MarkupString)msg.HtmlContent)
+                    </div>
+                }
+                else
+                {
+                    <div class="selah-bubble @(msg.Role == "user" ? "selah-bubble-user" : "selah-bubble-assistant")">
+                        @msg.VisibleContent@if (msg.IsAnimating)
+                        {
+                            <span class="selah-caret" aria-hidden="true"></span>
+                        }
+                    </div>
+                }
+
+                @if (!msg.IsAnimating && msg.Suggestions?.Count > 0)
+                {
+                    <div class="selah-suggestions">
+                        <div class="selah-suggestions-header">
+                            <button type="button" class="selah-suggestions-toggle" @onclick="() => ToggleSuggestions(msg)">
+                                <span>@msg.SuggestionHeader</span>
+                            </button>
+                            <button type="button"
+                                    class="selah-suggestions-star"
+                                    title="Bookmark all"
+                                    @onclick="() => BeginBookmarkAll(msg)"
+                                    @onclick:stopPropagation="true">
+                                <i class="fa-solid fa-star" aria-hidden="true"></i>
+                                <span>All</span>
+                            </button>
+                            <button type="button" class="selah-suggestions-chevron" @onclick="() => ToggleSuggestions(msg)" aria-label="Toggle">
+                                <i class="fa-solid @(msg.ShowSuggestions ? "fa-chevron-up" : "fa-chevron-down")" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                        @if (msg.ShowSuggestions)
+                        {
+                            <div class="selah-suggestions-list">
+                                @foreach (var s in msg.Suggestions)
+                                {
+                                    var bookmarked = State.IsBookmarked(s.Number);
+                                    <div class="selah-suggestion">
+                                        <button type="button" class="selah-suggestion-main" @onclick="() => Open(s)">
+                                            <div class="selah-suggestion-top">
+                                                <span class="selah-suggestion-line">@(s.FirstLine ?? s.Title)</span>
+                                                <span class="selah-suggestion-num">#@s.Number</span>
+                                            </div>
+                                            @if (!string.IsNullOrWhiteSpace(s.Reason))
+                                            {
+                                                <div class="selah-suggestion-reason">@s.Reason</div>
+                                            }
+                                        </button>
+                                        <button type="button"
+                                                class="selah-suggestion-bm @(bookmarked ? "is-bookmarked" : null)"
+                                                title="@(bookmarked ? "Remove bookmark" : "Bookmark")"
+                                                @onclick="() => OnStarClick(s, bookmarked)"
+                                                @onclick:stopPropagation="true">
+                                            <i class="fa-solid fa-star" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <div class="selah-error">@Error</div>
+    }
+
+    @if (Listening)
+    {
+        <div class="selah-listening">
+            <div class="selah-listening-mic"><i class="fa-solid fa-microphone"></i></div>
+            <div>Listening… tap the mic to cancel</div>
+        </div>
+    }
+
+    <div class="selah-composer @(IsOnline ? null : "is-offline")">
+        <div class="selah-composer-field">
+            <input @bind="Draft" @bind:event="oninput"
+                   placeholder="@(IsOnline ? "Ask for a hymn…" : "Internet connection required")"
+                   disabled="@(!IsOnline || Busy)"
+                   @onkeydown="OnKey" />
+            <span class="selah-composer-line"></span>
+        </div>
+        <button type="button" class="selah-mic @(Listening ? "is-on" : null)"
+                title="Voice" disabled="@(!IsOnline || Busy)" @onclick="ToggleMic">
+            <i class="fa-solid fa-microphone"></i>
+        </button>
+        <button type="button" class="selah-send" disabled="@(!IsOnline || Busy || string.IsNullOrWhiteSpace(Draft))" @onclick="Send">
+            Send
+        </button>
+    </div>
+</div>
+
+<AgentSettingsPopup @bind-Visible="showSettings" />
+
+<BookmarkSaveModal @bind-Visible="showSave"
+                   GroupOptions="@(State.BookmarkGroupNames().Prepend("General").Distinct(StringComparer.OrdinalIgnoreCase).ToList())"
+                   OnSaved="SaveBookmark" />
+
+<ConfirmDialog @bind-Visible="showDeleteConfirm"
+               Title="Delete bookmark?"
+               Message="@DeleteBookmarkMessage"
+               ConfirmLabel="Yes"
+               CancelLabel="No"
+               OnConfirmed="ConfirmDeleteBookmark" />
+
+@code {
+    sealed class UiMessage
+    {
+        public string Role { get; set; } = "assistant";
+        /// <summary>Full reply text (used for API history).</summary>
+        public string Content { get; set; } = "";
+        /// <summary>Visible bubble text while typing out (plain).</summary>
+        public string VisibleContent { get; set; } = "";
+        public string HtmlContent { get; set; } = "";
+        public bool UseRichHtml { get; set; }
+        public bool IsTyping { get; set; }
+        public bool IsAnimating { get; set; }
+        public bool ShowSuggestions { get; set; } = true;
+        public List<AgentSearchResult>? Suggestions { get; set; }
+        public string SuggestionHeader =>
+            Suggestions == null || Suggestions.Count == 0
+                ? ""
+                : $"{Suggestions.Count} hymn{(Suggestions.Count == 1 ? "" : "s")}";
+
+        public void FinishRichFormat()
+        {
+            VisibleContent = ChatMarkdown.ToPlain(Content);
+            HtmlContent = ChatMarkdown.ToHtml(Content);
+            UseRichHtml = Role == "assistant" && !string.IsNullOrWhiteSpace(HtmlContent);
+            IsAnimating = false;
+        }
+    }
+
+    static readonly string Greeting =
+        "Hi, I'm Selah! — I can help you pick hymns for your gathering. Tell me a bit about the service: theme, season, mood, key, or a Bible idea, and we'll narrow it together.";
+
+    List<UiMessage> Messages = new()
+    {
+        CreateGreeting()
+    };
+
+    static UiMessage CreateGreeting()
+    {
+        var msg = new UiMessage { Role = "assistant", Content = Greeting };
+        msg.FinishRichFormat();
+        return msg;
+    }
+
+    string Draft = "";
+    string? SessionId;
+    bool Busy;
+    bool Listening;
+    bool IsOnline = true;
+    string? Error;
+    bool showSave;
+    bool showSettings;
+    bool showDeleteConfirm;
+    List<AgentSearchResult> pendingBookmarks = new();
+    string? pendingDeleteNumber;
+    ElementReference messagesEl;
+    CancellationTokenSource? typeCts;
+    DotNetObjectReference<Agent>? selfRef;
+    IJSObjectReference? netSub;
+
+    string DeleteBookmarkMessage =>
+        string.IsNullOrWhiteSpace(pendingDeleteNumber)
+            ? "Are you sure you want to delete this bookmark?"
+            : $"Are you sure you want to delete Hymn #{pendingDeleteNumber} as bookmark?";
+
+    int Limit
+    {
+        get
+        {
+            var n = State.Settings.AgentChatLimit <= 0 ? 10 : State.Settings.AgentChatLimit;
+            return AgentSettingsPopup.SnapLimitPublic(n);
+        }
+    }
+
+    string? ModeApi => State.Settings.AgentMode switch
+    {
+        1 => "local",
+        2 => "cloud",
+        _ => null
+    };
+
+    protected override void OnInitialized()
+    {
+        AgentUi.OpenSettingsRequested += OnOpenSettings;
+        State.Changed += OnStateChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        try
+        {
+            IsOnline = await Js.InvokeAsync<bool>("mobihymnNet.isOnline");
+            selfRef = DotNetObjectReference.Create(this);
+            netSub = await Js.InvokeAsync<IJSObjectReference>("mobihymnNet.subscribe", selfRef);
+        }
+        catch
+        {
+            IsOnline = true;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnConnectivityChanged(bool online)
+    {
+        if (IsOnline == online)
+            return;
+        IsOnline = online;
+        if (!online && Listening)
+            _ = StopMicAsync();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    void OnStateChanged() => InvokeAsync(StateHasChanged);
+
+    void OnOpenSettings()
+    {
+        showSettings = true;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    void ToggleSuggestions(UiMessage msg)
+    {
+        msg.ShowSuggestions = !msg.ShowSuggestions;
+    }
+
+    async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Send();
+    }
+
+    async Task Send()
+    {
+        if (!IsOnline || string.IsNullOrWhiteSpace(Draft) || Busy) return;
+        if (Listening) await StopMicAsync();
+
+        var text = Draft.Trim();
+        Draft = "";
+        Messages.Add(new UiMessage { Role = "user", Content = text, VisibleContent = text });
+        var typing = new UiMessage { Role = "assistant", IsTyping = true };
+        Messages.Add(typing);
+        Busy = true;
+        Error = null;
+        await ScrollToBottom();
+        try
+        {
+            var payload = Messages
+                .Where(m => !m.IsTyping && m.Role is "user" or "assistant")
+                .Select(m => new AgentChatMessageDto { Role = m.Role, Content = m.Content })
+                .ToList();
+            var response = await AgentApi.ChatAsync(payload, Limit, SessionId, ModeApi);
+            SessionId = response.SessionId ?? SessionId;
+            var reply = response.Reply ?? response.Message ?? "(no reply)";
+            var plain = ChatMarkdown.ToPlain(reply);
+            var suggestions = response.Suggestions;
+
+            Messages.Remove(typing);
+            var bubble = new UiMessage
+            {
+                Role = "assistant",
+                Content = reply,
+                VisibleContent = "",
+                IsAnimating = true
+            };
+            Messages.Add(bubble);
+            await ScrollToBottom();
+
+            typeCts?.Cancel();
+            typeCts = new CancellationTokenSource();
+            try
+            {
+                await TypeOutAsync(bubble, plain, typeCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                bubble.VisibleContent = plain;
+            }
+
+            bubble.FinishRichFormat();
+            bubble.Suggestions = suggestions;
+            bubble.ShowSuggestions = true;
+        }
+        catch (Exception ex)
+        {
+            Messages.Remove(typing);
+            Error = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+            await ScrollToBottom();
+        }
+    }
+
+    async Task TypeOutAsync(UiMessage bubble, string text, CancellationToken token)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            bubble.VisibleContent = "";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        // Match MAUI: a few characters per tick for a snappy typewriter.
+        const int charsPerTick = 3;
+        const int delayMs = 8;
+        var tick = 0;
+
+        for (var i = 1; i <= text.Length; i += charsPerTick)
+        {
+            token.ThrowIfCancellationRequested();
+            var end = Math.Min(i + charsPerTick - 1, text.Length);
+            bubble.VisibleContent = text[..end];
+            await InvokeAsync(StateHasChanged);
+            if (++tick % 8 == 0)
+                await ScrollToBottom();
+            await Task.Delay(delayMs, token);
+        }
+
+        bubble.VisibleContent = text;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task ToggleMic()
+    {
+        if (!IsOnline)
+            return;
+        if (Listening)
+        {
+            await StopMicAsync();
+            return;
+        }
+
+        Listening = true;
+        try
+        {
+            var text = await Js.InvokeAsync<string?>("eval", @"
+                (async () => {
+                    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+                    if (!SR) return null;
+                    return await new Promise((resolve) => {
+                        const r = new SR();
+                        r.lang = 'en-US';
+                        r.interimResults = false;
+                        r.maxAlternatives = 1;
+                        r.onresult = (e) => resolve(e.results[0][0].transcript || '');
+                        r.onerror = () => resolve(null);
+                        r.onend = () => {};
+                        window.__selahRec = r;
+                        r.start();
+                    });
+                })()");
+            if (!string.IsNullOrWhiteSpace(text))
+                Draft = (Draft + " " + text).Trim();
+        }
+        catch { }
+        finally
+        {
+            Listening = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task StopMicAsync()
+    {
+        Listening = false;
+        try { await Js.InvokeVoidAsync("eval", "try{window.__selahRec&&window.__selahRec.stop()}catch(e){}"); }
+        catch { }
+    }
+
+    async Task ScrollToBottom()
+    {
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await Js.InvokeVoidAsync("eval",
+                "requestAnimationFrame(()=>{const el=document.querySelector('.selah-messages');if(el)el.scrollTop=el.scrollHeight;})");
+        }
+        catch { }
+    }
+
+    async Task Open(AgentSearchResult s)
+    {
+        if (string.IsNullOrWhiteSpace(s.Number)) return;
+        var hymn = await State.OpenHymnAsync(s.Number);
+        if (hymn != null)
+            Nav.NavigateTo($"read/{Uri.EscapeDataString(hymn.Number)}");
+    }
+
+    void OnStarClick(AgentSearchResult s, bool bookmarked)
+    {
+        if (string.IsNullOrWhiteSpace(s.Number)) return;
+
+        // Prefer the same flag used for the filled star UI; re-check store as a fallback.
+        if (bookmarked || State.IsBookmarked(s.Number))
+        {
+            pendingDeleteNumber = s.Number;
+            showDeleteConfirm = true;
+            return;
+        }
+
+        BeginBookmark(s);
+    }
+
+    void BeginBookmark(AgentSearchResult s)
+    {
+        pendingBookmarks = new List<AgentSearchResult> { s };
+        showSave = true;
+    }
+
+    void BeginBookmarkAll(UiMessage msg)
+    {
+        if (msg.Suggestions == null || msg.Suggestions.Count == 0) return;
+        pendingBookmarks = msg.Suggestions
+            .Where(s => !string.IsNullOrWhiteSpace(s.Number) && !State.IsBookmarked(s.Number))
+            .ToList();
+        if (pendingBookmarks.Count == 0)
+        {
+            State.ShowToast("/lottie/bookmark-saved.gif", "All already bookmarked.");
+            return;
+        }
+        showSave = true;
+    }
+
+    async Task SaveBookmark(string group)
+    {
+        if (pendingBookmarks.Count == 0) return;
+        var added = 0;
+        foreach (var s in pendingBookmarks)
+        {
+            if (await State.AddBookmarkAsync(s.Number!, group, s.FirstLine ?? s.Title))
+                added++;
+        }
+
+        var total = pendingBookmarks.Count;
+        pendingBookmarks.Clear();
+        var msg = added == 0
+            ? (total == 1 ? "Already bookmarked." : "All already bookmarked.")
+            : added == 1
+                ? "Bookmark added."
+                : $"{added} bookmarks added.";
+        State.ShowToast("/lottie/bookmark-saved.gif", msg);
+    }
+
+    async Task ConfirmDeleteBookmark()
+    {
+        if (string.IsNullOrWhiteSpace(pendingDeleteNumber)) return;
+        await State.RemoveBookmarkAsync(pendingDeleteNumber);
+        pendingDeleteNumber = null;
+        State.ShowToast("/lottie/bookmark-deleted.gif", "Bookmark deleted.");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        typeCts?.Cancel();
+        typeCts?.Dispose();
+        AgentUi.OpenSettingsRequested -= OnOpenSettings;
+        State.Changed -= OnStateChanged;
+        try
+        {
+            if (netSub != null)
+            {
+                await netSub.InvokeVoidAsync("dispose");
+                await netSub.DisposeAsync();
+            }
+        }
+        catch { /* ignore */ }
+        selfRef?.Dispose();
+        await StopMicAsync();
+    }
+}

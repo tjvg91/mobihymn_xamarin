@@ -9,7 +9,7 @@
 			android:resource="@mipmap/ic_stat_logo" />
 		<meta-data
 			android:name="com.google.firebase.messaging.default_notification_channel_id"
-			android:value="com.tjapps.mobihymn.board" />
+			android:value="com.mobihymn.board" />
 	</application>
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 	<uses-permission android:name="android.permission.INTERNET" />

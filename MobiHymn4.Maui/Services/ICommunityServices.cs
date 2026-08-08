@@ -28,6 +28,8 @@ public interface IGroupService
     Task<WorshipGroup> JoinGroupByIdAsync(string groupId);
     Task InviteByEmailAsync(string groupId, string email);
     Task<IReadOnlyList<GroupMember>> GetMembersAsync(string groupId);
+    Task SetMemberAdminAsync(string groupId, string memberId, bool isAdmin);
+    Task RemoveMemberAsync(string groupId, string memberId);
     Task<bool> IsGroupNotificationsMutedAsync(string groupId);
     Task SetGroupNotificationsMutedAsync(string groupId, bool muted);
     Task LeaveGroupAsync(string groupId);

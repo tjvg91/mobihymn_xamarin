@@ -1,0 +1,223 @@
+@page "/settings"
+@inject AppState State
+@inject IUserSettingsSyncService Sync
+@inject IAuthService Auth
+@inject AuthNavigation AuthNav
+@inject CatalogUpdateService Catalog
+@inject IJSRuntime Js
+@implements IDisposable
+
+<PageTitle>App Settings</PageTitle>
+
+<div class="settings-page">
+    <div class="settings-row">
+        <div class="settings-copy">
+            <div class="settings-title">Dark Mode</div>
+            <div class="settings-sub">Use a dark theme for the app interface.</div>
+        </div>
+        <label class="toggle">
+            <input type="checkbox" @bind="DarkMode" @bind:after="SaveDark" />
+            <span class="toggle-track"></span>
+        </label>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-row">
+        <div class="settings-copy">
+            <div class="settings-title">Keep Awake</div>
+            <div class="settings-sub">Prevent the screen from turning off while you read hymns.</div>
+        </div>
+        <label class="toggle">
+            <input type="checkbox" @bind="KeepAwake" @bind:after="SaveKeepAwake" />
+            <span class="toggle-track"></span>
+        </label>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-block">
+        <div class="settings-copy">
+            <div class="settings-title">Cloud backup</div>
+            <div class="settings-sub">
+                Automatically backs up reader settings, bookmarks, and the last 10 hymns in history.
+                Works offline — uploads when you're back online.
+            </div>
+        </div>
+        <div class="settings-sub settings-status">@CloudStatus</div>
+        <div class="settings-cloud-actions">
+            @if (Sync.IsSyncing)
+            {
+                <span class="spinner settings-spinner" aria-hidden="true"></span>
+            }
+            else
+            {
+                <span></span>
+            }
+            @if (!Auth.IsSignedIn)
+            {
+                <a class="btn settings-sync-btn" href="@AuthNav.LoginUrl("settings")">Log in</a>
+            }
+            else
+            {
+                <button class="btn settings-sync-btn" type="button"
+                        disabled="@Sync.IsSyncing" @onclick="SyncNow">
+                    Sync now
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-block settings-resync" @onclick="ToggleResync">
+        <div class="settings-row settings-row-tight">
+            <div class="settings-copy">
+                <div class="settings-title-row">
+                    <span class="settings-title">@(Catalog.IsStandalonePwa ? (Catalog.IsLibraryDownloaded ? "Resync" : "Download library") : "Hymn library")</span>
+                    @if (Catalog.ShowResyncBadge)
+                    {
+                        <span class="settings-update-dot" title="Updates available" aria-label="Updates available"></span>
+                    }
+                </div>
+                <div class="settings-sub">
+                    @if (!Catalog.IsStandalonePwa)
+                    {
+                        <text>Install the app to download hymns and get catalog update alerts.</text>
+                    }
+                    else if (!Catalog.IsLibraryDownloaded)
+                    {
+                        <text>Download hymns to this device. The app reads and searches only from that library.</text>
+                    }
+                    else
+                    {
+                        <text>Reading and search use your downloaded library. Check for updates or refresh.</text>
+                    }
+                </div>
+            </div>
+            <i class="fa-solid @(Catalog.IsLibraryDownloaded ? "fa-arrows-rotate" : "fa-download") settings-resync-icon @(Catalog.IsChecking ? "is-spinning" : null)" aria-hidden="true"></i>
+        </div>
+
+        @if (showResyncPanel)
+        {
+            <div class="settings-resync-box" @onclick:stopPropagation="true">
+                <div class="settings-resync-status">
+                    @if (Catalog.IsChecking)
+                    {
+                        <span class="spinner settings-spinner" aria-hidden="true"></span>
+                    }
+                    <span>@Catalog.SyncSummary</span>
+                </div>
+                <div class="settings-resync-actions">
+                    @if (!Catalog.IsStandalonePwa)
+                    {
+                        @* Browser tab: no download / update actions *@
+                    }
+                    else if (!Catalog.IsLibraryDownloaded)
+                    {
+                        <button type="button" class="btn settings-sync-btn"
+                                disabled="@Catalog.IsChecking" @onclick="DownloadLibrary">
+                            Download library
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn secondary settings-sync-btn"
+                                disabled="@Catalog.IsChecking" @onclick="CheckAgain">
+                            Check again
+                        </button>
+                        <button type="button" class="btn settings-sync-btn"
+                                disabled="@Catalog.IsChecking" @onclick="RefreshLibrary">
+                            Refresh library
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    bool DarkMode;
+    bool KeepAwake;
+    bool showResyncPanel;
+
+    string CloudStatus =>
+        !Auth.IsSignedIn
+            ? "Sign in to sync settings across devices."
+            : Sync.LastSyncStatus;
+
+    protected override async Task OnInitializedAsync()
+    {
+        LoadFromState();
+        State.Changed += OnChanged;
+        Sync.SyncStateChanged += OnSync;
+        Catalog.Changed += OnCatalog;
+        await Catalog.InitializeAsync();
+        if (Catalog.IsUpdateTrackingEnabled)
+        {
+            Catalog.AcknowledgeSettingsBadge();
+            Catalog.AcknowledgeResyncBadge();
+            await Catalog.RefreshAsync();
+        }
+    }
+
+    void LoadFromState()
+    {
+        DarkMode = State.DarkMode;
+        KeepAwake = State.Settings.KeepAwake;
+    }
+
+    void OnChanged() => InvokeAsync(() => { LoadFromState(); StateHasChanged(); });
+    void OnSync(object? s, EventArgs e) => InvokeAsync(StateHasChanged);
+    void OnCatalog() => InvokeAsync(StateHasChanged);
+
+    Task SaveDark() => State.UpdateSettingsAsync(s => s.DarkMode = DarkMode);
+
+    async Task SaveKeepAwake()
+    {
+        await State.UpdateSettingsAsync(s => s.KeepAwake = KeepAwake);
+        // Request from the toggle gesture so Wake Lock is more likely to succeed.
+        try { await Js.InvokeVoidAsync("mobihymnWakeLock.setKeepAwake", KeepAwake); }
+        catch { /* KeepAwakeSync also applies */ }
+    }
+
+    async Task SyncNow()
+    {
+        await Sync.PullAndMergeAsync(preferCloud: true);
+        await Sync.PushAsync();
+    }
+
+    async Task ToggleResync()
+    {
+        showResyncPanel = true;
+        Catalog.AcknowledgeResyncBadge();
+        if (Catalog.IsUpdateTrackingEnabled && !Catalog.IsChecking)
+            await Catalog.RefreshAsync();
+        else
+            await InvokeAsync(StateHasChanged);
+    }
+
+    Task CheckAgain() => Catalog.RefreshAsync();
+
+    async Task DownloadLibrary()
+    {
+        await Catalog.DownloadLibraryAsync();
+        if (Catalog.IsLibraryDownloaded && string.IsNullOrEmpty(Catalog.CheckError))
+            State.ShowToast("/lottie/done.gif", "Hymn library downloaded.");
+    }
+
+    async Task RefreshLibrary()
+    {
+        await Catalog.ApplyUpdatesAsync();
+        if (string.IsNullOrEmpty(Catalog.CheckError))
+            State.ShowToast("/lottie/done.gif", "Hymn library refreshed.");
+    }
+
+    public void Dispose()
+    {
+        State.Changed -= OnChanged;
+        Sync.SyncStateChanged -= OnSync;
+        Catalog.Changed -= OnCatalog;
+    }
+}

@@ -1,0 +1,165 @@
+@namespace MobiHymn4.Web.Components
+@inject AppState State
+@implements IDisposable
+
+@if (Visible)
+{
+    <div class="rs-backdrop" @onclick="Close">
+        <div class="rs-popup" @onclick:stopPropagation="true">
+            <div class="rs-title">Reader Settings</div>
+
+            @* Alignment *@
+            <div class="rs-section rs-row">
+                <span class="rs-label">Alignment</span>
+                <div class="rs-options">
+                    <button type="button" class="rs-box @(Align==0?"selected":"")" @onclick='() => SetAlign(0)' title="Left">
+                        <i class="fa-solid fa-align-left"></i>
+                    </button>
+                    <button type="button" class="rs-box @(Align==1?"selected":"")" @onclick='() => SetAlign(1)' title="Center">
+                        <i class="fa-solid fa-align-center"></i>
+                    </button>
+                    <button type="button" class="rs-box @(Align==2?"selected":"")" @onclick='() => SetAlign(2)' title="Right">
+                        <i class="fa-solid fa-align-right"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="rs-divider"></div>
+
+            @* Theme *@
+            <div class="rs-section">
+                <div class="rs-label">Theme</div>
+                <div class="rs-grid">
+                    @foreach (var t in Themes)
+                    {
+                        <button type="button"
+                                class="rs-box rs-theme @(Theme==t.Hex?"selected":"")"
+                                style="background:@t.Hex"
+                                @onclick="() => SetTheme(t.Hex)"
+                                title="@t.Name">
+                            @if (Theme == t.Hex)
+                            {
+                                <i class="fa-solid fa-check" style="color:@(t.LightCheck?"#2D2D2D":"#fff")"></i>
+                            }
+                        </button>
+                    }
+                </div>
+            </div>
+            <div class="rs-divider"></div>
+
+            @* Font Type *@
+            <div class="rs-section">
+                <div class="rs-label">Font Type</div>
+                <div class="rs-grid">
+                    @foreach (var f in Fonts)
+                    {
+                        <button type="button"
+                                class="rs-box @(Font==f.Key?"selected":"")"
+                                style="font-family:@f.Css"
+                                @onclick="() => SetFont(f.Key)"
+                                title="@f.Key">Aa</button>
+                    }
+                </div>
+            </div>
+            <div class="rs-divider"></div>
+
+            @* Letter Spacing *@
+            <div class="rs-section">
+                <div class="rs-label">Letter Spacing</div>
+                <div class="rs-options rs-options-center">
+                    @foreach (var v in LetterOpts)
+                    {
+                        <button type="button" class="rs-box @(Near(Letter,v)?"selected":"")"
+                                @onclick="() => SetLetter(v)">@LabelLetter(v)</button>
+                    }
+                </div>
+            </div>
+            <div class="rs-divider"></div>
+
+            @* Line Spacing *@
+            <div class="rs-section">
+                <div class="rs-label">Line Spacing</div>
+                <div class="rs-options rs-options-center">
+                    @foreach (var v in LineOpts)
+                    {
+                        <button type="button" class="rs-box @(Near(Line,v)?"selected":"")"
+                                @onclick="() => SetLine(v)">@LabelLine(v)</button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+
+    int Align;
+    string Theme = "#FFFFFF";
+    string Font = "Roboto";
+    double Letter;
+    double Line = 1;
+
+    static readonly (string Name, string Hex, bool LightCheck)[] Themes =
+    {
+        ("White", "#FFFFFF", true),
+        ("Sepia", "#faebd7", true),
+        ("Brown", "#8b6220", false),
+        ("Gray", "#464646", false),
+        ("Dark", "#2D2D2D", false),
+        ("Green", "#009200", false),
+        ("Orange", "#DF7D38", false),
+        ("Blue", "#337def", true),
+        ("Purple", "#7237C5", false),
+        ("Pink", "#FF0073", false),
+    };
+
+    static readonly (string Key, string Css)[] Fonts =
+    {
+        // Same order / aliases as MAUI SettingsPopup font grid.
+        ("Roboto", "Roboto, system-ui, sans-serif"),
+        ("NotoSerif", "NotoSerif, Georgia, serif"),
+        ("ChelseaMarket", "ChelseaMarket, cursive"),
+        ("UnifrakturMaguntia", "UnifrakturMaguntia, fantasy"),
+        ("StyleScript", "StyleScript, cursive"),
+        ("Cookie", "Cookie, cursive"),
+        ("Frosty", "Frosty, cursive"),
+        ("KGKissMeSlowly", "KGKissMeSlowly, cursive"),
+        ("KGMelonheadz", "KGMelonheadz, cursive"),
+        ("KGWhattheTeacherWants", "KGWhattheTeacherWants, cursive"),
+    };
+
+    static readonly double[] LetterOpts = { 0, 0.5, 1 };
+    static readonly double[] LineOpts = { 1, 1.25, 1.5 };
+
+    protected override void OnInitialized() => State.Changed += OnChanged;
+
+    protected override void OnParametersSet()
+    {
+        if (!Visible) return;
+        Align = State.Settings.ActiveAlignment;
+        Theme = State.ReaderTheme;
+        Font = string.IsNullOrWhiteSpace(State.Settings.ActiveFont) ? "Roboto" : State.Settings.ActiveFont;
+        Letter = State.Settings.ActiveLetterSpacing;
+        Line = State.ReaderLineSpacing;
+        // Snap line spacing to nearest option if coming from slider defaults
+        if (LineOpts.All(v => !Near(Line, v)))
+            Line = 1;
+    }
+
+    void OnChanged() => InvokeAsync(StateHasChanged);
+
+    static bool Near(double a, double b) => Math.Abs(a - b) <= 0.001;
+    static string LabelLetter(double v) => v == 0 ? "0" : v == 0.5 ? ".5" : "1";
+    static string LabelLine(double v) => v.ToString("0.##");
+
+    Task SetAlign(int v) { Align = v; return State.UpdateSettingsAsync(s => s.ActiveAlignment = v); }
+    Task SetTheme(string hex) { Theme = hex; return State.UpdateSettingsAsync(s => s.ActiveReadTheme = hex); }
+    Task SetFont(string key) { Font = key; return State.UpdateSettingsAsync(s => s.ActiveFont = key); }
+    Task SetLetter(double v) { Letter = v; return State.UpdateSettingsAsync(s => s.ActiveLetterSpacing = v); }
+    Task SetLine(double v) { Line = v; return State.UpdateSettingsAsync(s => s.ActiveLineSpacing = v); }
+
+    async Task Close() => await VisibleChanged.InvokeAsync(false);
+
+    public void Dispose() => State.Changed -= OnChanged;
+}

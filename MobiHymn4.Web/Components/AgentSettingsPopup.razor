@@ -1,0 +1,215 @@
+@namespace MobiHymn4.Web.Components
+@inject AppState State
+
+@if (show)
+{
+    <div class="modal-backdrop ai-settings-backdrop @(animOpen ? "is-open" : null)" @onclick="OnOverlay">
+        <div class="modal ai-settings-modal" @onclick:stopPropagation="true">
+            <h2 class="ai-settings-title">@panelTitle</h2>
+
+            @if (choiceKind == ChoiceKind.None)
+            {
+                <div class="ai-settings-rows">
+                    <div class="ai-settings-row">
+                        <span class="ai-settings-label">Agent</span>
+                        <button type="button" class="ai-settings-value" @onclick="() => ShowChoices(ChoiceKind.Agent)">
+                            <span>@ModeLabel</span>
+                            <span class="ai-settings-underline"></span>
+                        </button>
+                    </div>
+                    <div class="ai-settings-row">
+                        <span class="ai-settings-label">Results limit</span>
+                        <button type="button" class="ai-settings-value" @onclick="() => ShowChoices(ChoiceKind.Limit)">
+                            <span>@Limit</span>
+                            <span class="ai-settings-underline"></span>
+                        </button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="ai-settings-choices">
+                    @if (choiceKind == ChoiceKind.Agent)
+                    {
+                        @foreach (var opt in ModeOptions)
+                        {
+                            var selected = Mode == opt.Key;
+                            <button type="button"
+                                    class="ai-settings-choice @(selected ? "is-selected" : null)"
+                                    @onclick="() => PickMode(opt.Key)">
+                                <span>@opt.Label</span>
+                                @if (selected)
+                                {
+                                    <i class="fa-solid fa-check" aria-hidden="true"></i>
+                                }
+                            </button>
+                        }
+                    }
+                    else
+                    {
+                        @foreach (var n in LimitOptions)
+                        {
+                            var selected = Limit == n;
+                            <button type="button"
+                                    class="ai-settings-choice @(selected ? "is-selected" : null)"
+                                    @onclick="() => PickLimit(n)">
+                                <span>@n</span>
+                                @if (selected)
+                                {
+                                    <i class="fa-solid fa-check" aria-hidden="true"></i>
+                                }
+                            </button>
+                        }
+                    }
+                </div>
+            }
+
+            <div class="ai-settings-actions">
+                @if (choiceKind != ChoiceKind.None)
+                {
+                    <button type="button" class="ai-settings-link" @onclick="ShowMain">Back</button>
+                }
+                else
+                {
+                    <span></span>
+                }
+                <button type="button" class="ai-settings-link" @onclick="OnPrimaryAction">@primaryLabel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    public static readonly int[] LimitOptions = [5, 10, 15, 20, 25, 30];
+    static readonly (string Key, string Label)[] ModeOptions =
+    [
+        ("auto", "Auto"),
+        ("local", "Local"),
+        ("cloud", "Cloud"),
+    ];
+
+    enum ChoiceKind { None, Agent, Limit }
+
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+
+    const int CloseMs = 200;
+    bool show;
+    bool animOpen;
+    bool closing;
+    ChoiceKind choiceKind;
+    string Mode = "auto";
+    int Limit = 10;
+
+    string panelTitle => choiceKind switch
+    {
+        ChoiceKind.Agent => "Agent",
+        ChoiceKind.Limit => "Results limit",
+        _ => "AI settings"
+    };
+
+    string primaryLabel => choiceKind == ChoiceKind.None ? "Done" : "Cancel";
+    string ModeLabel => ModeOptions.FirstOrDefault(m => m.Key == Mode).Label ?? "Auto";
+
+    protected override void OnParametersSet()
+    {
+        if (Visible && !show && !closing)
+        {
+            LoadFromState();
+            choiceKind = ChoiceKind.None;
+            show = true;
+            animOpen = false;
+            _ = EnterAsync();
+        }
+        else if (!Visible && show && !closing)
+        {
+            _ = ExitAsync(notifyParent: false);
+        }
+    }
+
+    void LoadFromState()
+    {
+        Mode = State.Settings.AgentMode switch
+        {
+            1 => "local",
+            2 => "cloud",
+            _ => "auto"
+        };
+        Limit = SnapLimit(State.Settings.AgentChatLimit <= 0 ? 10 : State.Settings.AgentChatLimit);
+    }
+
+    static int SnapLimit(int value)
+    {
+        var best = LimitOptions[0];
+        var bestDist = Math.Abs(value - best);
+        foreach (var option in LimitOptions)
+        {
+            var dist = Math.Abs(value - option);
+            if (dist < bestDist)
+            {
+                best = option;
+                bestDist = dist;
+            }
+        }
+        return best;
+    }
+
+    public static int SnapLimitPublic(int value) => SnapLimit(value);
+
+    void ShowChoices(ChoiceKind kind) => choiceKind = kind;
+    void ShowMain() => choiceKind = ChoiceKind.None;
+
+    async Task PickMode(string key)
+    {
+        Mode = key;
+        var modeInt = key switch { "local" => 1, "cloud" => 2, _ => 0 };
+        await State.UpdateSettingsAsync(s => s.AgentMode = modeInt);
+        choiceKind = ChoiceKind.None;
+    }
+
+    async Task PickLimit(int n)
+    {
+        Limit = n;
+        await State.UpdateSettingsAsync(s => s.AgentChatLimit = n);
+        choiceKind = ChoiceKind.None;
+    }
+
+    void OnOverlay()
+    {
+        if (choiceKind != ChoiceKind.None)
+            ShowMain();
+        else
+            _ = ExitAsync(notifyParent: true);
+    }
+
+    void OnPrimaryAction()
+    {
+        if (choiceKind != ChoiceKind.None)
+            ShowMain();
+        else
+            _ = ExitAsync(notifyParent: true);
+    }
+
+    async Task EnterAsync()
+    {
+        await Task.Delay(20);
+        if (!show || closing) return;
+        animOpen = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task ExitAsync(bool notifyParent)
+    {
+        if (closing) return;
+        closing = true;
+        animOpen = false;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(CloseMs);
+        show = false;
+        closing = false;
+        choiceKind = ChoiceKind.None;
+        if (notifyParent || Visible)
+            await VisibleChanged.InvokeAsync(false);
+        await InvokeAsync(StateHasChanged);
+    }
+}

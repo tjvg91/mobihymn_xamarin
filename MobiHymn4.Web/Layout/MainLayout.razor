@@ -1,0 +1,643 @@
+@inherits LayoutComponentBase
+@inject AppState State
+@inject BookmarksUiState BookmarksUi
+@inject AgentUiState AgentUi
+@inject BoardUiState BoardUi
+@inject IAuthService Auth
+@inject IProfileService Profiles
+@inject IUserSettingsSyncService Sync
+@inject IAppPreferences Prefs
+@inject AuthNavigation AuthNav
+@inject CatalogUpdateService Catalog
+@inject IJSRuntime Js
+@inject NavigationManager Nav
+@implements IDisposable
+
+<ThemeSync />
+<KeepAwakeSync />
+<IntroSlider />
+<DownloadLibraryDialog />
+
+<!-- Sidebar overlay -->
+<div class="sidebar-overlay @(sidebarOpen ? "open" : "")" @onclick="CloseSidebar"></div>
+
+<!-- Flyout ? mirrors MAUI AppShell flyout -->
+<div class="sidebar @(sidebarOpen ? "open" : "")">
+    <div class="sidebar-header">
+        @if (Auth.IsSignedIn)
+        {
+            <div class="sidebar-avatar" aria-hidden="true">
+                <i class="fa-solid fa-user"></i>
+            </div>
+            <div class="sidebar-user-row">
+                <span class="sidebar-user-name">@DisplayName</span>
+                <a class="sidebar-edit" href="profile" @onclick="CloseSidebar" title="Edit profile">
+                    <i class="fa-solid fa-pencil"></i>
+                </a>
+            </div>
+        }
+        else
+        {
+            <span class="sidebar-logo-glyph" aria-hidden="true">@((MarkupString)"&#xe901;")</span>
+            <div class="sidebar-brand">Mobi<span>Hymn</span></div>
+        }
+    </div>
+
+    <nav>
+        <a href="@ReadHref" class="@(IsNavActive("read") ? "active" : null)" @onclick="CloseSidebar">
+            <i class="fa-solid fa-book-open-reader"></i><span>Read</span>
+        </a>
+        <a href="search" class="@(IsNavActive("search") ? "active" : null)" @onclick="CloseSidebar">
+            <i class="fa-solid fa-magnifying-glass"></i><span>Search</span>
+        </a>
+        <a href="agent" class="@(IsNavActive("agent") ? "active" : null)" @onclick="CloseSidebar">
+            <i class="fa-solid fa-comments"></i><span>Selah</span>
+        </a>
+        <a href="history" class="@(IsNavActive("history") ? "active" : null)" @onclick="CloseSidebar">
+            <i class="fa-solid fa-clock-rotate-left"></i><span>History</span>
+        </a>
+        <a href="bookmarks" class="@(IsNavActive("bookmarks") ? "active" : null)" @onclick="CloseSidebar">
+            <i class="fa-solid fa-heart"></i><span>Bookmarks</span>
+        </a>
+        @if (Auth.IsSignedIn)
+        {
+            <a href="account" class="@(IsNavActive("account") ? "active" : null)" @onclick="CloseSidebar">
+                <i class="fa-solid fa-user"></i><span>Account</span>
+            </a>
+        }
+        <a href="about" class="@(IsNavActive("about") ? "active" : null)" @onclick="CloseSidebar">
+            <i class="fa-solid fa-circle-info"></i><span>About</span>
+        </a>
+        <a href="settings" class="@(IsNavActive("settings") ? "active" : null)" @onclick="OnSettingsNav">
+            <i class="fa-solid fa-gears"></i><span>Settings</span>
+            @if (Catalog.ShowSettingsBadge)
+            {
+                <span class="nav-update-dot" title="Catalog updates available" aria-label="Catalog updates available"></span>
+            }
+        </a>
+    </nav>
+
+    <div class="sidebar-footer">
+        @if (Auth.IsSignedIn)
+        {
+            <button type="button" class="sidebar-auth-btn" disabled="@signingOut" @onclick="() => showSignOutConfirm = true">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                <span>@(signingOut ? "Signing out?" : "Sign out")</span>
+            </button>
+        }
+        else
+        {
+            <a class="sidebar-auth-btn" href="@AuthNav.LoginUrl()" @onclick="CloseSidebar">
+                <i class="fa-solid fa-right-to-bracket"></i>
+                <span>Log in</span>
+            </a>
+        }
+    </div>
+</div>
+
+<!-- App shell -->
+<div class="app-shell @(IsReadPage ? "app-shell-read" : null) @(IsReadPage && !State.IsReadView ? "read-chrome-hidden" : null)"
+     style="@(IsReadPage ? $"--reader-theme:{State.ReaderTheme}" : null)">
+    <header class="topbar @(IsReadPage ? "topbar-read" : "") @(IsNumberPage ? "topbar-input" : "") @(IsSearchPage ? "topbar-search" : "") @(IsHistoryPage ? "topbar-history" : "") @(IsBookmarksPage ? "topbar-bookmarks" : "") @(IsAboutPage ? "topbar-about" : "") @(IsSettingsPage ? "topbar-settings" : "") @(IsAccountPage ? "topbar-account" : "") @(IsProfilePage ? "topbar-profile" : "") @(IsGroupsListPage ? "topbar-groups" : "") @(IsAgentPage ? "topbar-agent" : "") @(IsLoginPage ? "topbar-login" : "") @(IsReadPage && !State.IsReadView ? "topbar-chrome-out" : null)">
+        @if (IsLoginPage)
+        {
+            <button class="tb-icon tb-back" @onclick="GoBackFromLogin" aria-label="Back" title="Back">
+                <i class="fa-solid fa-arrow-left"></i>
+            </button>
+        }
+        else if (IsNumberPage)
+        {
+            <button class="tb-icon tb-back" @onclick="GoBackToRead" aria-label="Back" title="Back">
+                <i class="fa-solid fa-arrow-left"></i>
+            </button>
+            <div class="topbar-actions">
+                <button type="button" class="tb-icon" title="Add to board" @onclick="OpenBoardPane">
+                    <i class="fa-solid fa-plus"></i>
+                    @if (BoardUi.HasUnread)
+                    {
+                        <span class="tb-unread-dot" aria-hidden="true"></span>
+                    }
+                </button>
+                <a class="tb-icon" href="search" title="Search">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                </a>
+                <a class="tb-icon" href="settings" title="Settings">
+                    <i class="fa-solid fa-gear"></i>
+                </a>
+            </div>
+        }
+        else if (IsSearchPage)
+        {
+            <button type="button" class="@HamburgerClass" @onclick="ToggleSidebar" aria-label="Menu">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <div class="topbar-title">Search</div>
+            <div class="topbar-actions">
+                <a class="tb-icon" href="@ReadHref" title="Read">
+                    <i class="fa-solid fa-book-open-reader"></i>
+                </a>
+                <a class="tb-icon" href="settings" title="Settings">
+                    <i class="fa-solid fa-gear"></i>
+                </a>
+            </div>
+        }
+        else if (IsHistoryPage)
+        {
+            <button type="button" class="@HamburgerClass" @onclick="ToggleSidebar" aria-label="Menu">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <div class="topbar-title">History</div>
+        }
+        else if (IsAgentPage)
+        {
+            <button type="button" class="@HamburgerClass" @onclick="ToggleSidebar" aria-label="Menu">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <div class="topbar-title">Selah</div>
+            <div class="topbar-actions">
+                <button type="button" class="tb-icon" title="AI settings" @onclick="OpenAgentSettings">
+                    <i class="fa-solid fa-gear"></i>
+                </button>
+            </div>
+        }
+        else if (IsAboutPage)
+        {
+            <button type="button" class="@HamburgerClass" @onclick="ToggleSidebar" aria-label="Menu">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <div class="topbar-title">About</div>
+        }
+        else if (IsSettingsPage)
+        {
+            <button type="button" class="@HamburgerClass" @onclick="ToggleSidebar" aria-label="Menu">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <div class="topbar-title">App Settings</div>
+        }
+        else if (IsAccountPage)
+        {
+            <button type="button" class="@HamburgerClass" @onclick="ToggleSidebar" aria-label="Menu">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <div class="topbar-title">Account</div>
+        }
+        else if (IsProfilePage)
+        {
+            <button class="tb-icon tb-back" @onclick='() => Nav.NavigateTo("account")' aria-label="Back" title="Back">
+                <i class="fa-solid fa-arrow-left"></i>
+            </button>
+            <div class="topbar-title">Profile</div>
+        }
+        else if (IsGroupsListPage)
+        {
+            <button class="tb-icon tb-back" @onclick='() => Nav.NavigateTo("account")' aria-label="Back" title="Back">
+                <i class="fa-solid fa-arrow-left"></i>
+            </button>
+            <div class="topbar-title">Worship groups</div>
+        }
+        else if (IsBookmarksPage)
+        {
+            @if (IsBookmarkGroupPage)
+            {
+                <button class="tb-icon tb-back" @onclick='() => Nav.NavigateTo("bookmarks")' aria-label="Back" title="Back">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <div class="topbar-title">@BookmarkGroupTitle</div>
+                <div class="topbar-actions">
+                    @if (BookmarksUi.SelectionMode)
+                    {
+                        <button type="button" class="tb-icon" title="Select all"
+                                disabled="@(!BookmarksUi.CanSelectAll)"
+                                @onclick="BookmarksSelectAll">
+                            <i class="fa-solid fa-check-double"></i>
+                        </button>
+                        <button type="button" class="tb-icon" title="Move"
+                                disabled="@(!BookmarksUi.CanMove)"
+                                @onclick="BookmarksMoveSelected">
+                            <i class="fa-solid fa-layer-group"></i>
+                        </button>
+                        <button type="button" class="tb-icon" title="Delete"
+                                disabled="@(!BookmarksUi.CanDelete)"
+                                @onclick="BookmarksDeleteSelected">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                        <button type="button" class="tb-icon" title="Cancel"
+                                @onclick="BookmarksCancelSelection">
+                            <i class="fa-solid fa-arrow-left"></i>
+                        </button>
+                    }
+                    else
+                    {
+                        @if (BookmarkGroupHasItems)
+                        {
+                            <button type="button" class="tb-icon" title="Select"
+                                    @onclick="BookmarksEnterSelection">
+                                <i class="fa-solid fa-square-check"></i>
+                            </button>
+                        }
+                        <a class="tb-icon" href="@ReadHref" title="Read">
+                            <i class="fa-solid fa-book-open-reader"></i>
+                        </a>
+                    }
+                </div>
+            }
+            else
+            {
+                <button type="button" class="@HamburgerClass" @onclick="ToggleSidebar" aria-label="Menu">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <div class="topbar-title">Bookmarks</div>
+                <div class="topbar-actions">
+                    @if (BookmarksUi.SelectionMode)
+                    {
+                        <button type="button" class="tb-icon" title="Select all"
+                                disabled="@(!BookmarksUi.CanSelectAll)"
+                                @onclick="BookmarksSelectAll">
+                            <i class="fa-solid fa-check-double"></i>
+                        </button>
+                        <button type="button" class="tb-icon" title="Delete"
+                                disabled="@(!BookmarksUi.CanDelete)"
+                                @onclick="BookmarksDeleteSelected">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                        <button type="button" class="tb-icon" title="Cancel"
+                                @onclick="BookmarksCancelSelection">
+                            <i class="fa-solid fa-arrow-left"></i>
+                        </button>
+                    }
+                    else if (BookmarksUi.HasGroups)
+                    {
+                        <button type="button" class="tb-icon" title="Select"
+                                @onclick="BookmarksEnterSelection">
+                            <i class="fa-solid fa-square-check"></i>
+                        </button>
+                    }
+                </div>
+            }
+        }
+        else
+        {
+            <button type="button" class="@HamburgerClass" @onclick="ToggleSidebar" aria-label="Menu">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+
+            @if (IsReadPage)
+            {
+                <div class="topbar-actions">
+                    <a class="tb-icon" href="search" title="Search">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </a>
+                    <button class="tb-icon @(IsBookmarked ? "tb-icon-active" : "")"
+                            @onclick="ToggleBookmark" title="Bookmark" disabled="@(!HasActiveHymn)">
+                        <i class="@(IsBookmarked ? "fa-solid fa-heart" : "fa-regular fa-heart")"></i>
+                    </button>
+                    <button class="tb-icon" title="Share" @onclick="ShareHymn" disabled="@(!HasActiveHymn)">
+                        <i class="fa-solid fa-share"></i>
+                    </button>
+                    <button class="tb-icon" title="Settings" @onclick="OpenReaderSettings">
+                        <i class="fa-solid fa-gear"></i>
+                    </button>
+                    <button type="button" class="tb-icon @(BoardUi.HasUnread ? "has-unread-badge" : null)" title="Board" @onclick="OpenBoardPane">
+                        <i class="fa-solid fa-clipboard-list"></i>
+                    </button>
+                </div>
+            }
+            else
+            {
+                <a class="brand" href="">Mobi<span>Hymn</span></a>
+                <nav>
+                    <a href="@ReadHref" class="@(IsNavActive("read") ? "active" : null)">Read</a>
+                    <a href="search" class="@(IsNavActive("search") ? "active" : null)">Search</a>
+                    <a href="agent" class="@(IsNavActive("agent") ? "active" : null)">Selah</a>
+                    <a href="history" class="@(IsNavActive("history") ? "active" : null)">History</a>
+                    <a href="bookmarks" class="@(IsNavActive("bookmarks") ? "active" : null)">Bookmarks</a>
+                    <a href="settings" class="@(IsNavActive("settings") ? "active" : null) topbar-nav-settings">
+                        Settings
+                        @if (Catalog.ShowSettingsBadge)
+                        {
+                            <span class="nav-update-dot" aria-hidden="true"></span>
+                        }
+                    </a>
+                    @if (Auth.IsSignedIn)
+                    {
+                        <a href="account" class="@(IsNavActive("account") ? "active" : null)">Account</a>
+                    }
+                    else
+                    {
+                        <a href="@AuthNav.LoginUrl()" class="@(IsNavActive("login") ? "active" : null)">Log in</a>
+                    }
+                </nav>
+            }
+        }
+    </header>
+    <main class="page @(IsReadPage ? "page-read" : "") @(IsNumberPage ? "page-input" : "") @(IsSearchPage ? "page-search" : "") @(IsHistoryPage ? "page-history" : "") @(IsBookmarksPage ? "page-bookmarks" : "") @(IsAboutPage ? "page-about" : "") @(IsSettingsPage ? "page-settings" : "") @(IsGroupsListPage ? "page-groups" : "") @(IsLoginPage ? "page-login" : "") @(IsAgentPage ? "page-agent" : "")">
+@Body
+    </main>
+</div>
+
+<BookmarkSaveModal @bind-Visible="showSave"
+                   GroupOptions="@BookmarkGroups"
+                   OnSaved="OnBookmarkSaved" />
+
+<ConfirmDialog @bind-Visible="showDeleteBookmark"
+               Title="Delete?"
+               Message="@DeleteBookmarkMessage"
+               ConfirmLabel="Yes"
+               CancelLabel="No"
+               OnConfirmed="ConfirmRemoveBookmark" />
+
+<ConfirmDialog @bind-Visible="showSignOutConfirm"
+               Title="Sign out?"
+               Message="Are you sure you want to sign out?"
+               ConfirmLabel="Yes"
+               CancelLabel="No"
+               OnConfirmed="SignOut" />
+
+<ReaderSettingsPopup @bind-Visible="showReaderSettings" />
+
+<BoardPane @bind-Visible="showBoardPane" />
+
+<LottieToast />
+
+@code {
+    bool sidebarOpen;
+    bool showSave;
+    bool showDeleteBookmark;
+    bool showReaderSettings;
+    bool showBoardPane;
+    bool showSignOutConfirm;
+    bool signingOut;
+
+    bool IsReadPage => Path.StartsWith("read", StringComparison.OrdinalIgnoreCase)
+                       || Path.StartsWith("hymn", StringComparison.OrdinalIgnoreCase);
+    bool IsNumberPage => Path.Equals("number", StringComparison.OrdinalIgnoreCase);
+    bool IsSearchPage => Path.Equals("search", StringComparison.OrdinalIgnoreCase);
+    bool IsHistoryPage => Path.Equals("history", StringComparison.OrdinalIgnoreCase);
+    bool IsAboutPage => Path.Equals("about", StringComparison.OrdinalIgnoreCase);
+    bool IsSettingsPage => Path.Equals("settings", StringComparison.OrdinalIgnoreCase);
+    bool IsAccountPage => Path.Equals("account", StringComparison.OrdinalIgnoreCase);
+    bool IsProfilePage => Path.Equals("profile", StringComparison.OrdinalIgnoreCase)
+        || Path.StartsWith("profile?", StringComparison.OrdinalIgnoreCase)
+        || Path.StartsWith("profile/", StringComparison.OrdinalIgnoreCase);
+    bool IsGroupsListPage => Path.Equals("groups", StringComparison.OrdinalIgnoreCase);
+    bool IsLoginPage => Path.Equals("login", StringComparison.OrdinalIgnoreCase)
+                        || Path.Equals("verify", StringComparison.OrdinalIgnoreCase)
+                        || Path.Equals("auth", StringComparison.OrdinalIgnoreCase)
+                        || Path.StartsWith("auth/", StringComparison.OrdinalIgnoreCase);
+    bool IsAgentPage => Path.Equals("agent", StringComparison.OrdinalIgnoreCase);
+    bool IsBookmarksPage => Path.Equals("bookmarks", StringComparison.OrdinalIgnoreCase)
+                            || Path.StartsWith("bookmarks/", StringComparison.OrdinalIgnoreCase);
+    bool IsBookmarkGroupPage => Path.StartsWith("bookmarks/", StringComparison.OrdinalIgnoreCase);
+    string BookmarkGroupNameFromPath
+    {
+        get
+        {
+            if (!IsBookmarkGroupPage) return "";
+            var encoded = Path.Length > "bookmarks/".Length
+                ? Path["bookmarks/".Length..]
+                : "";
+            if (string.IsNullOrWhiteSpace(encoded)) return "";
+            try { return Uri.UnescapeDataString(encoded); }
+            catch { return encoded; }
+        }
+    }
+    string BookmarkGroupTitle
+    {
+        get
+        {
+            if (BookmarksUi.IsActive && !BookmarksUi.IsGroupList
+                && !string.IsNullOrWhiteSpace(BookmarksUi.Title))
+                return BookmarksUi.Title;
+            var fromPath = BookmarkGroupNameFromPath;
+            return string.IsNullOrWhiteSpace(fromPath) ? "Bookmarks" : fromPath;
+        }
+    }
+    bool BookmarkGroupHasItems =>
+        BookmarksUi.HasItems
+        || (!string.IsNullOrWhiteSpace(BookmarkGroupNameFromPath)
+            && State.BookmarksInGroup(BookmarkGroupNameFromPath).Count > 0);
+    bool HasActiveHymn => State.ActiveHymn != null;
+    bool IsBookmarked => HasActiveHymn && State.IsBookmarked(State.ActiveHymn!.Number);
+
+    IReadOnlyList<string> BookmarkGroups
+    {
+        get
+        {
+            var names = State.BookmarkGroupNames().ToList();
+            if (!names.Any(n => n.Equals("General", StringComparison.OrdinalIgnoreCase)))
+                names.Insert(0, "General");
+            return names;
+        }
+    }
+
+    string DeleteBookmarkMessage =>
+        State.ActiveHymn == null
+            ? "Are you sure you want to delete this bookmark?"
+            : $"Are you sure you want to delete Hymn #{State.ActiveHymn.Number} as bookmark?";
+
+    string Path => Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/');
+
+    string ReadHref
+    {
+        get
+        {
+            var n = State.ActiveHymn?.Number
+                ?? State.Settings.LastHymnNumber
+                ?? "";
+            n = n.Trim();
+            if (string.IsNullOrWhiteSpace(n)) n = "1";
+            return $"/read/{Uri.EscapeDataString(n)}";
+        }
+    }
+
+    bool IsNavActive(string key) => key switch
+    {
+        "read" => Path.StartsWith("read", StringComparison.OrdinalIgnoreCase),
+        "account" => Path.StartsWith("account", StringComparison.OrdinalIgnoreCase)
+                     || Path.StartsWith("profile", StringComparison.OrdinalIgnoreCase)
+                     || Path.StartsWith("verify", StringComparison.OrdinalIgnoreCase)
+                     || Path.StartsWith("groups", StringComparison.OrdinalIgnoreCase),
+        "login" => Path.StartsWith("login", StringComparison.OrdinalIgnoreCase),
+        _ => Path.Equals(key, StringComparison.OrdinalIgnoreCase)
+             || Path.StartsWith(key + "/", StringComparison.OrdinalIgnoreCase)
+    };
+
+    string DisplayName
+    {
+        get
+        {
+            var p = Profiles.CurrentProfile;
+            if (!string.IsNullOrWhiteSpace(p?.Nickname)) return p.Nickname;
+            if (!string.IsNullOrWhiteSpace(p?.DisplayName)) return p.DisplayName;
+            var email = Auth.CurrentEmail ?? "";
+            var at = email.IndexOf('@');
+            return at > 0 ? email[..at] : (string.IsNullOrWhiteSpace(email) ? "User" : email);
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        State.Changed += OnChanged;
+        BookmarksUi.Changed += OnBookmarksUi;
+        Auth.AuthStateChanged += OnAuth;
+        Nav.LocationChanged += OnNav;
+        Catalog.Changed += OnCatalog;
+        BoardUi.UnreadChanged += OnBoardUnread;
+        BoardUi.OpenRequested += OnBoardOpenRequested;
+        if (IsSettingsPage)
+            Catalog.AcknowledgeSettingsBadge();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Auth.IsSignedIn)
+            await Profiles.RefreshCurrentProfileAsync();
+    }
+
+    string HamburgerClass =>
+        Catalog.ShowHamburgerBadge ? "hamburger has-update-badge" : "hamburger";
+
+    void ToggleSidebar()
+    {
+        sidebarOpen = !sidebarOpen;
+        if (sidebarOpen)
+            Catalog.AcknowledgeHamburgerBadge();
+    }
+
+    void CloseSidebar() => sidebarOpen = false;
+
+    void OnSettingsNav()
+    {
+        Catalog.AcknowledgeSettingsBadge();
+        CloseSidebar();
+    }
+
+    void OpenReaderSettings() => showReaderSettings = true;
+    void OpenBoardPane() => showBoardPane = true;
+    void OnBoardUnread(object? s, EventArgs e) => _ = InvokeAsync(StateHasChanged);
+    void OnBoardOpenRequested(object? s, EventArgs e) =>
+        _ = InvokeAsync(() => { showBoardPane = true; StateHasChanged(); });
+    void GoBackToRead() => Nav.NavigateTo(ReadHref);
+
+    void GoBackFromLogin()
+    {
+        string? returnUrl = null;
+        try
+        {
+            var query = new Uri(Nav.Uri).Query;
+            if (!string.IsNullOrEmpty(query))
+            {
+                foreach (var part in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var eq = part.IndexOf('=');
+                    var key = eq >= 0 ? part[..eq] : part;
+                    if (!string.Equals(Uri.UnescapeDataString(key), "returnUrl", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    returnUrl = eq >= 0 ? Uri.UnescapeDataString(part[(eq + 1)..]) : "";
+                    break;
+                }
+            }
+        }
+        catch { /* ignore */ }
+
+        Nav.NavigateTo(AuthNav.SanitizeReturnUrl(returnUrl) ?? ReadHref);
+    }
+    void OnChanged()     => InvokeAsync(StateHasChanged);
+    void OnBookmarksUi() => InvokeAsync(StateHasChanged);
+    void OnCatalog()     => InvokeAsync(StateHasChanged);
+
+    void BookmarksEnterSelection() => BookmarksUi.OnEnterSelection?.Invoke();
+    void BookmarksSelectAll() => BookmarksUi.OnSelectAll?.Invoke();
+    void BookmarksMoveSelected() => BookmarksUi.OnMoveSelected?.Invoke();
+    void BookmarksDeleteSelected() => BookmarksUi.OnDeleteSelected?.Invoke();
+    void BookmarksCancelSelection() => BookmarksUi.OnCancelSelection?.Invoke();
+    void OpenAgentSettings() => AgentUi.RequestOpenSettings();
+    async void OnAuth(object? s, EventArgs e)
+    {
+        if (Auth.IsSignedIn)
+            await Profiles.RefreshCurrentProfileAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+    void OnNav(object? s, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        // Restore chrome when leaving immersive read mode / navigating away
+        if (!IsReadPage && !State.IsReadView)
+            State.SetReadView(true);
+        if (IsSettingsPage)
+            Catalog.AcknowledgeSettingsBadge();
+        InvokeAsync(StateHasChanged);
+    }
+
+    async Task SignOut()
+    {
+        signingOut = true;
+        try
+        {
+            // Only upload if there are unpushed local edits ? never overwrite cloud with stale defaults.
+            if (Auth.IsSignedIn && Prefs.GetBool(PrefKeys.CloudPending, false))
+                await Sync.PushAsync();
+            await Auth.SignOutAsync();
+            CloseSidebar();
+            Nav.NavigateTo(ReadHref);
+        }
+        finally
+        {
+            signingOut = false;
+        }
+    }
+
+    async Task ShareHymn()
+    {
+        if (State.ActiveHymn == null) return;
+        var url = Nav.ToAbsoluteUri($"read/{Uri.EscapeDataString(State.ActiveHymn.Number)}").ToString();
+        var title = $"Hymn #{State.ActiveHymn.Number}";
+        try
+        {
+            await Js.InvokeVoidAsync("eval",
+                $@"(async()=>{{
+                    if(navigator.share){{await navigator.share({{title:{System.Text.Json.JsonSerializer.Serialize(title)},url:{System.Text.Json.JsonSerializer.Serialize(url)}}});}}
+                    else{{await navigator.clipboard.writeText({System.Text.Json.JsonSerializer.Serialize(url)});}}
+                }})()");
+        }
+        catch { }
+    }
+
+    async Task ToggleBookmark()
+    {
+        if (State.ActiveHymn == null) return;
+        if (State.IsBookmarked(State.ActiveHymn.Number))
+        {
+            showDeleteBookmark = true;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        showSave = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task ConfirmRemoveBookmark()
+    {
+        if (State.ActiveHymn == null) return;
+        await State.RemoveBookmarkAsync(State.ActiveHymn.Number);
+        State.ShowToast("/lottie/bookmark-deleted.gif", "Bookmark deleted.");
+    }
+
+    async Task OnBookmarkSaved(string group)
+    {
+        if (State.ActiveHymn == null) return;
+        await State.AddBookmarkAsync(State.ActiveHymn.Number, group, State.ActiveHymn.FirstLine);
+        State.ShowToast("/lottie/bookmark-saved.gif", "Bookmark added.");
+    }
+
+    public void Dispose()
+    {
+        State.Changed -= OnChanged;
+        BookmarksUi.Changed -= OnBookmarksUi;
+        Auth.AuthStateChanged -= OnAuth;
+        Nav.LocationChanged -= OnNav;
+        Catalog.Changed -= OnCatalog;
+        BoardUi.UnreadChanged -= OnBoardUnread;
+        BoardUi.OpenRequested -= OnBoardOpenRequested;
+    }
+}

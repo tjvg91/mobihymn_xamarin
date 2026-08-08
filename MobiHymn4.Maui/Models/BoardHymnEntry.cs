@@ -68,6 +68,28 @@ public class BoardHymnEntry : INotifyPropertyChanged
         set => SetField(ref showDragHandle, value);
     }
 
+    bool isNestedInSection;
+    /// <summary>UI-only: hymn sits under a section header — indent in the list.</summary>
+    public bool IsNestedInSection
+    {
+        get => isNestedInSection;
+        set => SetField(ref isNestedInSection, value);
+    }
+
+    double cascadeOpacity = 1;
+    public double CascadeOpacity
+    {
+        get => cascadeOpacity;
+        set => SetField(ref cascadeOpacity, value);
+    }
+
+    double cascadeTranslateY;
+    public double CascadeTranslateY
+    {
+        get => cascadeTranslateY;
+        set => SetField(ref cascadeTranslateY, value);
+    }
+
     bool isSectionSaved;
     /// <summary>UI-only: whether this section is in the saved template.</summary>
     public bool IsSectionSaved
@@ -289,8 +311,37 @@ public class BoardHymnEntry : INotifyPropertyChanged
             entry.AddedBy = addedBy?.ToString() ?? string.Empty;
         if (data.TryGetValue("addedByName", out var addedByName))
             entry.AddedByName = addedByName?.ToString() ?? string.Empty;
-        if (data.TryGetValue("updatedAt", out var updatedAt) && updatedAt is DateTime dt)
-            entry.UpdatedAt = dt;
+        if (data.TryGetValue("updatedAt", out var updatedAt) && updatedAt != null)
+        {
+            try
+            {
+                switch (updatedAt)
+                {
+                    case DateTime dt:
+                        entry.UpdatedAt = dt;
+                        break;
+                    case DateTimeOffset dto:
+                        entry.UpdatedAt = dto.UtcDateTime;
+                        break;
+                    case long ms when ms > 1_000_000_000_000L:
+                        entry.UpdatedAt = DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime;
+                        break;
+                    case long sec:
+                        entry.UpdatedAt = DateTimeOffset.FromUnixTimeSeconds(sec).UtcDateTime;
+                        break;
+                    case double d when d > 1_000_000_000_000d:
+                        entry.UpdatedAt = DateTimeOffset.FromUnixTimeMilliseconds((long)d).UtcDateTime;
+                        break;
+                    case string s when DateTime.TryParse(s, out var parsed):
+                        entry.UpdatedAt = parsed;
+                        break;
+                }
+            }
+            catch
+            {
+                // ignore bad updatedAt
+            }
+        }
 
         return entry;
     }

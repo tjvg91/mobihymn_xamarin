@@ -47,44 +47,86 @@
                     LineBreakMode="WordWrap"
                     TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
 
-                <VerticalStackLayout Spacing="6">
-                    <Label
-                        Text="Date"
-                        FontSize="12"
-                        FontAttributes="Bold"
-                        TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
-                    <Border
-                        Padding="12,4"
-                        StrokeThickness="1"
-                        Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
-                        BackgroundColor="{AppThemeBinding Light=#F5F5F5, Dark=#2A2A2A}"
-                        StrokeShape="RoundRectangle 10">
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" MinimumHeightRequest="44">
-                            <DatePicker
-                                x:Name="datePicker"
+                <Border
+                    Padding="10,12,10,8"
+                    StrokeThickness="1"
+                    Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark={StaticResource Gray}}"
+                    BackgroundColor="{AppThemeBinding Light=#FAFAFA, Dark=#2A2A2A}"
+                    StrokeShape="RoundRectangle 12">
+                    <VerticalStackLayout Spacing="8">
+                        <Grid ColumnDefinitions="40,*,40" ColumnSpacing="4">
+                            <Button
                                 Grid.Column="0"
-                                FontSize="16"
-                                HorizontalOptions="Fill"
-                                VerticalOptions="Center"
+                                Text="&#xf077;"
+                                FontFamily="FAS"
+                                FontSize="14"
+                                WidthRequest="40"
+                                HeightRequest="36"
+                                Padding="0"
+                                CornerRadius="8"
                                 BackgroundColor="Transparent"
                                 TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
-                                DateSelected="DatePicker_DateSelected"/>
+                                Clicked="PrevMonth_Clicked"/>
                             <Label
-                                x:Name="lblCalendarIcon"
+                                x:Name="lblMonthTitle"
                                 Grid.Column="1"
-                                Text="&#xf133;"
+                                FontAttributes="Bold"
+                                FontSize="15"
+                                HorizontalTextAlignment="Center"
+                                VerticalTextAlignment="Center"
+                                TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+                            <Button
+                                Grid.Column="2"
+                                Text="&#xf078;"
                                 FontFamily="FAS"
-                                FontSize="16"
-                                Padding="8,8"
-                                VerticalOptions="Center"
-                                TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}">
-                                <Label.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="CalendarIcon_Tapped"/>
-                                </Label.GestureRecognizers>
-                            </Label>
+                                FontSize="14"
+                                WidthRequest="40"
+                                HeightRequest="36"
+                                Padding="0"
+                                CornerRadius="8"
+                                BackgroundColor="Transparent"
+                                TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"
+                                Clicked="NextMonth_Clicked"/>
                         </Grid>
-                    </Border>
-                </VerticalStackLayout>
+
+                        <Grid ColumnDefinitions="*,*,*,*,*,*,*" ColumnSpacing="2">
+                            <Label Grid.Column="0" Text="Su" FontSize="11" FontAttributes="Bold" HorizontalTextAlignment="Center"
+                                   TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                            <Label Grid.Column="1" Text="Mo" FontSize="11" FontAttributes="Bold" HorizontalTextAlignment="Center"
+                                   TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                            <Label Grid.Column="2" Text="Tu" FontSize="11" FontAttributes="Bold" HorizontalTextAlignment="Center"
+                                   TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                            <Label Grid.Column="3" Text="We" FontSize="11" FontAttributes="Bold" HorizontalTextAlignment="Center"
+                                   TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                            <Label Grid.Column="4" Text="Th" FontSize="11" FontAttributes="Bold" HorizontalTextAlignment="Center"
+                                   TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                            <Label Grid.Column="5" Text="Fr" FontSize="11" FontAttributes="Bold" HorizontalTextAlignment="Center"
+                                   TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                            <Label Grid.Column="6" Text="Sa" FontSize="11" FontAttributes="Bold" HorizontalTextAlignment="Center"
+                                   TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                        </Grid>
+
+                        <Grid
+                            x:Name="dayGrid"
+                            ColumnDefinitions="*,*,*,*,*,*,*"
+                            ColumnSpacing="2"
+                            RowSpacing="2"
+                            HeightRequest="228"/>
+
+                        <HorizontalStackLayout HorizontalOptions="End">
+                            <Button
+                                Text="Today"
+                                FontSize="14"
+                                FontAttributes="Bold"
+                                Padding="8,4"
+                                HeightRequest="32"
+                                BackgroundColor="Transparent"
+                                TextColor="#2563EB"
+                                Clicked="Today_Clicked"/>
+                        </HorizontalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+
                 <Label
                     x:Name="lblError"
                     IsVisible="False"
@@ -111,7 +153,7 @@
                         FontSize="15"
                         FontAttributes="Bold"
                         BackgroundColor="{StaticResource Primary}"
-                        TextColor="{StaticResource PrimaryText}"
+                        TextColor="#000000"
                         Clicked="Create_Clicked"/>
                 </Grid>
             </VerticalStackLayout>

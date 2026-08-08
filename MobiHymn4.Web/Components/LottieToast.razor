@@ -1,0 +1,136 @@
+@namespace MobiHymn4.Web.Components
+@inject AppState State
+@implements IDisposable
+
+@if (show)
+{
+    <div class="lottie-toast-host @(animOpen ? "is-open" : null)" aria-live="polite">
+        <div class="lottie-toast">
+            @if (useGif)
+            {
+                <img class="lottie-toast-anim" src="@mediaSrc" alt="" @key="lottieKey" />
+            }
+            else
+            {
+                <lottie-player class="lottie-toast-anim"
+                               src="@mediaSrc"
+                               background="transparent"
+                               speed="1"
+                               autoplay
+                               @key="lottieKey">
+                </lottie-player>
+            }
+            <p class="lottie-toast-label">@message</p>
+        </div>
+    </div>
+}
+
+@code {
+    bool show;
+    bool animOpen;
+    bool useGif;
+    string mediaSrc = "/lottie/bookmark-saved.gif";
+    string message = "";
+    int lottieKey;
+    int seenToastVersion;
+    int generation;
+    CancellationTokenSource? cts;
+
+    protected override void OnInitialized()
+    {
+        State.Changed += OnStateChanged;
+        State.ToastRequested += OnToast;
+    }
+
+    void OnStateChanged()
+    {
+        if (State.ToastVersion == seenToastVersion || State.PendingToast is null)
+            return;
+        seenToastVersion = State.ToastVersion;
+        _ = ShowAsync(State.PendingToast);
+    }
+
+    void OnToast(AppState.ToastRequest req)
+    {
+        if (State.ToastVersion != seenToastVersion)
+        {
+            seenToastVersion = State.ToastVersion;
+            _ = ShowAsync(req);
+        }
+    }
+
+    async Task ShowAsync(AppState.ToastRequest req)
+    {
+        var gen = ++generation;
+        cts?.Cancel();
+        cts?.Dispose();
+        cts = new CancellationTokenSource();
+        var token = cts.Token;
+
+        var src = (req.LottieSrc ?? "").Trim();
+        if (src.Length > 0
+            && !src.StartsWith("/", StringComparison.Ordinal)
+            && !src.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            src = "/" + src;
+
+        // MAUI toast uses GIFs. lottie-player mis-colors bookmark-saved JSON (red).
+        useGif = src.Contains("bookmark-saved", StringComparison.OrdinalIgnoreCase)
+            || src.Contains("bookmark-deleted", StringComparison.OrdinalIgnoreCase)
+            || src.EndsWith(".gif", StringComparison.OrdinalIgnoreCase);
+
+        if (useGif)
+        {
+            if (src.Contains("bookmark-deleted", StringComparison.OrdinalIgnoreCase)
+                && !src.EndsWith(".gif", StringComparison.OrdinalIgnoreCase))
+                mediaSrc = "/lottie/bookmark-deleted.gif";
+            else if (src.Contains("bookmark-saved", StringComparison.OrdinalIgnoreCase)
+                && !src.EndsWith(".gif", StringComparison.OrdinalIgnoreCase))
+                mediaSrc = "/lottie/bookmark-saved.gif";
+            else
+                mediaSrc = src;
+        }
+        else
+        {
+            mediaSrc = src;
+        }
+
+        message = req.Message;
+        lottieKey++;
+        show = true;
+        animOpen = false;
+        await InvokeAsync(StateHasChanged);
+
+        try { await Task.Delay(20, token); }
+        catch (OperationCanceledException) { return; }
+        if (gen != generation || token.IsCancellationRequested) return;
+
+        animOpen = true;
+        await InvokeAsync(StateHasChanged);
+
+        try { await Task.Delay(req.DurationMs, token); }
+        catch (OperationCanceledException) { return; }
+        if (gen != generation) return;
+
+        await HideAsync(gen);
+    }
+
+    async Task HideAsync(int gen)
+    {
+        if (gen != generation || !show) return;
+        animOpen = false;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(220);
+        if (gen != generation) return;
+        show = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        State.Changed -= OnStateChanged;
+        State.ToastRequested -= OnToast;
+        generation++;
+        cts?.Cancel();
+        cts?.Dispose();
+    }
+}

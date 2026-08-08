@@ -1,0 +1,52 @@
+@page "/about"
+@inject IntroUiState IntroUi
+
+<PageTitle>About</PageTitle>
+
+<div class="about-page">
+    <div class="about-hero">
+        <span class="about-logo-glyph" aria-hidden="true">@((MarkupString)"&#xe901;")</span>
+        <div class="about-brand">Mobi<span>Hymn</span></div>
+        <p class="about-tagline">Your pocket hymn companion</p>
+        <p class="about-version">Version @ReleaseHistory.CurrentVersion</p>
+    </div>
+
+    <div class="about-tour">
+        <button type="button" class="about-tour-btn" @onclick="IntroUi.RequestReplay">
+            View Features Tour
+        </button>
+    </div>
+
+    <div class="about-history">
+        <h2 class="about-history-title">
+            <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+            Release History
+        </h2>
+
+        <ol class="about-timeline">
+            @foreach (var release in ReleaseHistory.Entries)
+            {
+                <li class="about-timeline-item">
+                    <div class="about-timeline-rail" aria-hidden="true">
+                        <span class="about-timeline-stem"></span>
+                        <span class="about-timeline-dot"></span>
+                        <span class="about-timeline-connector"></span>
+                    </div>
+                    <div class="about-timeline-body">
+                        <span class="about-version-pill">@release.Version</span>
+                        <ul class="about-timeline-details">
+                            @foreach (var detail in release.Details)
+                            {
+                                <li>
+                                    <span class="about-detail-branch" aria-hidden="true"></span>
+                                    <span class="about-detail-dot" aria-hidden="true"></span>
+                                    <span>@detail</span>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                </li>
+            }
+        </ol>
+    </div>
+</div>

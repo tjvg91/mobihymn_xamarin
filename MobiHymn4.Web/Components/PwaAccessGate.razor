@@ -1,0 +1,288 @@
+@inject IJSRuntime Js
+@inject NavigationManager Nav
+@implements IAsyncDisposable
+@using System.Text.Json
+
+@if (ready && mode == "desktop")
+{
+    <div class="pwa-gate" role="dialog" aria-modal="true" aria-labelledby="pwa-gate-desktop-title">
+        <div class="pwa-gate-card">
+            <img class="pwa-gate-logo" src="logo-mark.svg" width="96" height="72" alt="" />
+            <h1 id="pwa-gate-desktop-title" class="pwa-gate-title">Use a mobile device</h1>
+            <p class="pwa-gate-copy">
+                MobiHymn is built for phones and tablets. Open this site on your mobile device
+                to install the app and continue.
+            </p>
+            <p class="pwa-gate-url" aria-label="Site address">@HostDisplay</p>
+        </div>
+    </div>
+}
+else if (ready && mode == "install")
+{
+    <div class="pwa-gate" role="dialog" aria-modal="true" aria-labelledby="pwa-gate-install-title">
+        <div class="pwa-gate-card">
+            <img class="pwa-gate-logo" src="logo-mark.svg" width="96" height="72" alt="" />
+            <h1 id="pwa-gate-install-title" class="pwa-gate-title">@(installed ? "Open MobiHymn" : "Install MobiHymn")</h1>
+            <p class="pwa-gate-copy">
+                @if (installed)
+                {
+                    <text>MobiHymn is installed. Open the app from your home screen — this browser view isn’t available.</text>
+                }
+                else if (isIos)
+                {
+                    <text>Add MobiHymn to your Home Screen to continue. This browser view isn’t available until the app is installed.</text>
+                }
+                else
+                {
+                    <text>Install the app to continue. The browser reader isn’t available — open MobiHymn from your home screen after installing.</text>
+                }
+            </p>
+
+            @* iOS: never show Install/Open — Safari cannot launch the Home Screen PWA. *@
+            @if (showButton && !isIos)
+            {
+                <button type="button" class="btn block pwa-gate-install-btn" disabled="@installing" @onclick="PrimaryActionAsync">
+                    @(installing
+                        ? (installed ? "Opening…" : "Opening install…")
+                        : buttonLabel)
+                </button>
+            }
+            else if (isIos && !installed)
+            {
+                <ol class="pwa-gate-steps">
+                    <li>Tap the <strong>Share</strong> button <i class="fa-solid fa-arrow-up-from-bracket" aria-hidden="true"></i> in your browser.</li>
+                    <li>Choose <strong>Add to Home Screen</strong>.</li>
+                    <li>Tap <strong>Add</strong>, then open <strong>MobiHymn</strong> from your home screen.</li>
+                </ol>
+            }
+            else if (isIos && installed)
+            {
+                <p class="pwa-gate-status">Open <strong>MobiHymn</strong> from your Home Screen to continue.</p>
+            }
+
+            @if (!string.IsNullOrEmpty(status))
+            {
+                <p class="pwa-gate-status">@status</p>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public EventCallback<string> ModeChanged { get; set; }
+
+    string mode = "none";
+    bool ready;
+    bool canPrompt;
+    bool installed;
+    bool isIos;
+    bool showButton;
+    string buttonLabel = "Install app";
+    bool installing;
+    string? status;
+    string HostDisplay = "mobihymn.web.app";
+    DotNetObjectReference<PwaAccessGate>? selfRef;
+    IJSObjectReference? availabilitySub;
+
+    protected override void OnInitialized()
+    {
+        try { HostDisplay = new Uri(Nav.BaseUri).Host; }
+        catch { /* keep default */ }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        try
+        {
+            mode = await Js.InvokeAsync<string>("mobihymnPwa.getGateMode");
+            await RefreshUiStateAsync();
+            ready = true;
+            try { await Js.InvokeVoidAsync("mobihymnPwa.applyAccessGate"); }
+            catch { /* ignore */ }
+
+            if (mode == "install")
+            {
+                selfRef = DotNetObjectReference.Create(this);
+                availabilitySub = await Js.InvokeAsync<IJSObjectReference>(
+                    "mobihymnPwa.subscribeInstallAvailability", selfRef);
+            }
+
+            await NotifyModeAsync();
+
+            if (mode != "none")
+                _ = WatchStandaloneAsync();
+        }
+        catch
+        {
+            mode = "none";
+            ready = true;
+            await NotifyModeAsync();
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task RefreshUiStateAsync()
+    {
+        try
+        {
+            var state = await Js.InvokeAsync<JsonElement>("mobihymnPwa.getInstallUiState");
+            ApplyUiState(state);
+        }
+        catch
+        {
+            isIos = await Js.InvokeAsync<bool>("mobihymnPwa.isIos");
+            canPrompt = !isIos && await Js.InvokeAsync<bool>("mobihymnPwa.canPromptInstall");
+            installed = false;
+            showButton = isIos ? false : canPrompt;
+            buttonLabel = "Install app";
+        }
+
+        try { await Js.InvokeVoidAsync("mobihymnPwa.refreshInstalledState"); }
+        catch { /* ignore */ }
+    }
+
+    void ApplyUiState(JsonElement state)
+    {
+        isIos = state.TryGetProperty("isIos", out var ios) && ios.GetBoolean();
+        installed = state.TryGetProperty("installed", out var inst) && inst.GetBoolean();
+        canPrompt = state.TryGetProperty("canPrompt", out var cp) && cp.GetBoolean();
+        showButton = state.TryGetProperty("showButton", out var sb) && sb.GetBoolean();
+        if (isIos)
+            showButton = false;
+        buttonLabel = state.TryGetProperty("buttonLabel", out var bl)
+            ? (bl.GetString() ?? "Install app")
+            : (installed ? "Open app" : "Install app");
+    }
+
+    [JSInvokable]
+    public void OnInstallAvailabilityChanged(bool available)
+    {
+        canPrompt = available && !isIos;
+        showButton = !isIos && (canPrompt || installed);
+        buttonLabel = installed ? "Open app" : "Install app";
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnInstallUiChanged(bool canPromptValue, bool installedValue, bool isIosValue, bool showButtonValue, string? label)
+    {
+        canPrompt = canPromptValue;
+        installed = installedValue;
+        isIos = isIosValue;
+        // Never surface a CTA on iOS — Safari cannot open the Home Screen app.
+        showButton = isIosValue ? false : showButtonValue;
+        buttonLabel = string.IsNullOrWhiteSpace(label)
+            ? (installed ? "Open app" : "Install app")
+            : label!;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    async Task PrimaryActionAsync()
+    {
+        if (installing) return;
+        installing = true;
+        status = null;
+        try
+        {
+            if (installed)
+            {
+                var result = await Js.InvokeAsync<JsonElement>("mobihymnPwa.openInstalledApp");
+                var outcome = result.TryGetProperty("outcome", out var o) ? o.GetString() : "";
+                if (!string.Equals(outcome, "launched", StringComparison.OrdinalIgnoreCase))
+                    status = isIos
+                        ? "Open MobiHymn from your Home Screen."
+                        : "Open MobiHymn from your home screen.";
+                return;
+            }
+
+            var installResult = await Js.InvokeAsync<JsonElement>("mobihymnPwa.promptInstall");
+            var installOutcome = installResult.TryGetProperty("outcome", out var io) ? io.GetString() : "";
+            if (string.Equals(installOutcome, "accepted", StringComparison.OrdinalIgnoreCase))
+            {
+                installed = true;
+                showButton = true;
+                buttonLabel = "Open app";
+                status = "Installed. Close this tab and open MobiHymn from your home screen.";
+                await RefreshModeAsync();
+            }
+            else if (string.Equals(installOutcome, "unavailable", StringComparison.OrdinalIgnoreCase))
+            {
+                canPrompt = false;
+                showButton = installed;
+                status = "Use your browser menu to Add to Home screen, then open the app from there.";
+            }
+            else
+            {
+                status = "Install was cancelled. Tap Install app again when you’re ready.";
+                await RefreshUiStateAsync();
+            }
+        }
+        catch
+        {
+            canPrompt = false;
+            showButton = installed && !isIos;
+            status = installed
+                ? "Open MobiHymn from your home screen."
+                : "Use your browser menu to Add to Home screen, then open the app from there.";
+        }
+        finally
+        {
+            installing = false;
+        }
+    }
+
+    async Task WatchStandaloneAsync()
+    {
+        while (mode != "none")
+        {
+            try
+            {
+                await Task.Delay(1200);
+                var next = await Js.InvokeAsync<string>("mobihymnPwa.getGateMode");
+                if (next == mode)
+                    continue;
+                mode = next;
+                await NotifyModeAsync();
+                await InvokeAsync(StateHasChanged);
+                if (mode == "none")
+                    break;
+            }
+            catch
+            {
+                break;
+            }
+        }
+    }
+
+    async Task RefreshModeAsync()
+    {
+        try { mode = await Js.InvokeAsync<string>("mobihymnPwa.getGateMode"); }
+        catch { /* ignore */ }
+        await NotifyModeAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task NotifyModeAsync()
+    {
+        if (ModeChanged.HasDelegate)
+            await ModeChanged.InvokeAsync(mode);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (availabilitySub != null)
+            {
+                await availabilitySub.InvokeVoidAsync("dispose");
+                await availabilitySub.DisposeAsync();
+            }
+        }
+        catch { /* ignore */ }
+        selfRef?.Dispose();
+    }
+}

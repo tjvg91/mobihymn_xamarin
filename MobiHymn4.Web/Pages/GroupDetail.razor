@@ -1,0 +1,159 @@
+@page "/groups/{GroupId}"
+@inject IAuthService Auth
+@inject IGroupService GroupService
+@inject IBoardService BoardService
+@inject AuthNavigation AuthNav
+@inject NavigationManager Nav
+
+<h1>@(Group?.Name ?? "Group")</h1>
+
+@if (!Auth.IsSignedIn)
+{
+    <a class="btn" href="@AuthNav.LoginUrl($"groups/{GroupId}")">Log in</a>
+}
+else if (Busy && Group == null)
+{
+    <p class="muted">Loading…</p>
+}
+else if (Group == null)
+{
+    <p class="error">@(Error ?? "Group not found.")</p>
+}
+else
+{
+    <p class="muted">Join code <strong>@Group.JoinCode</strong></p>
+
+    <div class="row" style="margin-bottom:14px">
+        <button class="btn" @onclick="() => showCreate = true">New board</button>
+        <button class="btn secondary" disabled="@Busy" @onclick="Load">Refresh</button>
+        <button class="btn secondary" disabled="@Busy" @onclick="Leave">Leave</button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <p class="error">@Error</p>
+    }
+
+    <h2>Boards</h2>
+    @if (Lists.Count == 0)
+    {
+        <p class="muted">No boards yet.</p>
+    }
+    else
+    {
+        @foreach (var list in Lists)
+        {
+            <a class="card" href="@($"groups/{GroupId}/boards/{list.Id}")" style="display:block">
+                <strong>@list.Name</strong>
+                <div class="muted">@list.Hymns.Count(h => !h.IsSection) hymns</div>
+            </a>
+        }
+    }
+
+    <h2>Members</h2>
+    @foreach (var m in Members)
+    {
+        <div class="card">
+            <strong>@(string.IsNullOrWhiteSpace(m.Nickname) ? $"{m.FirstName} {m.LastName}".Trim() : m.Nickname)</strong>
+            <div class="muted">@m.Email</div>
+        </div>
+    }
+}
+
+@if (showCreate)
+{
+    <div class="modal-backdrop" @onclick="() => showCreate = false">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h2>New board</h2>
+            <div class="field">
+                <label>Name</label>
+                <input @bind="boardName" />
+            </div>
+            <div class="actions">
+                <button class="btn secondary" @onclick="() => showCreate = false">Cancel</button>
+                <button class="btn" disabled="@Busy" @onclick="CreateBoard">Create</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string GroupId { get; set; } = "";
+
+    WorshipGroupDoc? Group;
+    List<BoardListDoc> Lists = new();
+    List<GroupMemberDoc> Members = new();
+    bool Busy;
+    string? Error;
+    bool showCreate;
+    string boardName = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Auth.IsSignedIn)
+            await Load();
+    }
+
+    async Task Load()
+    {
+        Busy = true;
+        Error = null;
+        try
+        {
+            var all = await GroupService.GetMyGroupsAsync();
+            Group = all.FirstOrDefault(g => g.Id == GroupId);
+            if (Group == null)
+            {
+                Error = "You're not a member of this group.";
+                return;
+            }
+
+            Lists = (await BoardService.GetListsAsync(GroupId)).ToList();
+            Members = (await GroupService.GetMembersAsync(GroupId)).ToList();
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    async Task CreateBoard()
+    {
+        if (string.IsNullOrWhiteSpace(boardName)) return;
+        Busy = true;
+        try
+        {
+            var list = await BoardService.CreateListAsync(GroupId, boardName);
+            showCreate = false;
+            boardName = "";
+            Nav.NavigateTo($"groups/{GroupId}/boards/{list.Id}");
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    async Task Leave()
+    {
+        Busy = true;
+        try
+        {
+            await GroupService.LeaveGroupAsync(GroupId);
+            Nav.NavigateTo("groups");
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+            Busy = false;
+        }
+    }
+}

@@ -91,23 +91,51 @@
                                             Padding="12,10"
                                             ColumnDefinitions="*,Auto,Auto"
                                             ColumnSpacing="8">
-                                            <Grid.GestureRecognizers>
-                                                <TapGestureRecognizer
-                                                    Command="{Binding Source={x:Reference root}, Path=BindingContext.ToggleSuggestionsCommand}"
-                                                    CommandParameter="{Binding .}"/>
-                                            </Grid.GestureRecognizers>
                                             <Label
                                                 Text="{Binding SuggestionHeaderText}"
                                                 FontSize="13"
                                                 FontAttributes="Bold"
                                                 VerticalOptions="Center"
-                                                TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
-                                            <Label
+                                                TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}">
+                                                <Label.GestureRecognizers>
+                                                    <TapGestureRecognizer
+                                                        Command="{Binding Source={x:Reference root}, Path=BindingContext.ToggleSuggestionsCommand}"
+                                                        CommandParameter="{Binding .}"/>
+                                                </Label.GestureRecognizers>
+                                            </Label>
+                                            <HorizontalStackLayout
                                                 Grid.Column="1"
+                                                Spacing="4"
+                                                VerticalOptions="Center"
+                                                Padding="6,2">
+                                                <HorizontalStackLayout.GestureRecognizers>
+                                                    <TapGestureRecognizer Tapped="BookmarkAll_Tapped"/>
+                                                </HorizontalStackLayout.GestureRecognizers>
+                                                <Label
+                                                    FontFamily="FAS"
+                                                    FontSize="12"
+                                                    Text="{x:Static fontawesome:FontAwesomeIcons.Star}"
+                                                    TextColor="{StaticResource Primary}"
+                                                    VerticalTextAlignment="Center"/>
+                                                <Label
+                                                    Text="All"
+                                                    FontSize="12"
+                                                    FontAttributes="Bold"
+                                                    TextColor="{StaticResource Primary}"
+                                                    VerticalTextAlignment="Center"/>
+                                            </HorizontalStackLayout>
+                                            <Label
+                                                Grid.Column="2"
                                                 Text="{Binding SuggestionChevron}"
                                                 FontSize="14"
                                                 VerticalOptions="Center"
-                                                TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                                TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}">
+                                                <Label.GestureRecognizers>
+                                                    <TapGestureRecognizer
+                                                        Command="{Binding Source={x:Reference root}, Path=BindingContext.ToggleSuggestionsCommand}"
+                                                        CommandParameter="{Binding .}"/>
+                                                </Label.GestureRecognizers>
+                                            </Label>
                                         </Grid>
 
                                         <CollectionView
@@ -132,60 +160,85 @@
                                                             </SwipeItems>
                                                         </SwipeView.RightItems>
                                                     <Border
-                                                        Padding="12,10"
+                                                        Padding="0"
                                                         StrokeThickness="1"
                                                         Stroke="{AppThemeBinding Light={StaticResource GrayLight}, Dark=#333333}"
                                                         StrokeShape="RoundRectangle 12"
                                                         BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}">
-                                                        <Border.GestureRecognizers>
-                                                            <TapGestureRecognizer
-                                                                Command="{Binding Source={x:Reference root}, Path=BindingContext.OpenHymnCommand}"
-                                                                CommandParameter="{Binding .}"/>
-                                                        </Border.GestureRecognizers>
-                                                        <VerticalStackLayout Spacing="8">
-                                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                                                                <Label
-                                                                    Text="{Binding Line}"
-                                                                    FontSize="14"
-                                                                    FontAttributes="Bold"
-                                                                    LineBreakMode="WordWrap"
-                                                                    VerticalOptions="Center"
-                                                                    TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
-                                                                <Border
-                                                                    Grid.Column="1"
-                                                                    Padding="8,4"
-                                                                    StrokeThickness="0"
-                                                                    StrokeShape="RoundRectangle 10"
-                                                                    VerticalOptions="Start"
-                                                                    BackgroundColor="{StaticResource Primary}">
+                                                        <Grid ColumnDefinitions="*,44">
+                                                            <VerticalStackLayout
+                                                                Padding="12,10"
+                                                                Spacing="8">
+                                                                <VerticalStackLayout.GestureRecognizers>
+                                                                    <TapGestureRecognizer
+                                                                        Command="{Binding Source={x:Reference root}, Path=BindingContext.OpenHymnCommand}"
+                                                                        CommandParameter="{Binding .}"/>
+                                                                </VerticalStackLayout.GestureRecognizers>
+                                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                                                                     <Label
-                                                                        Text="{Binding NumberBadge}"
-                                                                        FontSize="11"
+                                                                        Text="{Binding Line}"
+                                                                        FontSize="14"
                                                                         FontAttributes="Bold"
-                                                                        TextColor="{StaticResource PrimaryText}"/>
-                                                                </Border>
-                                                            </Grid>
-                                                            <Border
-                                                                Padding="10,8"
-                                                                StrokeThickness="0"
-                                                                StrokeShape="RoundRectangle 8"
-                                                                IsVisible="{Binding HasReason}"
-                                                                BackgroundColor="{AppThemeBinding Light=#FFF8E1, Dark=#2A2410}">
-                                                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                                                    <BoxView
-                                                                        WidthRequest="3"
-                                                                        CornerRadius="1.5"
-                                                                        Color="{StaticResource Primary}"
-                                                                        VerticalOptions="Fill"/>
-                                                                    <Label
-                                                                        Grid.Column="1"
-                                                                        Text="{Binding Reason}"
-                                                                        FontSize="12.5"
                                                                         LineBreakMode="WordWrap"
-                                                                        TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                                                        VerticalOptions="Center"
+                                                                        TextColor="{AppThemeBinding Light={StaticResource PrimaryText}, Dark=White}"/>
+                                                                    <Border
+                                                                        Grid.Column="1"
+                                                                        Padding="8,4"
+                                                                        StrokeThickness="0"
+                                                                        StrokeShape="RoundRectangle 10"
+                                                                        VerticalOptions="Start"
+                                                                        BackgroundColor="{StaticResource Primary}">
+                                                                        <Label
+                                                                            Text="{Binding NumberBadge}"
+                                                                            FontSize="11"
+                                                                            FontAttributes="Bold"
+                                                                            TextColor="{StaticResource PrimaryText}"/>
+                                                                    </Border>
                                                                 </Grid>
-                                                            </Border>
-                                                        </VerticalStackLayout>
+                                                                <Border
+                                                                    Padding="10,8"
+                                                                    StrokeThickness="0"
+                                                                    StrokeShape="RoundRectangle 8"
+                                                                    IsVisible="{Binding HasReason}"
+                                                                    BackgroundColor="{AppThemeBinding Light=#FFF8E1, Dark=#2A2410}">
+                                                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                                                        <BoxView
+                                                                            WidthRequest="3"
+                                                                            CornerRadius="1.5"
+                                                                            Color="{StaticResource Primary}"
+                                                                            VerticalOptions="Fill"/>
+                                                                        <Label
+                                                                            Grid.Column="1"
+                                                                            Text="{Binding Reason}"
+                                                                            FontSize="12.5"
+                                                                            LineBreakMode="WordWrap"
+                                                                            TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
+                                                                    </Grid>
+                                                                </Border>
+                                                            </VerticalStackLayout>
+                                                            <Grid
+                                                                Grid.Column="1"
+                                                                VerticalOptions="Fill">
+                                                                <Grid.GestureRecognizers>
+                                                                    <TapGestureRecognizer Tapped="SuggestionStar_Tapped"/>
+                                                                </Grid.GestureRecognizers>
+                                                                <BoxView
+                                                                    WidthRequest="1"
+                                                                    Color="{AppThemeBinding Light={StaticResource GrayLight}, Dark=#333333}"
+                                                                    HorizontalOptions="Start"
+                                                                    VerticalOptions="Fill"/>
+                                                                <Label
+                                                                    FontFamily="{Binding StarFont}"
+                                                                    FontSize="16"
+                                                                    Text="{x:Static fontawesome:FontAwesomeIcons.Star}"
+                                                                    TextColor="{Binding StarColor}"
+                                                                    HorizontalOptions="Center"
+                                                                    VerticalOptions="Center"
+                                                                    HorizontalTextAlignment="Center"
+                                                                    VerticalTextAlignment="Center"/>
+                                                            </Grid>
+                                                        </Grid>
                                                     </Border>
                                                     </SwipeView>
                                                 </DataTemplate>

@@ -1,11 +1,195 @@
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+const { onRequest } = require("firebase-functions/v2/https");
 const { initializeApp, getApps } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
+const { getStorage } = require("firebase-admin/storage");
 
 if (getApps().length === 0) {
-  initializeApp({ projectId: "mobihymn" });
+  initializeApp({
+    projectId: "mobihymn",
+    storageBucket: "mobihymn.appspot.com",
+  });
 }
+
+const HYMN_UPSTREAM = "http://157.230.9.81";
+const STORAGE_BUCKET = "mobihymn.appspot.com";
+const MIDI_PATH_TEMPLATE = "midi/h{n}.mid";
+
+function midiObjectPath(number) {
+  const n = String(number || "").trim();
+  if (!/^\d{1,6}$/.test(n)) return null;
+  return MIDI_PATH_TEMPLATE.replace("{n}", n);
+}
+
+async function sendMidiBytes(res, method, bytes) {
+  if (!bytes || bytes.length === 0) {
+    res.status(404).end();
+    return;
+  }
+  res.setHeader("Content-Type", "audio/midi");
+  res.setHeader("Content-Length", String(bytes.length));
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  if (method === "HEAD") {
+    res.status(200).end();
+    return;
+  }
+  res.status(200).send(bytes);
+}
+
+/**
+ * Same-origin hymn API proxy for Firebase Hosting (mirrors MobiHymn4.Web.Host).
+ * /api/hymn/... → http://157.230.9.81/hymn/...
+ */
+exports.hymnProxy = onRequest(
+  {
+    region: "us-central1",
+    cors: false,
+    timeoutSeconds: 300,
+    memory: "512MiB",
+    invoker: "public",
+  },
+  async (req, res) => {
+    try {
+      const prefix = "/api/hymn";
+      let pathAndQuery = req.originalUrl || req.url || "/";
+      if (pathAndQuery.startsWith(prefix))
+        pathAndQuery = pathAndQuery.slice(prefix.length);
+      if (!pathAndQuery.startsWith("/"))
+        pathAndQuery = "/" + pathAndQuery;
+
+      const upstreamPath = "/hymn" + pathAndQuery;
+      const target = HYMN_UPSTREAM + upstreamPath;
+
+      const headers = {};
+      const contentType = req.get("content-type");
+      if (contentType) headers["content-type"] = contentType;
+      const accept = req.get("accept");
+      if (accept) headers["accept"] = accept;
+      const range = req.get("range");
+      if (range) headers["range"] = range;
+
+      const init = {
+        method: req.method,
+        headers,
+        redirect: "manual",
+      };
+      if (req.method !== "GET" && req.method !== "HEAD" && req.rawBody) {
+        init.body = req.rawBody;
+      }
+
+      const upstream = await fetch(target, init);
+      // Buffer + strip encoding headers so Firebase Hosting CDN can serve the response.
+      // Forwarding gzip/chunked streams from the origin causes Hosting "Internal Error".
+      const skip = new Set([
+        "transfer-encoding",
+        "connection",
+        "keep-alive",
+        "content-encoding",
+        "content-length",
+      ]);
+      res.status(upstream.status);
+      upstream.headers.forEach((value, key) => {
+        if (!skip.has(key.toLowerCase()))
+          res.setHeader(key, value);
+      });
+
+      if (req.method === "HEAD") {
+        res.end();
+        return;
+      }
+
+      const bytes = Buffer.from(await upstream.arrayBuffer());
+      res.setHeader("Content-Length", String(bytes.length));
+      res.send(bytes);
+    } catch (e) {
+      console.error("hymnProxy failed", e);
+      if (!res.headersSent)
+        res.status(502).send("Upstream hymn proxy failed");
+    }
+  }
+);
+
+/**
+ * MIDI download proxy — browsers cannot read Storage media (403/CORS).
+ * Prefer: /api/midi?n=<hymnNumber>  (Admin SDK, bypasses Storage rules)
+ * Legacy: /api/midi?u=<firebasestorage download URL>
+ */
+exports.midiProxy = onRequest(
+  {
+    region: "us-central1",
+    cors: false,
+    timeoutSeconds: 60,
+    memory: "256MiB",
+    invoker: "public",
+  },
+  async (req, res) => {
+    try {
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        res.status(405).send("Method not allowed");
+        return;
+      }
+
+      const n = typeof req.query.n === "string" ? req.query.n : "";
+      const objectPath = midiObjectPath(n);
+      if (objectPath) {
+        try {
+          const bucket = getStorage().bucket(STORAGE_BUCKET);
+          const [bytes] = await bucket.file(objectPath).download();
+          await sendMidiBytes(res, req.method, bytes);
+          return;
+        } catch (e) {
+          const code = e?.code;
+          if (code === 404 || code === "ENOENT" || /No such object/i.test(String(e?.message || ""))) {
+            res.status(404).end();
+            return;
+          }
+          throw e;
+        }
+      }
+
+      const u = typeof req.query.u === "string" ? req.query.u : "";
+      let uri;
+      try {
+        uri = new URL(u);
+      } catch {
+        res.status(400).send("Missing hymn number or download URL.");
+        return;
+      }
+
+      if (uri.protocol !== "https:") {
+        res.status(400).send("Invalid URL");
+        return;
+      }
+      if (uri.hostname !== "firebasestorage.googleapis.com") {
+        res.status(400).send("Invalid host");
+        return;
+      }
+      const prefix = `/v0/b/${STORAGE_BUCKET}/`;
+      if (!uri.pathname.startsWith(prefix)) {
+        res.status(400).send("Invalid bucket");
+        return;
+      }
+
+      const upstream = await fetch(uri.toString(), { method: "GET", redirect: "follow" });
+      if (upstream.status === 404) {
+        res.status(404).end();
+        return;
+      }
+      if (!upstream.ok) {
+        res.status(upstream.status).end();
+        return;
+      }
+
+      const bytes = Buffer.from(await upstream.arrayBuffer());
+      await sendMidiBytes(res, req.method, bytes);
+    } catch (e) {
+      console.error("midiProxy failed", e);
+      if (!res.headersSent)
+        res.status(502).send("MIDI proxy failed");
+    }
+  }
+);
 
 /**
  * Phase 4 — notify group members when a hymn list (board) changes.
@@ -136,6 +320,21 @@ exports.onBoardWrite = onDocumentWritten(
                   tag: collapseKey,
                   priority: "high",
                   defaultSound: true,
+                },
+              },
+              webpush: {
+                headers: { Urgency: "high" },
+                notification: {
+                  title,
+                  body,
+                  icon: "/icon-192.png",
+                  badge: "/icon-192.png",
+                  tag: collapseKey,
+                  renotify: true,
+                },
+                fcmOptions: {
+                  // Relative deep-link handled by firebase-messaging-sw.js click handler via data.
+                  link: "/",
                 },
               },
             })

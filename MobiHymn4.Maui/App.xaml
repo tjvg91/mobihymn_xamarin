@@ -57,13 +57,13 @@
                             <VisualState x:Name="Normal">
                                 <VisualState.Setters>
                                     <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
-                                    <Setter Property="TextColor" Value="{StaticResource PrimaryText}" />
+                                    <Setter Property="TextColor" Value="#000000" />
                                 </VisualState.Setters>
                             </VisualState>
                             <VisualState x:Name="Disabled">
                                 <VisualState.Setters>
                                     <Setter Property="BackgroundColor" Value="{StaticResource PrimaryLight}" />
-                                    <Setter Property="TextColor" Value="{StaticResource Gray}" />
+                                    <Setter Property="TextColor" Value="#000000" />
                                 </VisualState.Setters>
                             </VisualState>
                         </VisualStateGroup>

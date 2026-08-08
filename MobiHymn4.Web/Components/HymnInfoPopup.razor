@@ -1,0 +1,102 @@
+@namespace MobiHymn4.Web.Components
+@using MobiHymn4.Shared.Models
+
+@if (Visible && Hymn != null)
+{
+    <div class="hi-backdrop" @onclick="Close">
+        <div class="hi-popup" @onclick:stopPropagation="true" role="dialog" aria-label="Hymn details">
+            <div class="hi-header">
+                <div class="hi-header-icon" aria-hidden="true">
+                    <i class="fa-solid fa-music"></i>
+                </div>
+                <div class="hi-header-text">
+                    <div class="hi-eyebrow">HYMN DETAILS</div>
+                    <div class="hi-number">@HeaderNumber</div>
+                    @if (!string.IsNullOrWhiteSpace(Hymn.Name))
+                    {
+                        <div class="hi-name">@Hymn.Name</div>
+                    }
+                </div>
+            </div>
+
+            <div class="hi-body">
+                @if (Rows.Count == 0)
+                {
+                    <p class="hi-empty">No details available for this hymn.</p>
+                }
+                else
+                {
+                    @foreach (var row in Rows)
+                    {
+                        <div class="hi-row">
+                            <div class="hi-row-icon" aria-hidden="true">
+                                <i class="fa-solid @row.Icon"></i>
+                            </div>
+                            <div class="hi-row-text">
+                                <div class="hi-row-label">@row.Label</div>
+                                @foreach (var value in row.Values)
+                                {
+                                    <div class="hi-row-value">@value</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+
+            <div class="hi-footer">
+                <button type="button" class="hi-close" @onclick="Close">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public Hymn? Hymn { get; set; }
+
+    string HeaderNumber => $"Hymn #{(Hymn?.Number ?? "").Trim()}";
+
+    List<DetailRow> Rows => BuildRows(Hymn);
+
+    static List<DetailRow> BuildRows(Hymn? hymn)
+    {
+        var rows = new List<DetailRow>();
+        if (hymn == null) return rows;
+
+        Add(rows, "First line", "fa-quote-left", hymn.FirstLine);
+        Add(rows, "Author", "fa-pen-nib", hymn.Author);
+        Add(rows, "Metre", "fa-book-open", hymn.Metre);
+        Add(rows, "Tune", "fa-music", hymn.Tune);
+        Add(rows, "Composer", "fa-user", hymn.TuneComposer);
+        Add(rows, "Key", "fa-key", hymn.TuneKey);
+        AddMany(rows, "Verses", "fa-book-bible", hymn.GetVerseReferences());
+        AddMany(rows, "Topic", "fa-tags", hymn.Tags);
+        Add(rows, "Year", "fa-calendar", hymn.Year);
+        Add(rows, "Remark", "fa-comment", hymn.Remark);
+        return rows;
+    }
+
+    static void Add(List<DetailRow> rows, string label, string icon, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        rows.Add(new DetailRow(label.ToUpperInvariant(), icon, new[] { value.Trim() }));
+    }
+
+    static void AddMany(List<DetailRow> rows, string label, string icon, IEnumerable<string>? values)
+    {
+        if (values == null) return;
+        var pills = values.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()).ToList();
+        if (pills.Count == 0) return;
+        rows.Add(new DetailRow(label.ToUpperInvariant(), icon, pills));
+    }
+
+    async Task Close()
+    {
+        Visible = false;
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+    sealed record DetailRow(string Label, string Icon, IReadOnlyList<string> Values);
+}

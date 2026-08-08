@@ -1,0 +1,170 @@
+@inject AppState State
+@inject CatalogUpdateService Catalog
+@implements IDisposable
+
+@if (show)
+{
+    <div class="download-dialog-host @(animOpen ? "is-open" : null)" aria-live="assertive">
+        <div class="download-dialog-overlay" aria-hidden="true"></div>
+        <div class="download-dialog" @onclick:stopPropagation="true" role="alertdialog"
+             aria-modal="true" aria-labelledby="download-dialog-title">
+            <lottie-player class="download-dialog-lottie"
+                           src="/lottie/download.json"
+                           background="transparent"
+                           speed="1"
+                           loop
+                           autoplay>
+            </lottie-player>
+            <h2 id="download-dialog-title" class="download-dialog-title">@Title</h2>
+            <p class="download-dialog-message">@Message</p>
+
+            @if (Catalog.IsDownloadingLibrary || (Catalog.DownloadTotal > 0 && !HasError))
+            {
+                <div class="download-dialog-progress">
+                    <div class="download-dialog-bar" role="progressbar"
+                         aria-valuemin="0" aria-valuemax="100"
+                         aria-valuenow="@((int)(Catalog.DownloadProgress * 100))">
+                        <div class="download-dialog-bar-fill" style="width: @(Catalog.DownloadProgress * 100)%"></div>
+                    </div>
+                    <div class="download-dialog-progress-text">@Catalog.DownloadProgressText</div>
+                </div>
+                <p class="download-dialog-hint">(this might take a while)</p>
+            }
+
+            @if (HasError)
+            {
+                <p class="download-dialog-error">@Catalog.CheckError</p>
+                <div class="download-dialog-actions">
+                    <button type="button" class="download-dialog-btn download-dialog-btn-primary"
+                            disabled="@Catalog.IsDownloadingLibrary" @onclick="StartDownloadAsync">
+                        Try again
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    bool show;
+    bool animOpen;
+    bool autoStarted;
+    bool completedToastShown;
+
+    bool HasError =>
+        !string.IsNullOrEmpty(Catalog.CheckError) && !Catalog.IsDownloadingLibrary;
+
+    string Title =>
+        Catalog.IsDownloadingLibrary || Catalog.DownloadTotal > 0
+            ? "Downloading hymns"
+            : HasError
+                ? "Download failed"
+                : "Download hymns";
+
+    string Message =>
+        Catalog.IsDownloadingLibrary || Catalog.DownloadTotal > 0
+            ? "Saving the hymn library on this device so you can read and search offline."
+            : HasError
+                ? "The library could not be saved. Check your connection and try again."
+                : "MobiHymn needs the hymn library on this device before you can continue.";
+
+    protected override void OnInitialized()
+    {
+        Catalog.Changed += OnCatalog;
+        SyncVisibility();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await Catalog.InitializeAsync();
+        SyncVisibility();
+        await InvokeAsync(StateHasChanged);
+
+        if (show && !autoStarted && Catalog.NeedsLibraryDownload && !Catalog.IsDownloadingLibrary)
+        {
+            autoStarted = true;
+            await StartDownloadAsync();
+        }
+    }
+
+    void OnCatalog() => InvokeAsync(async () =>
+    {
+        SyncVisibility();
+        if (Catalog.IsLibraryDownloaded && show)
+        {
+            if (!completedToastShown)
+            {
+                completedToastShown = true;
+                State.ShowToast("/lottie/done.gif", "Hymn library downloaded.");
+            }
+            await ExitAsync();
+            return;
+        }
+
+        if (show && !autoStarted && Catalog.NeedsLibraryDownload && !Catalog.IsDownloadingLibrary
+            && string.IsNullOrEmpty(Catalog.CheckError))
+        {
+            autoStarted = true;
+            _ = StartDownloadAsync();
+        }
+
+        StateHasChanged();
+    });
+
+    void SyncVisibility()
+    {
+        var need = Catalog.NeedsLibraryDownload || Catalog.IsDownloadingLibrary;
+        if (need && !show)
+        {
+            show = true;
+            animOpen = false;
+            _ = EnterAsync();
+        }
+        else if (!need && show && !Catalog.IsDownloadingLibrary)
+        {
+            _ = ExitAsync();
+        }
+    }
+
+    async Task EnterAsync()
+    {
+        await Task.Delay(20);
+        if (!show) return;
+        animOpen = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task ExitAsync()
+    {
+        animOpen = false;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(200);
+        show = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task StartDownloadAsync()
+    {
+        completedToastShown = false;
+        await Catalog.DownloadLibraryAsync();
+        if (Catalog.IsLibraryDownloaded && string.IsNullOrEmpty(Catalog.CheckError))
+        {
+            if (!completedToastShown)
+            {
+                completedToastShown = true;
+                State.ShowToast("/lottie/done.gif", "Hymn library downloaded.");
+            }
+            await ExitAsync();
+        }
+        else
+        {
+            autoStarted = true;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose() => Catalog.Changed -= OnCatalog;
+}

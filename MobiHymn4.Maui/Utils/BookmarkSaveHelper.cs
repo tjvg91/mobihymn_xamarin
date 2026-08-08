@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using MobiHymn4.Models;
 using MobiHymn4.Views.Popups;
@@ -16,15 +17,31 @@ public static class BookmarkSaveHelper
     /// </summary>
     public static void ShowSavePopup(Page page, ShortHymn hymn)
     {
-        if (page == null || hymn == null || string.IsNullOrWhiteSpace(hymn.Number))
+        if (hymn == null)
+            return;
+        ShowSavePopup(page, new[] { hymn });
+    }
+
+    /// <summary>
+    /// Shows the Save-to-group popup and bookmarks all non-bookmarked hymns into the chosen group.
+    /// </summary>
+    public static void ShowSavePopup(Page page, IEnumerable<ShortHymn> hymns)
+    {
+        if (page == null || hymns == null)
             return;
 
         var globals = Globals.Instance;
-        if (globals.IsBookmarked(hymn.Number))
+        var pending = hymns
+            .Where(h => h != null && !string.IsNullOrWhiteSpace(h.Number) && !globals.IsBookmarked(h.Number))
+            .GroupBy(h => h.Number.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToList();
+
+        if (pending.Count == 0)
         {
             Globals.ShowToastPopup(
                 "bookmark-saved",
-                "Already bookmarked.",
+                "All already bookmarked.",
                 DeviceInfo.Platform == DevicePlatform.Android ? 120 : 0.5);
             return;
         }
@@ -52,20 +69,22 @@ public static class BookmarkSaveHelper
             if (string.IsNullOrWhiteSpace(groupName))
                 return;
 
-            if (globals.AddBookmark(hymn.Number, groupName, hymn.Line))
+            var added = 0;
+            foreach (var hymn in pending)
             {
-                Globals.ShowToastPopup(
-                    "bookmark-saved",
-                    "Bookmark added.",
-                    DeviceInfo.Platform == DevicePlatform.Android ? 120 : 0.5);
+                if (globals.AddBookmark(hymn.Number, groupName, hymn.Line))
+                    added++;
             }
-            else if (globals.IsBookmarked(hymn.Number))
-            {
-                Globals.ShowToastPopup(
-                    "bookmark-saved",
-                    "Already bookmarked.",
-                    DeviceInfo.Platform == DevicePlatform.Android ? 120 : 0.5);
-            }
+
+            var msg = added == 0
+                ? (pending.Count == 1 ? "Already bookmarked." : "All already bookmarked.")
+                : added == 1
+                    ? "Bookmark added."
+                    : $"{added} bookmarks added.";
+            Globals.ShowToastPopup(
+                "bookmark-saved",
+                msg,
+                DeviceInfo.Platform == DevicePlatform.Android ? 120 : 0.5);
         };
 
         page.ShowPopup(popup);

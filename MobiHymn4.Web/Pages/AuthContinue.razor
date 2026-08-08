@@ -1,0 +1,44 @@
+@page "/auth/continue"
+@page "/auth"
+@inject IAuthService Auth
+@inject AuthNavigation AuthNav
+
+<PageTitle>Continuing…</PageTitle>
+
+<div class="login-page">
+    <div class="login-card">
+        <h1 class="login-title">Almost there</h1>
+        <p class="login-lead muted">@Status</p>
+        @if (!string.IsNullOrEmpty(Error))
+        {
+            <p class="error">@Error</p>
+            <a class="btn block" href="@AuthNav.LoginUrl()" style="margin-top:12px">Go to log in</a>
+        }
+    </div>
+</div>
+
+@code {
+    string Status = "Checking your account…";
+    string? Error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Mirror MAUI HandleAuthEmailContinueCoreAsync.
+            if (Auth.IsSignedIn)
+            {
+                Status = "Refreshing verification status…";
+                await Auth.RefreshEmailVerificationStatusAsync();
+            }
+
+            Status = "Redirecting…";
+            await AuthNav.NavigateForAuthStateAsync(replace: true);
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+            Status = "Couldn’t finish sign-in.";
+        }
+    }
+}

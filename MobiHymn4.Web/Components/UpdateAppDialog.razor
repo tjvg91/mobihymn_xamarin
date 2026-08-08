@@ -1,0 +1,97 @@
+@namespace MobiHymn4.Web.Components
+@inject AppState State
+@inject AppUpdateService Updates
+@implements IDisposable
+
+@if (show)
+{
+    <div class="update-dialog-host @(animOpen ? "is-open" : null)" aria-live="assertive">
+        <div class="update-dialog-overlay" @onclick="OnOverlay"></div>
+        <div class="update-dialog" @onclick:stopPropagation="true" role="alertdialog" aria-labelledby="update-dialog-title">
+            <lottie-player class="update-dialog-lottie"
+                           src="@(State.DarkMode ? "/lottie/update-dark.json" : "/lottie/update.json")"
+                           background="transparent"
+                           speed="1"
+                           loop
+                           autoplay>
+            </lottie-player>
+            <h2 id="update-dialog-title" class="update-dialog-title">@Updates.PromptTitle</h2>
+            <p class="update-dialog-message">@Updates.PromptMessage</p>
+            <div class="update-dialog-actions @(Updates.IsMandatory ? "is-mandatory" : null)">
+                @if (!Updates.IsMandatory)
+                {
+                    <button type="button" class="update-dialog-btn" @onclick="OnLater">Later</button>
+                }
+                <button type="button" class="update-dialog-btn update-dialog-btn-primary" @onclick="OnDownload">
+                    @Updates.DownloadLabel
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    const int CloseMs = 200;
+
+    bool show;
+    bool animOpen;
+    bool closing;
+
+    protected override void OnInitialized()
+    {
+        Updates.Changed += OnUpdates;
+        SyncFromService();
+    }
+
+    void OnUpdates() => InvokeAsync(() =>
+    {
+        SyncFromService();
+        StateHasChanged();
+    });
+
+    void SyncFromService()
+    {
+        if (Updates.IsPromptVisible && !show && !closing)
+        {
+            show = true;
+            animOpen = false;
+            _ = EnterAsync();
+        }
+        else if (!Updates.IsPromptVisible && show && !closing)
+        {
+            _ = ExitAsync();
+        }
+    }
+
+    async Task EnterAsync()
+    {
+        await Task.Delay(20);
+        if (!show || closing) return;
+        animOpen = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task ExitAsync()
+    {
+        if (closing) return;
+        closing = true;
+        animOpen = false;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(CloseMs);
+        show = false;
+        closing = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    void OnOverlay()
+    {
+        if (!Updates.IsMandatory)
+            Updates.Dismiss();
+    }
+
+    void OnLater() => Updates.Dismiss();
+
+    Task OnDownload() => Updates.AcceptDownloadAsync();
+
+    public void Dispose() => Updates.Changed -= OnUpdates;
+}

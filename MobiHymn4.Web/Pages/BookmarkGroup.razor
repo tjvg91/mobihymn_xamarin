@@ -1,0 +1,241 @@
+@page "/bookmarks/{GroupName}"
+@inject AppState State
+@inject BookmarksUiState Chrome
+@inject NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>@DecodedGroup</PageTitle>
+
+@if (Items.Count == 0)
+{
+    <div class="bm-empty">
+        <p>No bookmarks in this group.</p>
+        <a class="bm-empty-link" href="bookmarks">Back to groups</a>
+    </div>
+}
+else
+{
+    <div class="bm-items @(selectionMode ? "bm-items-selecting" : null)">
+        @foreach (var b in Items)
+        {
+            var selected = selectedNumbers.Contains(b.Number);
+            <button type="button"
+                    class="bm-item-row @(selected ? "is-selected" : null)"
+                    @onclick="() => OnRowClick(b)">
+                <span class="bm-item-check @(selected ? "is-on" : null)" aria-hidden="true">
+                    @if (selected)
+                    {
+                        <i class="fa-solid fa-check"></i>
+                    }
+                </span>
+                <span class="bm-item-text">
+                    <span class="bm-item-title">@(string.IsNullOrWhiteSpace(b.Line) ? $"Hymn #{b.Number}" : b.Line)</span>
+                    <span class="bm-item-sub">Hymn #@b.Number</span>
+                </span>
+            </button>
+        }
+    </div>
+}
+
+<BookmarkSaveModal @bind-Visible="showMove"
+                   Title="Move To"
+                   ConfirmLabel="Move"
+                   CancelLabel="Cancel"
+                   GroupOptions="@MoveGroupOptions"
+                   PreferredGroup="@PreferredMoveGroup"
+                   OnSaved="OnMoved" />
+
+<ConfirmDialog @bind-Visible="showDeleteConfirm"
+               Title="Delete bookmarks?"
+               Message="@DeleteMessage"
+               ConfirmLabel="Yes"
+               CancelLabel="No"
+               OnConfirmed="ConfirmDeleteSelected" />
+
+@code {
+    [Parameter] public string GroupName { get; set; } = "";
+
+    bool selectionMode;
+    bool showMove;
+    bool showDeleteConfirm;
+    int chromeOwner;
+    readonly HashSet<string> selectedNumbers = new(StringComparer.OrdinalIgnoreCase);
+
+    string DecodedGroup =>
+        string.IsNullOrWhiteSpace(GroupName)
+            ? "General"
+            : Uri.UnescapeDataString(GroupName);
+
+    IReadOnlyList<ShortHymn> Items => State.BookmarksInGroup(DecodedGroup);
+
+    string DeleteMessage =>
+        $"Delete {selectedNumbers.Count} selected bookmark{(selectedNumbers.Count == 1 ? "" : "s")}?";
+
+    IReadOnlyList<string> MoveGroupOptions
+    {
+        get
+        {
+            var names = State.BookmarkGroupNames().ToList();
+            if (!names.Any(g => g.Equals("General", StringComparison.OrdinalIgnoreCase)))
+                names.Insert(0, "General");
+            if (!names.Any(g => g.Equals(DecodedGroup, StringComparison.OrdinalIgnoreCase)))
+                names.Add(DecodedGroup);
+            return names;
+        }
+    }
+
+    string? PreferredMoveGroup =>
+        MoveGroupOptions.FirstOrDefault(g => !g.Equals(DecodedGroup, StringComparison.OrdinalIgnoreCase))
+        ?? MoveGroupOptions.FirstOrDefault();
+
+    protected override void OnInitialized()
+    {
+        chromeOwner = Chrome.ClaimOwner();
+        State.Changed += OnChanged;
+        PublishChrome();
+    }
+
+    protected override void OnParametersSet() => PublishChrome();
+
+    void OnChanged()
+    {
+        if (!Chrome.Owns(chromeOwner)) return;
+        var items = Items;
+        selectedNumbers.RemoveWhere(n => items.All(i => !string.Equals(i.Number, n, StringComparison.OrdinalIgnoreCase)));
+
+        if (items.Count == 0)
+        {
+            selectionMode = false;
+            selectedNumbers.Clear();
+            // Group emptied after delete/move — return to group list (MAUI pops).
+            Nav.NavigateTo("bookmarks");
+            return;
+        }
+
+        PublishChrome();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    void PublishChrome()
+    {
+        if (!Chrome.Owns(chromeOwner)) return;
+        var total = Items.Count;
+        var selected = selectedNumbers.Count;
+        Chrome.OnEnterSelection = EnterSelection;
+        Chrome.OnSelectAll = SelectAll;
+        Chrome.OnMoveSelected = RequestMove;
+        Chrome.OnDeleteSelected = RequestDelete;
+        Chrome.OnCancelSelection = CancelSelection;
+        Chrome.SetGroupItems(
+            chromeOwner,
+            groupName: DecodedGroup,
+            hasItems: total > 0,
+            selectionMode: selectionMode,
+            canSelectAll: selectionMode && total > 0 && selected < total,
+            canMove: selectionMode && selected > 0,
+            canDelete: selectionMode && selected > 0);
+    }
+
+    void OnRowClick(ShortHymn b)
+    {
+        if (selectionMode)
+        {
+            if (!selectedNumbers.Add(b.Number))
+                selectedNumbers.Remove(b.Number);
+            PublishChrome();
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _ = Open(b.Number);
+    }
+
+    void EnterSelection()
+    {
+        selectionMode = true;
+        selectedNumbers.Clear();
+        PublishChrome();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    void SelectAll()
+    {
+        selectedNumbers.Clear();
+        foreach (var b in Items)
+            selectedNumbers.Add(b.Number);
+        PublishChrome();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    void CancelSelection()
+    {
+        selectionMode = false;
+        selectedNumbers.Clear();
+        PublishChrome();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    void RequestMove()
+    {
+        if (selectedNumbers.Count == 0) return;
+        showMove = true;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    void RequestDelete()
+    {
+        if (selectedNumbers.Count == 0) return;
+        showDeleteConfirm = true;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    async Task OnMoved(string group)
+    {
+        var numbers = selectedNumbers.ToList();
+        if (numbers.Count == 0) return;
+
+        await State.MoveBookmarksAsync(numbers, group);
+        selectionMode = false;
+        selectedNumbers.Clear();
+
+        if (State.BookmarksInGroup(DecodedGroup).Count == 0)
+        {
+            Nav.NavigateTo("bookmarks");
+            return;
+        }
+
+        PublishChrome();
+        State.ShowToast("/lottie/bookmark-saved.gif", "Bookmarks moved.");
+    }
+
+    async Task ConfirmDeleteSelected()
+    {
+        var numbers = selectedNumbers.ToList();
+        if (numbers.Count == 0) return;
+
+        await State.RemoveBookmarksAsync(numbers);
+        selectionMode = false;
+        selectedNumbers.Clear();
+
+        if (State.BookmarksInGroup(DecodedGroup).Count == 0)
+        {
+            Nav.NavigateTo("bookmarks");
+            return;
+        }
+
+        PublishChrome();
+        State.ShowToast("/lottie/bookmark-deleted.gif", "Bookmarks deleted.");
+    }
+
+    async Task Open(string number)
+    {
+        var hymn = await State.OpenHymnAsync(number);
+        if (hymn != null) Nav.NavigateTo($"read/{Uri.EscapeDataString(hymn.Number)}");
+    }
+
+    public void Dispose()
+    {
+        State.Changed -= OnChanged;
+        Chrome.Release(chromeOwner);
+    }
+}

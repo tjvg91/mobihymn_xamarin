@@ -74,8 +74,8 @@ namespace MobiHymn4.Views
         public ReadPage()
         {
             try
-            {
-                InitializeComponent();
+        {
+            InitializeComponent();
                 authService.AuthStateChanged += (_, _) => MainThread.BeginInvokeOnMainThread(UpdateBoardChrome);
                 dashboardService.IsOpenChanged += (_, _) => MainThread.BeginInvokeOnMainThread(UpdateBoardChrome);
                 boardNavigation.Changed += (_, _) => MainThread.BeginInvokeOnMainThread(() =>
@@ -120,9 +120,9 @@ namespace MobiHymn4.Views
 
             try
             {
-                model = (ReadViewModel)this.BindingContext;
+            model = (ReadViewModel)this.BindingContext;
                 model.PropertyChanged += Model_PropertyChanged;
-                model.OnHymnChanged += Model_OnHymnChanged;
+            model.OnHymnChanged += Model_OnHymnChanged;
                 globalInstance.SettingsLoaded += GlobalInstance_SettingsLoaded;
                 globalInstance.InitFinished += GlobalInstance_InitFinished;
                 model.ConnectivityChanged += (_, _) =>

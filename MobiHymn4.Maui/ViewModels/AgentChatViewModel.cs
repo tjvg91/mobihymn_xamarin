@@ -61,7 +61,7 @@ namespace MobiHymn4.ViewModels
 
         public bool ShowTextBubble => !IsTyping;
 
-        public ObservableCollection<ShortHymn> Suggestions { get; } = new();
+        public ObservableCollection<AgentSuggestionItem> Suggestions { get; } = new();
 
         public bool HasSuggestions => Suggestions.Count > 0;
 
@@ -134,12 +134,20 @@ namespace MobiHymn4.ViewModels
                 : Colors.Black;
         }
 
-        public void SetSuggestions(IEnumerable<ShortHymn> items, bool expanded)
+        public void SetSuggestions(IEnumerable<AgentSuggestionItem> items, bool expanded)
         {
             Suggestions.Clear();
-            foreach (var item in items ?? Enumerable.Empty<ShortHymn>())
+            foreach (var item in items ?? Enumerable.Empty<AgentSuggestionItem>())
                 Suggestions.Add(item);
             IsSuggestionsExpanded = expanded && Suggestions.Count > 0;
+        }
+
+        public void RefreshBookmarkStates(Globals globals)
+        {
+            if (globals == null)
+                return;
+            foreach (var item in Suggestions)
+                item.IsBookmarked = globals.IsBookmarked(item.Number);
         }
     }
 
@@ -171,7 +179,7 @@ namespace MobiHymn4.ViewModels
         {
             Title = "Selah";
             SendCommand = new Command(async () => await SendAsync(), () => !IsBusy && !string.IsNullOrWhiteSpace(Draft));
-            OpenHymnCommand = new Command<ShortHymn>(async hymn => await OpenHymnAsync(hymn));
+            OpenHymnCommand = new Command<AgentSuggestionItem>(async hymn => await OpenHymnAsync(hymn));
             ToggleSuggestionsCommand = new Command<AgentChatMessage>(ToggleSuggestions);
             Messages.Add(new AgentChatMessage
             {
@@ -179,7 +187,14 @@ namespace MobiHymn4.ViewModels
                 IsWelcome = true,
                 Text = "Hi, I'm Selah! — I can help you pick hymns for your gathering.\n\nTell me a bit about the service: theme, season, mood, key, or a Bible idea, and we’ll narrow it together."
             });
-            Messages[^1].FinishRichFormat(Application.Current?.RequestedTheme ?? AppTheme.Unspecified);        }
+            Messages[^1].FinishRichFormat(Application.Current?.RequestedTheme ?? AppTheme.Unspecified);
+        }
+
+        public void RefreshSuggestionBookmarks()
+        {
+            foreach (var message in Messages)
+                message.RefreshBookmarkStates(globalInstance);
+        }
 
         void ToggleSuggestions(AgentChatMessage message)
         {
@@ -235,7 +250,8 @@ namespace MobiHymn4.ViewModels
                 Text = text,
                 DisplayText = text
             });
-            Messages[^1].FinishRichFormat(theme);            IsBusy = true;
+            Messages[^1].FinishRichFormat(theme);
+            IsBusy = true;
             ((Command)SendCommand).ChangeCanExecute();
 
             var typing = new AgentChatMessage { Role = "assistant", IsTyping = true };
@@ -258,20 +274,21 @@ namespace MobiHymn4.ViewModels
                     excludeNumbers: suggestedNumbers).ConfigureAwait(false);
                 sessionId = response.SessionId;
 
-                var suggestions = new List<ShortHymn>();
+                var suggestions = new List<AgentSuggestionItem>();
                 foreach (var suggestion in response.Suggestions ?? Enumerable.Empty<AgentSearchResult>())
                 {
                     if (string.IsNullOrWhiteSpace(suggestion?.Number))
                         continue;
                     var number = suggestion.Number.Trim();
                     suggestedNumbers.Add(number);
-                    suggestions.Add(new ShortHymn
+                    suggestions.Add(new AgentSuggestionItem
                     {
                         Number = number,
                         Line = string.IsNullOrWhiteSpace(suggestion.Title)
                             ? (suggestion.FirstLine ?? $"Hymn #{suggestion.Number}")
                             : suggestion.Title,
-                        Reason = suggestion.Reason
+                        Reason = suggestion.Reason,
+                        IsBookmarked = globalInstance.IsBookmarked(number)
                     });
                 }
 
@@ -358,7 +375,7 @@ namespace MobiHymn4.ViewModels
             await MainThread.InvokeOnMainThreadAsync(() => bubble.DisplayText = text);
         }
 
-        async Task OpenHymnAsync(ShortHymn shortHymn)
+        async Task OpenHymnAsync(AgentSuggestionItem shortHymn)
         {
             if (shortHymn == null || string.IsNullOrWhiteSpace(shortHymn.Number))
                 return;

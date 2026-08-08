@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["http://localhost:5297", "https://localhost:7072", "https://mobihymn.web.app", "https://mobihymn.firebaseapp.com"],
+    "method": ["GET", "HEAD"],
+    "maxAgeSeconds": 3600,
+    "responseHeader": ["Content-Type", "Content-Length", "Content-Disposition", "Accept-Ranges"]
+  }
+]

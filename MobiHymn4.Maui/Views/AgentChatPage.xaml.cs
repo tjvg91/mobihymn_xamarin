@@ -1,4 +1,5 @@
 using System.Collections.Specialized;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FontAwesome;
@@ -9,6 +10,7 @@ using MobiHymn4.Utils;
 using MobiHymn4.ViewModels;
 using MobiHymn4.Views.Popups;
 using Microsoft.Maui.Controls;
+using Microsoft.Maui.Devices;
 
 namespace MobiHymn4.Views
 {
@@ -28,23 +30,86 @@ namespace MobiHymn4.Views
             DraftEntry.HandlerChanged += DraftEntry_HandlerChanged;
         }
 
-        void tbSettings_Clicked(object sender, EventArgs e)
+        protected override void OnAppearing()
         {
-            Navigation.ShowPopup(new AgentChatSettingsPopup());
-        }
-
-        void AddBookmark_Invoked(object sender, EventArgs e)
-        {
-            if (sender is not SwipeItem swipe || swipe.BindingContext is not ShortHymn hymn)
-                return;
-
-            BookmarkSaveHelper.ShowSavePopup(this, hymn);
+            base.OnAppearing();
+            Globals.Instance.BookmarksChanged += OnBookmarksChanged;
+            model?.RefreshSuggestionBookmarks();
         }
 
         protected override void OnDisappearing()
         {
             base.OnDisappearing();
+            Globals.Instance.BookmarksChanged -= OnBookmarksChanged;
             StopVoiceListening();
+        }
+
+        void OnBookmarksChanged(object sender, EventArgs e)
+        {
+            MainThread.BeginInvokeOnMainThread(() => model?.RefreshSuggestionBookmarks());
+        }
+
+        void tbSettings_Clicked(object sender, EventArgs e)
+        {
+            Navigation.ShowPopup(new AgentChatSettingsPopup());
+        }
+
+        async void AddBookmark_Invoked(object sender, EventArgs e)
+        {
+            if (sender is not SwipeItem swipe || swipe.BindingContext is not AgentSuggestionItem item)
+                return;
+
+            await ToggleSuggestionBookmarkAsync(item);
+        }
+
+        async void SuggestionStar_Tapped(object sender, TappedEventArgs e)
+        {
+            if (sender is not Element el || el.BindingContext is not AgentSuggestionItem item)
+                return;
+
+            await ToggleSuggestionBookmarkAsync(item);
+        }
+
+        void BookmarkAll_Tapped(object sender, TappedEventArgs e)
+        {
+            if (sender is not BindableObject bo || bo.BindingContext is not AgentChatMessage message)
+                return;
+
+            if (message.Suggestions.Count == 0)
+                return;
+
+            var hymns = message.Suggestions.Select(s => s.ToShortHymn()).ToList();
+            BookmarkSaveHelper.ShowSavePopup(this, hymns);
+        }
+
+        async Task ToggleSuggestionBookmarkAsync(AgentSuggestionItem item)
+        {
+            if (item == null || string.IsNullOrWhiteSpace(item.Number))
+                return;
+
+            var globals = Globals.Instance;
+            if (item.IsBookmarked || globals.IsBookmarked(item.Number))
+            {
+                var answer = await DisplayAlert(
+                    "Delete bookmark?",
+                    $"Are you sure you want to delete Hymn #{item.Number} as bookmark?",
+                    "Yes",
+                    "No");
+                if (!answer)
+                    return;
+
+                if (globals.RemoveBookmarkByNumber(item.Number))
+                {
+                    item.IsBookmarked = false;
+                    Globals.ShowToastPopup(
+                        "bookmark-deleted",
+                        "Bookmark deleted.",
+                        DeviceInfo.Platform == DevicePlatform.Android ? 100 : 0.4);
+                }
+                return;
+            }
+
+            BookmarkSaveHelper.ShowSavePopup(this, item.ToShortHymn());
         }
 
         void ChatScroll_SizeChanged(object sender, EventArgs e)

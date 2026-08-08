@@ -124,7 +124,9 @@
                             </CollectionView.EmptyView>
                             <CollectionView.ItemTemplate>
                                 <DataTemplate x:DataType="models:GroupHymnListSummary">
-                                    <SwipeView>
+                                    <SwipeView
+                                        Opacity="{Binding CascadeOpacity}"
+                                        TranslationY="{Binding CascadeTranslateY}">
                                         <SwipeView.RightItems>
                                             <SwipeItems Mode="Reveal">
                                                 <SwipeItemView Invoked="HymnList_Edit_Invoked" IsVisible="{Binding CanManage}">
@@ -306,10 +308,15 @@
                                 <Grid
                                     Margin="0,0,0,8"
                                     RowDefinitions="Auto,*,Auto"
-                                    HorizontalOptions="Fill">
+                                    HorizontalOptions="Fill"
+                                    Opacity="{Binding CascadeOpacity}"
+                                    TranslationY="{Binding CascadeTranslateY}">
                                     <Grid.Triggers>
                                         <DataTrigger TargetType="Grid" Binding="{Binding IsSection}" Value="True">
                                             <Setter Property="Margin" Value="0,0,0,2"/>
+                                        </DataTrigger>
+                                        <DataTrigger TargetType="Grid" Binding="{Binding IsNestedInSection}" Value="True">
+                                            <Setter Property="Margin" Value="18,0,0,8"/>
                                         </DataTrigger>
                                     </Grid.Triggers>
                                     <BoxView
@@ -1140,7 +1147,8 @@
                                 Grid.Row="0"
                                 IsVisible="False"
                                 VerticalOptions="Fill"
-                                SelectionMode="None"
+                                SelectionMode="Single"
+                                SelectionChanged="MembersCollection_SelectionChanged"
                                 ItemSizingStrategy="MeasureFirstItem">
                                 <CollectionView.ItemsLayout>
                                     <LinearItemsLayout Orientation="Vertical" />
@@ -1167,7 +1175,9 @@
                                 </CollectionView.GroupHeaderTemplate>
                                 <CollectionView.ItemTemplate>
                                     <DataTemplate x:DataType="models:GroupMemberDisplayItem">
-                                        <Grid Padding="0,6" ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                        <Grid Padding="0,6" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12"
+                                              Opacity="{Binding CascadeOpacity}"
+                                              TranslationY="{Binding CascadeTranslateY}">
                                             <Border
                                                 Grid.Column="0"
                                                 WidthRequest="36"
@@ -1203,6 +1213,17 @@
                                                     IsVisible="{Binding ShowRoleSummary}"
                                                     TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource Primary}}"/>
                                             </VerticalStackLayout>
+                                            <Label
+                                                Grid.Column="2"
+                                                Text="&#xf142;"
+                                                FontFamily="FAS"
+                                                FontSize="16"
+                                                WidthRequest="28"
+                                                HorizontalTextAlignment="Center"
+                                                VerticalOptions="Center"
+                                                IsVisible="{Binding ShowMemberMenu}"
+                                                InputTransparent="True"
+                                                TextColor="{AppThemeBinding Light={StaticResource Gray}, Dark={StaticResource GrayLight}}"/>
                                         </Grid>
                                     </DataTemplate>
                                 </CollectionView.ItemTemplate>
