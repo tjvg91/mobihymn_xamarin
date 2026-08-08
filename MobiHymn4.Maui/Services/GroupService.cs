@@ -32,12 +32,39 @@ public sealed class GroupService : IGroupService
 
     public async Task<IReadOnlyList<WorshipGroup>> GetMyGroupsAsync()
     {
+        try
+        {
+            await profileService.RefreshCurrentProfileAsync();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"GetMyGroupsAsync profile refresh: {ex.Message}");
+        }
+
         var profile = profileService.CurrentProfile;
-        if (profile?.GroupIds == null || profile.GroupIds.Count == 0)
+        if (profile == null || string.IsNullOrWhiteSpace(profile.Uid))
             return Array.Empty<WorshipGroup>();
 
-        var groupIds = profile.GroupIds.Distinct().ToList();
-        var cacheKey = $"{profile.Uid}|{string.Join(",", groupIds)}";
+        var uid = profile.Uid;
+        var idSet = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var id in profile.GroupIds ?? new List<string>())
+        {
+            var normalized = NormalizeGroupId(id);
+            if (!string.IsNullOrEmpty(normalized))
+                idSet.Add(normalized);
+        }
+
+        // Membership docs are the source of truth (same as PWA). profile.groupIds can be stale.
+        var emailForDiscovery = !string.IsNullOrWhiteSpace(profile.Email)
+            ? profile.Email
+            : auth.CurrentEmail;
+        foreach (var gid in await DiscoverGroupIdsFromMembershipsAsync(emailForDiscovery))
+            idSet.Add(gid);
+
+        if (idSet.Count == 0)
+            return Array.Empty<WorshipGroup>();
+
+        var cacheKey = $"{uid}|{string.Join(",", idSet.OrderBy(x => x))}";
         if (groupsCache != null
             && string.Equals(groupsCacheKey, cacheKey, StringComparison.Ordinal)
             && DateTime.UtcNow - groupsCacheAt < GroupsCacheTtl)
@@ -45,16 +72,133 @@ public sealed class GroupService : IGroupService
             return groupsCache;
         }
 
-        var snapshots = await Task.WhenAll(groupIds.Select(LoadGroupAsync));
-        var groups = snapshots
-            .Where(g => g != null)
-            .OrderBy(g => g.Name)
-            .ToList();
+        var groups = new List<WorshipGroup>();
+        foreach (var groupId in idSet)
+        {
+            try
+            {
+                if (!await IsCurrentUserMemberAsync(groupId, uid))
+                    continue;
+
+                var group = await LoadGroupAsync(groupId);
+                if (group != null)
+                    groups.Add(group);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"GetMyGroupsAsync skip {groupId}: {ex.Message}");
+            }
+        }
+
+        groups = groups.OrderBy(g => g.Name).ToList();
+        await RepairGroupIdsAsync(groups.Select(g => g.Id).ToList());
 
         groupsCache = groups;
         groupsCacheKey = cacheKey;
         groupsCacheAt = DateTime.UtcNow;
         return groups;
+    }
+
+    async Task<IReadOnlyList<string>> DiscoverGroupIdsFromMembershipsAsync(string email)
+    {
+        var found = new HashSet<string>(StringComparer.Ordinal);
+
+        // Prefer email field — collection-group documentId filters are unreliable on some SDKs.
+        var normalizedEmail = email?.Trim().ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(normalizedEmail))
+        {
+            try
+            {
+                var byEmail = await firebase.Firestore
+                    .GetCollectionGroup(FirestorePaths.Members)
+                    .WhereEqualsTo("email", normalizedEmail)
+                    .LimitedTo(40)
+                    .GetDocumentsAsync<MemberFirestoreDocument>();
+
+                foreach (var doc in byEmail?.Documents ?? Array.Empty<IDocumentSnapshot<MemberFirestoreDocument>>())
+                {
+                    var gid = ExtractGroupIdFromMemberPath(doc);
+                    if (!string.IsNullOrEmpty(gid))
+                        found.Add(gid);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Membership discovery by email failed: {ex.Message}");
+            }
+        }
+
+        return found.ToList();
+    }
+
+    static string ExtractGroupIdFromMemberPath(IDocumentSnapshot<MemberFirestoreDocument> doc)
+    {
+        try
+        {
+            // groups/{groupId}/members/{uid}
+            var parent = doc?.Reference?.Parent?.Parent;
+            var gid = parent?.Id;
+            return string.IsNullOrWhiteSpace(gid) ? null : NormalizeGroupId(gid);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    async Task<bool> IsCurrentUserMemberAsync(string groupId, string uid)
+    {
+        try
+        {
+            var snap = await firebase.Firestore
+                .GetCollection(FirestorePaths.Groups)
+                .GetDocument(groupId)
+                .GetCollection(FirestorePaths.Members)
+                .GetDocument(uid)
+                .GetDocumentSnapshotAsync<MemberFirestoreDocument>();
+            return snap?.Data != null;
+        }
+        catch (Exception ex)
+        {
+            // Fail open: transient SDK errors must not hide groups that PWA can still see.
+            Debug.WriteLine($"IsCurrentUserMemberAsync {groupId}: {ex.Message}");
+            return true;
+        }
+    }
+
+    async Task RepairGroupIdsAsync(IReadOnlyList<string> confirmedIds)
+    {
+        var profile = profileService.CurrentProfile;
+        if (profile == null || !auth.IsSignedIn)
+            return;
+
+        var normalizedConfirmed = confirmedIds
+            .Select(NormalizeGroupId)
+            .Where(id => !string.IsNullOrEmpty(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var current = profile.GroupIds ?? new List<string>();
+        // Never wipe all groupIds on a transient membership false-negative.
+        if (normalizedConfirmed.Count == 0 && current.Count > 0)
+        {
+            Debug.WriteLine("RepairGroupIdsAsync skipped: would clear all groupIds.");
+            return;
+        }
+
+        if (current.Count == normalizedConfirmed.Count
+            && normalizedConfirmed.All(id => current.Contains(id, StringComparer.Ordinal)))
+            return;
+
+        try
+        {
+            profile.GroupIds = normalizedConfirmed;
+            await profileService.SaveProfileAsync(profile);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"RepairGroupIdsAsync failed: {ex.Message}");
+        }
     }
 
     void InvalidateGroupsCache()
@@ -104,7 +248,7 @@ public sealed class GroupService : IGroupService
             CreatedAt = DateTimeOffset.UtcNow,
         };
 
-        var memberDoc = CreateMemberDoc(profile, profile.Uid);
+        var memberDoc = CreateMemberDoc(profile, profile.Uid, isAdmin: true);
 
         await firebase.Firestore.GetCollection(FirestorePaths.Groups).GetDocument(groupId).SetDataAsync(groupDoc);
         await firebase.Firestore.GetCollection(FirestorePaths.Groups).GetDocument(groupId)
@@ -316,16 +460,69 @@ public sealed class GroupService : IGroupService
 
     public async Task<IReadOnlyList<GroupMember>> GetMembersAsync(string groupId)
     {
+        var normalized = groupId?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return Array.Empty<GroupMember>();
+
         var snapshot = await firebase.Firestore
             .GetCollection(FirestorePaths.Groups)
-            .GetDocument(groupId)
+            .GetDocument(normalized)
             .GetCollection(FirestorePaths.Members)
             .GetDocumentsAsync<MemberFirestoreDocument>();
 
-        return snapshot?.Documents?
+        var members = snapshot?.Documents?
             .Select(d => FirestoreMappers.ToGroupMember(d.Data))
             .OrderBy(m => m.DisplayName)
             .ToList() ?? new List<GroupMember>();
+
+        await EnsureCreatorAdminFlagAsync(normalized, members);
+        return members;
+    }
+
+    public async Task SetMemberAdminAsync(string groupId, string memberId, bool isAdmin)
+    {
+        EnsureSignedIn();
+        var normalized = groupId?.Trim();
+        var uid = memberId?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized) || string.IsNullOrWhiteSpace(uid))
+            throw new InvalidOperationException("Member not found.");
+
+        await EnsureCurrentUserIsAdminAsync(normalized);
+
+        await firebase.Firestore
+            .GetCollection(FirestorePaths.Groups)
+            .GetDocument(normalized)
+            .GetCollection(FirestorePaths.Members)
+            .GetDocument(uid)
+            .UpdateDataAsync(("isAdmin", isAdmin));
+    }
+
+    public async Task RemoveMemberAsync(string groupId, string memberId)
+    {
+        EnsureSignedIn();
+        var normalized = groupId?.Trim();
+        var uid = memberId?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized) || string.IsNullOrWhiteSpace(uid))
+            throw new InvalidOperationException("Member not found.");
+
+        if (string.Equals(uid, auth.CurrentUserId, StringComparison.Ordinal))
+            throw new InvalidOperationException("Use Leave group to remove yourself.");
+
+        await EnsureCurrentUserIsAdminAsync(normalized);
+
+        var members = (await GetMembersAsync(normalized)).ToList();
+        var target = members.FirstOrDefault(m => string.Equals(m.Uid, uid, StringComparison.Ordinal));
+        if (target == null)
+            throw new InvalidOperationException("Member not found.");
+
+        await PromoteSuccessorIfNeededAsync(normalized, members, uid);
+
+        await firebase.Firestore
+            .GetCollection(FirestorePaths.Groups)
+            .GetDocument(normalized)
+            .GetCollection(FirestorePaths.Members)
+            .GetDocument(uid)
+            .DeleteDocumentAsync();
     }
 
     public async Task<bool> IsGroupNotificationsMutedAsync(string groupId)
@@ -387,6 +584,9 @@ public sealed class GroupService : IGroupService
         profile.GroupIds ??= new List<string>();
         if (!profile.GroupIds.Contains(normalized))
             throw new InvalidOperationException("You are not a member of this group.");
+
+        var members = (await GetMembersAsync(normalized)).ToList();
+        await PromoteSuccessorIfNeededAsync(normalized, members, profile.Uid);
 
         await firebase.Firestore
             .GetCollection(FirestorePaths.Groups)
@@ -480,7 +680,7 @@ public sealed class GroupService : IGroupService
         if (profile == null)
             throw new InvalidOperationException("Complete your profile before joining a group.");
 
-        var memberDoc = CreateMemberDoc(profile, auth.CurrentUserId);
+        var memberDoc = CreateMemberDoc(profile, auth.CurrentUserId, isAdmin: false);
         await firebase.Firestore.GetCollection(FirestorePaths.Groups).GetDocument(group.Id)
             .GetCollection(FirestorePaths.Members).GetDocument(profile.Uid).SetDataAsync(memberDoc);
 
@@ -490,19 +690,122 @@ public sealed class GroupService : IGroupService
         await profileService.SaveProfileAsync(profile);
     }
 
-    static MemberFirestoreDocument CreateMemberDoc(UserProfile profile, string invitedBy)
+    static MemberFirestoreDocument CreateMemberDoc(UserProfile profile, string invitedBy, bool isAdmin = false)
     {
         return new MemberFirestoreDocument
         {
             Id = profile.Uid,
-            Email = profile.Email,
+            Email = profile.Email?.Trim().ToLowerInvariant() ?? string.Empty,
             FirstName = profile.FirstName,
             LastName = profile.LastName,
             Nickname = profile.Nickname,
             Roles = profile.Roles?.Select(r => r.ToStorageKey()).ToList() ?? new List<string>(),
             JoinedAt = DateTimeOffset.UtcNow,
             InvitedBy = invitedBy ?? string.Empty,
+            IsAdmin = isAdmin,
         };
+    }
+
+    async Task EnsureCurrentUserIsAdminAsync(string groupId)
+    {
+        var members = await GetMembersAsync(groupId);
+        var me = members.FirstOrDefault(m => string.Equals(m.Uid, auth.CurrentUserId, StringComparison.Ordinal));
+        if (me?.IsAdmin == true)
+            return;
+
+        var createdBy = await GetGroupCreatedByAsync(groupId);
+        if (string.Equals(createdBy, auth.CurrentUserId, StringComparison.Ordinal))
+            return;
+
+        throw new InvalidOperationException("Only group admins can manage members.");
+    }
+
+    async Task EnsureCreatorAdminFlagAsync(string groupId, List<GroupMember> members)
+    {
+        if (members == null || members.Count == 0)
+            return;
+
+        if (members.Any(m => m.IsAdmin))
+            return;
+
+        var createdBy = await GetGroupCreatedByAsync(groupId);
+        if (string.IsNullOrWhiteSpace(createdBy))
+            return;
+
+        var creator = members.FirstOrDefault(m => string.Equals(m.Uid, createdBy, StringComparison.Ordinal));
+        if (creator == null)
+            return;
+
+        creator.IsAdmin = true;
+        try
+        {
+            await firebase.Firestore
+                .GetCollection(FirestorePaths.Groups)
+                .GetDocument(groupId)
+                .GetCollection(FirestorePaths.Members)
+                .GetDocument(creator.Uid)
+                .UpdateDataAsync(("isAdmin", true));
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"EnsureCreatorAdminFlagAsync failed: {ex.Message}");
+        }
+    }
+
+    async Task PromoteSuccessorIfNeededAsync(string groupId, IList<GroupMember> members, string departingUid)
+    {
+        var remaining = members
+            .Where(m => !string.Equals(m.Uid, departingUid, StringComparison.Ordinal))
+            .ToList();
+        if (remaining.Count == 0)
+            return;
+
+        var departing = members.FirstOrDefault(m => string.Equals(m.Uid, departingUid, StringComparison.Ordinal));
+        var createdBy = await GetGroupCreatedByAsync(groupId);
+        var departingIsAdmin = departing?.IsAdmin == true
+            || string.Equals(departingUid, createdBy, StringComparison.Ordinal);
+        if (!departingIsAdmin)
+            return;
+
+        if (remaining.Any(m => m.IsAdmin || string.Equals(m.Uid, createdBy, StringComparison.Ordinal)))
+            return;
+
+        var successor = remaining
+            .OrderBy(m => m.JoinedAt == default ? DateTime.MaxValue : m.JoinedAt)
+            .ThenBy(m => m.Uid, StringComparer.Ordinal)
+            .First();
+
+        try
+        {
+            await firebase.Firestore
+                .GetCollection(FirestorePaths.Groups)
+                .GetDocument(groupId)
+                .GetCollection(FirestorePaths.Members)
+                .GetDocument(successor.Uid)
+                .UpdateDataAsync(("isAdmin", true));
+            successor.IsAdmin = true;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"PromoteSuccessorIfNeededAsync failed: {ex.Message}");
+            throw new InvalidOperationException("Could not assign a new group admin before leaving.", ex);
+        }
+    }
+
+    async Task<string> GetGroupCreatedByAsync(string groupId)
+    {
+        try
+        {
+            var snap = await firebase.Firestore
+                .GetCollection(FirestorePaths.Groups)
+                .GetDocument(groupId)
+                .GetDocumentSnapshotAsync<GroupFirestoreDocument>();
+            return snap?.Data?.CreatedBy?.Trim() ?? string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
     }
 
     void EnsureSignedIn()

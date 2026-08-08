@@ -1,0 +1,34 @@
+@namespace MobiHymn4.Web.Components
+@inject IJSRuntime Js
+@inject AppState State
+@implements IDisposable
+
+@code {
+    bool? lastApplied;
+
+    protected override void OnInitialized()
+    {
+        State.Changed += OnChanged;
+        _ = SyncAsync();
+    }
+
+    void OnChanged() => _ = SyncAsync();
+
+    async Task SyncAsync()
+    {
+        var want = State.Settings.KeepAwake;
+        if (lastApplied == want)
+            return;
+        lastApplied = want;
+        try
+        {
+            await Js.InvokeVoidAsync("mobihymnWakeLock.setKeepAwake", want);
+        }
+        catch
+        {
+            lastApplied = null;
+        }
+    }
+
+    public void Dispose() => State.Changed -= OnChanged;
+}

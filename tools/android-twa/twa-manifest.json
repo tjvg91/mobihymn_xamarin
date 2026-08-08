@@ -1,0 +1,42 @@
+{
+  "packageId": "com.tjapps.mobihymn.twa",
+  "host": "mobihymn.web.app",
+  "name": "MobiHymn",
+  "launcherName": "MobiHymn",
+  "display": "standalone",
+  "themeColor": "#F5D200",
+  "themeColorDark": "#2D2D2D",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#2D2D2D",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "http://127.0.0.1:5173/icon-512.png",
+  "maskableIconUrl": "http://127.0.0.1:5173/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "C:\\Users\\TimmyG\\Documents\\GitHub\\mobihymn_xamarin\\MobiHymn4.Maui\\mobihymn_keystore.p12",
+    "alias": "coindo_prod"
+  },
+  "appVersionCode": 5,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "http://127.0.0.1:5173/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://mobihymn.web.app/",
+  "minSdkVersion": 21,
+  "orientation": "default",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "displayOverride": []
+}

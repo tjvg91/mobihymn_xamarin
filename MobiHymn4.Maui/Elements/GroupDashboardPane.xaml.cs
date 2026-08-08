@@ -57,9 +57,11 @@ public partial class GroupDashboardPane : ContentView
     bool viewingListDetail;
     GroupDashboardView currentView = GroupDashboardView.HymnLists;
     UserRole? memberRoleFilter;
+    bool memberAdminFilter;
     bool membersGroupByRole;
     string memberSearchQuery = string.Empty;
     bool canEdit;
+    bool currentUserIsGroupAdmin;
     bool hasGroups;
     bool suppressHymnTextChanged;
     bool addHymnDropdownWasShown;
@@ -148,6 +150,7 @@ public partial class GroupDashboardPane : ContentView
         viewingListDetail = false;
         currentView = GroupDashboardView.HymnLists;
         memberRoleFilter = null;
+        memberAdminFilter = false;
         membersGroupByRole = false;
         ResetMemberSearch();
         groupMembers.Clear();
@@ -174,7 +177,8 @@ public partial class GroupDashboardPane : ContentView
 
     void UpdateLayout()
     {
-        var signedIn = auth.IsSignedIn && auth.IsEmailVerified && profileService.HasCompleteProfile;
+        var signedIn = auth.IsSignedIn && profileService.HasCompleteProfile;
+        // Board read only needs membership (Firestore rules); verify email for edits elsewhere.
         signedOutPanel.IsVisible = !signedIn;
 
         if (!signedIn)
@@ -633,6 +637,133 @@ public partial class GroupDashboardPane : ContentView
 
         UpdateBoardViewMode();
         UpdateLayout();
+        _ = AnimateSetlistsEnterAsync();
+    }
+
+    bool pendingBoardItemsCascade;
+
+    async Task AnimateSetlistsEnterAsync()
+    {
+        if (hymnListsCollection == null || hymnLists.Count == 0)
+            return;
+
+        await AnimateCascadeAsync(
+            hymnListsCollection,
+            "SetlistCascade",
+            hymnLists.Count,
+            (index, progress) =>
+            {
+                if (index < 0 || index >= hymnLists.Count)
+                    return;
+                var item = hymnLists[index];
+                item.CascadeOpacity = progress;
+                item.CascadeTranslateY = -12 * (1 - progress);
+            },
+            () =>
+            {
+                foreach (var item in hymnLists)
+                {
+                    item.CascadeOpacity = 1;
+                    item.CascadeTranslateY = 0;
+                }
+            });
+    }
+
+    async Task AnimateBoardItemsEnterAsync()
+    {
+        if (hymnList == null || displayHymns.Count == 0)
+            return;
+
+        await AnimateCascadeAsync(
+            hymnList,
+            "BoardItemsCascade",
+            displayHymns.Count,
+            (index, progress) =>
+            {
+                if (index < 0 || index >= displayHymns.Count)
+                    return;
+                var item = displayHymns[index];
+                item.CascadeOpacity = progress;
+                item.CascadeTranslateY = -12 * (1 - progress);
+            },
+            () =>
+            {
+                foreach (var item in displayHymns)
+                {
+                    item.CascadeOpacity = 1;
+                    item.CascadeTranslateY = 0;
+                }
+            });
+    }
+
+    async Task AnimateMembersEnterAsync()
+    {
+        if (membersCollection == null)
+            return;
+
+        var items = membersCollection.IsGrouped
+            ? memberSections.SelectMany(s => s).ToList()
+            : displayMembers.ToList();
+        if (items.Count == 0)
+            return;
+
+        await AnimateCascadeAsync(
+            membersCollection,
+            "MembersCascade",
+            items.Count,
+            (index, progress) =>
+            {
+                if (index < 0 || index >= items.Count)
+                    return;
+                var item = items[index];
+                item.CascadeOpacity = progress;
+                item.CascadeTranslateY = -12 * (1 - progress);
+            },
+            () =>
+            {
+                foreach (var item in items)
+                {
+                    item.CascadeOpacity = 1;
+                    item.CascadeTranslateY = 0;
+                }
+            });
+    }
+
+    Task AnimateCascadeAsync(
+        VisualElement owner,
+        string animationName,
+        int itemCount,
+        Action<int, double> apply,
+        Action finish)
+    {
+        if (owner == null || itemCount <= 0)
+        {
+            finish?.Invoke();
+            return Task.CompletedTask;
+        }
+
+        owner.AbortAnimation(animationName);
+        var n = Math.Min(itemCount, 24);
+        for (var i = 0; i < itemCount; i++)
+            apply(i, 0);
+
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var anim = new Animation();
+        for (var i = 0; i < n; i++)
+        {
+            var idx = i;
+            var start = Math.Min(i * 0.05, 0.75);
+            var end = Math.Min(start + 0.22, 1.0);
+            anim.Add(start, end, new Animation(v => apply(idx, v), 0, 1, Easing.CubicOut));
+        }
+
+        var length = (uint)(300 + n * 45);
+        anim.Commit(owner, animationName, 16, length, finished: (_, __) =>
+        {
+            finish?.Invoke();
+            tcs.TrySetResult();
+        });
+        return tcs.Task;
     }
 
     void ShowListsOverview() => ShowHymnListsView();
@@ -665,6 +796,7 @@ public partial class GroupDashboardPane : ContentView
         activeListSummary = summary;
         currentView = GroupDashboardView.HymnListDetail;
         viewingListDetail = true;
+        pendingBoardItemsCascade = true;
 
         CaptureNewHymnBaseline(summary.Id);
         CaptureDeletedHymnsForSession(summary.Id);
@@ -745,7 +877,71 @@ public partial class GroupDashboardPane : ContentView
                 return;
             }
 
-            activeGroup = groups.FirstOrDefault(g => g.Id == boardContext.ActiveGroupId) ?? groups[0];
+            // Prefer a group that actually has hymn lists (same as PWA BoardPane).
+            // Sticky ActiveGroupId is only kept when it still has lists (or it's the only group).
+            WorshipGroup preferred = null;
+            BoardListsPage stickyLists = null;
+
+            if (!string.IsNullOrWhiteSpace(boardContext.ActiveGroupId))
+            {
+                preferred = groups.FirstOrDefault(g => g.Id == boardContext.ActiveGroupId);
+                if (preferred != null)
+                {
+                    try
+                    {
+                        stickyLists = string.Equals(knownGroupId, preferred.Id, StringComparison.Ordinal)
+                            && earlySummariesTask != null
+                            ? await earlySummariesTask.WaitAsync(loadCts.Token)
+                            : await boardService.ListHymnListsAsync(preferred.Id).WaitAsync(loadCts.Token);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Sticky group list load failed for {preferred.Id}: {ex.Message}");
+                        stickyLists = BoardListsPage.Empty;
+                    }
+
+                    if (stickyLists.Items.Count == 0 && groups.Count > 1)
+                        preferred = null;
+                }
+            }
+
+            if (preferred == null && groups.Count == 1)
+            {
+                preferred = groups[0];
+            }
+            else if (preferred == null)
+            {
+                foreach (var g in groups)
+                {
+                    if (stickyLists != null
+                        && !string.IsNullOrWhiteSpace(knownGroupId)
+                        && string.Equals(g.Id, knownGroupId, StringComparison.Ordinal)
+                        && stickyLists.Items.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        var probe = await boardService.ListHymnListsAsync(g.Id).WaitAsync(loadCts.Token);
+                        if (probe.Items.Count > 0)
+                        {
+                            preferred = g;
+                            if (string.Equals(g.Id, knownGroupId, StringComparison.Ordinal))
+                                stickyLists = probe;
+                            break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"List probe failed for {g.Id}: {ex.Message}");
+                    }
+                }
+
+                preferred ??= groups.FirstOrDefault(g => g.Id == boardContext.ActiveGroupId) ?? groups[0];
+            }
+
+            activeGroup = preferred;
             if (!string.Equals(boardContext.ActiveGroupId, activeGroup.Id, StringComparison.Ordinal))
                 boardContext.ActiveGroupId = activeGroup.Id;
 
@@ -754,10 +950,22 @@ public partial class GroupDashboardPane : ContentView
             var pendingListId = boardContext.ActiveListId;
             var openingListDetail = !string.IsNullOrWhiteSpace(pendingListId);
 
-            var summariesTask = string.Equals(knownGroupId, activeGroup.Id, StringComparison.Ordinal)
-                && earlySummariesTask != null
-                ? earlySummariesTask
-                : boardService.ListHymnListsAsync(activeGroup.Id);
+            Task<BoardListsPage> summariesTask;
+            if (stickyLists != null
+                && string.Equals(knownGroupId, activeGroup.Id, StringComparison.Ordinal))
+            {
+                summariesTask = Task.FromResult(stickyLists);
+            }
+            else if (string.Equals(knownGroupId, activeGroup.Id, StringComparison.Ordinal)
+                     && earlySummariesTask != null)
+            {
+                summariesTask = earlySummariesTask;
+            }
+            else
+            {
+                summariesTask = boardService.ListHymnListsAsync(activeGroup.Id);
+            }
+
             var templateTask = string.Equals(knownGroupId, activeGroup.Id, StringComparison.Ordinal)
                 && earlyTemplateTask != null
                 ? earlyTemplateTask
@@ -831,6 +1039,18 @@ public partial class GroupDashboardPane : ContentView
                 ShowListsOverview();
                 UpdateBoardViewMode();
                 UpdateLayout();
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"LoadBoardAsync failed: {ex}");
+            if (version == loadBoardVersion)
+            {
+                ShowListsOverview();
+                UpdateBoardViewMode();
+                UpdateLayout();
+                MainThread.BeginInvokeOnMainThread(() =>
+                    Globals.ShowToastPopup("error", "Couldn't load hymn lists. Try again.", 120));
             }
         }
         finally
@@ -1340,6 +1560,7 @@ public partial class GroupDashboardPane : ContentView
                 currentSection = item;
                 item.SectionHymnCount = counts.GetValueOrDefault(item.Id, 0);
                 item.IsRowVisible = true;
+                item.IsNestedInSection = false;
                 item.ShowNotes = false;
                 var name = item.SectionName?.Trim() ?? string.Empty;
                 item.IsSectionSaved = !string.IsNullOrEmpty(name) && savedSectionNames.Contains(name);
@@ -1349,12 +1570,19 @@ public partial class GroupDashboardPane : ContentView
             }
 
             item.IsRowVisible = currentSection == null || !currentSection.IsCollapsed;
+            item.IsNestedInSection = currentSection != null;
             item.ShowNotes = canViewNotes && item.HasNotes;
             item.ShowSectionSaveAction = false;
             item.ShowSectionUnsaveAction = false;
         }
 
         RebuildDisplayHymns();
+
+        if (pendingBoardItemsCascade)
+        {
+            pendingBoardItemsCascade = false;
+            _ = AnimateBoardItemsEnterAsync();
+        }
     }
 
     void RebuildDisplayHymns()
@@ -1863,20 +2091,21 @@ public partial class GroupDashboardPane : ContentView
         memberFilterChipBorders.Clear();
         memberFilterChipLabels.Clear();
 
-        AddMemberFilterChip(null, "All");
+        AddMemberFilterChip(null, false, "All");
+        AddMemberFilterChip(null, true, "Admin");
         foreach (var role in GroupMemberRoleExtensions.GetFilterableRoles())
-            AddMemberFilterChip(role, role.ToDisplayName());
+            AddMemberFilterChip(role, false, role.ToDisplayName());
 
         UpdateMemberFilterChipStyles();
         UpdateMemberViewModeStyles();
     }
 
-    static string MemberFilterKey(UserRole? role) =>
-        role.HasValue ? role.Value.ToStorageKey() : MemberFilterAllKey;
+    static string MemberFilterKey(UserRole? role, bool adminOnly) =>
+        adminOnly ? "admin" : role.HasValue ? role.Value.ToStorageKey() : MemberFilterAllKey;
 
-    void AddMemberFilterChip(UserRole? role, string label)
+    void AddMemberFilterChip(UserRole? role, bool adminOnly, string label)
     {
-        var key = MemberFilterKey(role);
+        var key = MemberFilterKey(role, adminOnly);
         var border = new Border
         {
             Padding = new Thickness(10, 6),
@@ -1896,7 +2125,7 @@ public partial class GroupDashboardPane : ContentView
 
         border.Content = text;
         var tap = new TapGestureRecognizer();
-        tap.Tapped += (_, _) => SelectMemberRoleFilter(role);
+        tap.Tapped += (_, _) => SelectMemberRoleFilter(role, adminOnly);
         border.GestureRecognizers.Add(tap);
 
         memberFilterChips.Children.Add(border);
@@ -1904,16 +2133,17 @@ public partial class GroupDashboardPane : ContentView
         memberFilterChipLabels[key] = text;
     }
 
-    void SelectMemberRoleFilter(UserRole? role)
+    void SelectMemberRoleFilter(UserRole? role, bool adminOnly = false)
     {
         memberRoleFilter = role;
+        memberAdminFilter = adminOnly;
         UpdateMemberFilterChipStyles();
         ApplyMemberListPresentation();
     }
 
     void UpdateMemberFilterChipStyles()
     {
-        var selectedKey = MemberFilterKey(memberRoleFilter);
+        var selectedKey = MemberFilterKey(memberRoleFilter, memberAdminFilter);
         foreach (var pair in memberFilterChipBorders)
         {
             var selected = string.Equals(pair.Key, selectedKey, StringComparison.Ordinal);
@@ -1990,11 +2220,16 @@ public partial class GroupDashboardPane : ContentView
             var memberList = await groupService.GetMembersAsync(activeGroup.Id);
             groupMembers.Clear();
             groupMembers.AddRange(memberList);
+            var uid = auth.CurrentUserId;
+            currentUserIsGroupAdmin = memberList.Any(m =>
+                string.Equals(m.Uid, uid, StringComparison.Ordinal) && m.IsAdmin)
+                || string.Equals(activeGroup.CreatedBy, uid, StringComparison.Ordinal);
             ApplyMemberListPresentation();
 
             membersLoader.IsVisible = false;
             membersLoader.IsRunning = false;
             membersCollection.IsVisible = true;
+            _ = AnimateMembersEnterAsync();
         }
         catch (Exception ex)
         {
@@ -2010,42 +2245,55 @@ public partial class GroupDashboardPane : ContentView
         if (membersCollection == null)
             return;
 
-        var showRoles = !membersGroupByRole && !memberRoleFilter.HasValue;
+        var showRoles = !membersGroupByRole && !memberRoleFilter.HasValue && !memberAdminFilter;
         var filtered = FilterMembers(groupMembers)
             .OrderBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(m => m.Email, StringComparer.OrdinalIgnoreCase)
-            .Select(m => GroupMemberDisplayItem.FromMember(m, showRoles))
+            .Select(m => GroupMemberDisplayItem.FromMember(m, showRoles, auth.CurrentUserId, currentUserIsGroupAdmin))
             .ToList();
 
         if (membersGroupByRole)
         {
             memberSections.Clear();
-            foreach (var role in GroupMemberRoleExtensions.GetFilterableRoles())
+            if (memberAdminFilter)
             {
-                if (memberRoleFilter.HasValue && memberRoleFilter.Value != role)
-                    continue;
-
-                var sectionMembers = filtered
-                    .Where(item => item.Member?.Roles?.Contains(role) == true)
-                    .ToList();
-                if (sectionMembers.Count == 0)
-                    continue;
-
-                var section = new GroupMemberRoleSection(role.ToDisplayName());
-                section.AddRange(sectionMembers);
-                memberSections.Add(section);
-            }
-
-            if (!memberRoleFilter.HasValue)
-            {
-                var others = filtered
-                    .Where(item => item.Member?.GetVisibleRoles().Any() != true)
-                    .ToList();
-                if (others.Count > 0)
+                var adminSection = filtered.Where(item => item.Member?.IsAdmin == true).ToList();
+                if (adminSection.Count > 0)
                 {
-                    var section = new GroupMemberRoleSection("Members");
-                    section.AddRange(others);
+                    var section = new GroupMemberRoleSection("Admin");
+                    section.AddRange(adminSection);
                     memberSections.Add(section);
+                }
+            }
+            else
+            {
+                foreach (var role in GroupMemberRoleExtensions.GetFilterableRoles())
+                {
+                    if (memberRoleFilter.HasValue && memberRoleFilter.Value != role)
+                        continue;
+
+                    var sectionMembers = filtered
+                        .Where(item => item.Member?.Roles?.Contains(role) == true)
+                        .ToList();
+                    if (sectionMembers.Count == 0)
+                        continue;
+
+                    var section = new GroupMemberRoleSection(role.ToDisplayName());
+                    section.AddRange(sectionMembers);
+                    memberSections.Add(section);
+                }
+
+                if (!memberRoleFilter.HasValue)
+                {
+                    var others = filtered
+                        .Where(item => item.Member?.GetVisibleRoles().Any() != true)
+                        .ToList();
+                    if (others.Count > 0)
+                    {
+                        var section = new GroupMemberRoleSection("Members");
+                        section.AddRange(others);
+                        memberSections.Add(section);
+                    }
                 }
             }
 
@@ -2073,13 +2321,90 @@ public partial class GroupDashboardPane : ContentView
     {
         var filtered = source;
 
-        if (memberRoleFilter.HasValue)
+        if (memberAdminFilter)
+            filtered = filtered.Where(member => member.IsAdmin);
+        else if (memberRoleFilter.HasValue)
             filtered = filtered.Where(member => member.Roles?.Contains(memberRoleFilter.Value) == true);
 
         if (string.IsNullOrWhiteSpace(memberSearchQuery))
             return filtered;
 
         return filtered.Where(MatchesMemberSearch);
+    }
+
+    async void MembersCollection_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (membersCollection == null)
+            return;
+
+        var item = e.CurrentSelection?.FirstOrDefault() as GroupMemberDisplayItem;
+        membersCollection.SelectedItem = null;
+        if (item?.Member == null || !currentUserIsGroupAdmin || activeGroup == null)
+            return;
+
+        var member = item.Member;
+        if (string.Equals(member.Uid, auth.CurrentUserId, StringComparison.Ordinal))
+            return;
+
+        var page = GetHostPage();
+        if (page == null)
+            return;
+
+        var actions = new List<string>();
+        if (member.IsAdmin)
+            actions.Add("Remove as Admin");
+        else
+            actions.Add("Add as Admin");
+        actions.Add("Remove member");
+
+        var choice = await page.DisplayActionSheet(
+            member.DisplayName,
+            "Cancel",
+            null,
+            actions.ToArray());
+        if (string.IsNullOrEmpty(choice) || choice == "Cancel")
+            return;
+
+        try
+        {
+            if (choice == "Add as Admin")
+            {
+                await groupService.SetMemberAdminAsync(activeGroup.Id, member.Uid, true);
+                Globals.ShowToastPopup("done", "Member is now an admin.", 90);
+            }
+            else if (choice == "Remove as Admin")
+            {
+                var confirm = await page.DisplayAlert(
+                    "Remove as Admin",
+                    $"Remove {member.DisplayName} as a group admin?",
+                    "Remove",
+                    "Cancel");
+                if (!confirm)
+                    return;
+
+                await groupService.SetMemberAdminAsync(activeGroup.Id, member.Uid, false);
+                Globals.ShowToastPopup("done", "Admin role removed.", 90);
+            }
+            else if (choice == "Remove member")
+            {
+                var confirm = await page.DisplayAlert(
+                    "Remove member",
+                    $"Remove {member.DisplayName} from this group?",
+                    "Remove",
+                    "Cancel");
+                if (!confirm)
+                    return;
+
+                await groupService.RemoveMemberAsync(activeGroup.Id, member.Uid);
+                Globals.ShowToastPopup("done", "Member removed.", 90);
+            }
+
+            await LoadMembersAsync();
+        }
+        catch (Exception ex)
+        {
+            await page.DisplayAlert("Members", ex.Message, "OK");
+        }
     }
 
     bool MatchesMemberSearch(GroupMember member)

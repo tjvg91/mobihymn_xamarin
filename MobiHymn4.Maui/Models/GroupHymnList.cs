@@ -93,6 +93,32 @@ public class GroupHymnListSummary : INotifyPropertyChanged
     public string UnreadBadgeText =>
         unreadCount > 99 ? "99+" : unreadCount.ToString();
 
+    double cascadeOpacity = 1;
+    public double CascadeOpacity
+    {
+        get => cascadeOpacity;
+        set
+        {
+            if (Math.Abs(cascadeOpacity - value) < 0.001)
+                return;
+            cascadeOpacity = value;
+            OnPropertyChanged();
+        }
+    }
+
+    double cascadeTranslateY;
+    public double CascadeTranslateY
+    {
+        get => cascadeTranslateY;
+        set
+        {
+            if (Math.Abs(cascadeTranslateY - value) < 0.001)
+                return;
+            cascadeTranslateY = value;
+            OnPropertyChanged();
+        }
+    }
+
     public event PropertyChangedEventHandler PropertyChanged;
 
     void OnPropertyChanged([CallerMemberName] string propertyName = null) =>

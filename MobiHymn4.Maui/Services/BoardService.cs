@@ -50,35 +50,26 @@ public sealed class BoardService : IBoardService
         var size = Math.Clamp(pageSize, 1, 100);
         try
         {
-            var collection = firebase.Firestore
-                .GetCollection(FirestorePaths.Groups)
-                .GetDocument(groupId)
-                .GetCollection(FirestorePaths.Boards);
-
-            IQuery query = collection.OrderBy("createdAt", descending: true);
-            if (startAfter != null)
+            // Unordered + loose map: PWA writes createdAt as epoch ms or ISO strings;
+            // OrderBy(Timestamp) and typed DateTimeOffset deserialize can drop those docs.
+            var page = await ListHymnListsLooseAsync(groupId, startAfter, size);
+            if (page.Items.Count == 0 && startAfter == null)
             {
-                var cursor = ToCreatedAtCursor(startAfter);
-                query = query.StartingAfter(cursor);
-            }
-
-            query = query.LimitedTo(size + 1);
-            // BoardFirestoreDocument keeps hymns[] available so legacy docs without hymnCount still show real totals.
-            var snapshot = await query
-                .GetDocumentsAsync<BoardFirestoreDocument>()
-                .WaitAsync(ListHymnListsTimeout);
-            var page = ToBoardListsPage(snapshot, size);
-
-            // OrderBy(createdAt) silently drops docs that lack the field — retry without ordering.
-            if (startAfter == null && page.Items.Count == 0)
-            {
-                Debug.WriteLine("ListHymnListsAsync ordered query returned 0 docs; trying unordered fallback.");
-                page = await ListHymnListsFallbackAsync(groupId, startAfter, size);
+                // Fallback: typed summary docs (works for Timestamp / epoch that Plugin can map).
+                try
+                {
+                    var typed = await ListHymnListsTypedSummaryAsync(groupId, size);
+                    if (typed.Items.Count > 0)
+                        page = typed;
+                }
+                catch (Exception typedEx)
+                {
+                    Debug.WriteLine($"ListHymnLists typed fallback failed: {typedEx.Message}");
+                }
             }
 
             if (startAfter == null && page.Items.Count > 0)
                 CacheSummaries(groupId, page);
-
             return page;
         }
         catch (TimeoutException)
@@ -88,60 +79,265 @@ public sealed class BoardService : IBoardService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"ListHymnListsAsync ordered query failed: {ex.Message}");
-            try
-            {
-                var page = await ListHymnListsFallbackAsync(groupId, startAfter, size);
-                if (startAfter == null && page.Items.Count > 0)
-                    CacheSummaries(groupId, page);
-                return page;
-            }
-            catch (TimeoutException)
-            {
-                Debug.WriteLine("ListHymnListsAsync fallback timed out.");
-                throw;
-            }
-            catch (Exception fallbackEx)
-            {
-                Debug.WriteLine($"ListHymnListsAsync fallback failed: {fallbackEx.Message}");
-                return BoardListsPage.Empty;
-            }
+            Debug.WriteLine($"ListHymnListsAsync failed: {ex}");
+            throw;
         }
     }
 
-    async Task<BoardListsPage> ListHymnListsFallbackAsync(
-        string groupId,
-        GroupHymnListSummary startAfter,
-        int size)
+    async Task<BoardListsPage> ListHymnListsTypedSummaryAsync(string groupId, int size)
     {
-        // Bound the download — never pull the entire boards collection.
         var snapshot = await firebase.Firestore
             .GetCollection(FirestorePaths.Groups)
             .GetDocument(groupId)
             .GetCollection(FirestorePaths.Boards)
-            .LimitedTo(Math.Max(size + 1, 50))
-            .GetDocumentsAsync<BoardFirestoreDocument>()
+            .LimitedTo(Math.Max(size + 1, 80))
+            .GetDocumentsAsync<BoardListSummaryFirestoreDocument>()
             .WaitAsync(ListHymnListsTimeout);
 
-        var all = snapshot?.Documents?
-            .Select(ToSummary)
+        var all = (snapshot?.Documents ?? Array.Empty<IDocumentSnapshot<BoardListSummaryFirestoreDocument>>())
+            .Select(doc =>
+            {
+                var listId = doc?.Reference?.Id ?? doc?.Data?.Id ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(listId))
+                    return null;
+                return FirestoreMappers.ToGroupHymnListSummary(listId, doc.Data);
+            })
+            .Where(s => s != null && !string.IsNullOrWhiteSpace(s.Id))
             .OrderByDescending(l => l.CreatedAt)
-            .ToList() ?? new List<GroupHymnListSummary>();
+            .ThenByDescending(l => l.Id, StringComparer.Ordinal)
+            .ToList();
+
+        var hasMore = all.Count > size;
+        return new BoardListsPage
+        {
+            Items = hasMore ? all.Take(size).ToList() : all,
+            HasMore = hasMore,
+        };
+    }
+
+    async Task<BoardListsPage> ListHymnListsLooseAsync(
+        string groupId,
+        GroupHymnListSummary startAfter,
+        int size)
+    {
+        var snapshot = await firebase.Firestore
+            .GetCollection(FirestorePaths.Groups)
+            .GetDocument(groupId)
+            .GetCollection(FirestorePaths.Boards)
+            .LimitedTo(Math.Max(size + 1, 80))
+            .GetDocumentsAsync<Dictionary<string, object>>()
+            .WaitAsync(ListHymnListsTimeout);
+
+        var all = new List<GroupHymnListSummary>();
+        foreach (var doc in snapshot?.Documents ?? Array.Empty<IDocumentSnapshot<Dictionary<string, object>>>())
+        {
+            var summary = ToSummaryLoose(doc);
+            if (summary != null && !string.IsNullOrWhiteSpace(summary.Id))
+                all.Add(summary);
+        }
+
+        all = all
+            .OrderByDescending(l => l.CreatedAt)
+            .ThenByDescending(l => l.Id, StringComparer.Ordinal)
+            .ToList();
 
         IEnumerable<GroupHymnListSummary> window = all;
         if (startAfter != null)
         {
             var idx = all.FindIndex(l => string.Equals(l.Id, startAfter.Id, StringComparison.Ordinal));
-            window = idx >= 0 ? all.Skip(idx + 1) : all.Where(l => l.CreatedAt < startAfter.CreatedAt);
+            window = idx >= 0
+                ? all.Skip(idx + 1)
+                : all.Where(l => l.CreatedAt < startAfter.CreatedAt);
         }
 
         var batch = window.Take(size + 1).ToList();
-        var hasMore = batch.Count > size || all.Count > size;
+        var hasMore = batch.Count > size;
         return new BoardListsPage
         {
             Items = hasMore ? batch.Take(size).ToList() : batch,
             HasMore = hasMore,
         };
+    }
+
+    static GroupHymnListSummary ToSummaryLoose(IDocumentSnapshot<Dictionary<string, object>> doc)
+    {
+        var data = CoerceStringObjectMap(doc?.Data);
+        var listId = doc?.Reference?.Id
+            ?? ReadString(data, "id")
+            ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(listId))
+            return null;
+
+        var name = ReadString(data, "name") ?? string.Empty;
+        var createdAt = ReadDateTimeOffset(data, "createdAt")
+            ?? ReadDateTimeOffset(data, "updatedAt")
+            ?? default;
+        var createdBy = ReadString(data, "createdBy") ?? string.Empty;
+        var hymnCount = (int)ReadInt64(data, "hymnCount");
+        var entryCount = (int)ReadInt64(data, "entryCount");
+        if (entryCount == 0 && hymnCount > 0)
+            entryCount = hymnCount;
+
+        // If denormalized counts missing, count hymns array when present.
+        if (hymnCount == 0 && entryCount == 0
+            && data != null
+            && data.TryGetValue("hymns", out var hymnsObj)
+            && hymnsObj is System.Collections.IEnumerable hymnsEnum)
+        {
+            var list = hymnsEnum.Cast<object>().Where(h => h != null).ToList();
+            entryCount = list.Count;
+            hymnCount = list.Count(h =>
+            {
+                var map = CoerceStringObjectMap(h);
+                if (map != null
+                    && map.TryGetValue("isSection", out var sec)
+                    && sec is bool b)
+                    return !b;
+                return true;
+            });
+        }
+
+        return FirestoreMappers.ToGroupHymnListSummary(listId, new BoardFirestoreDocument
+        {
+            Name = name,
+            CreatedAtValue = createdAt,
+            CreatedBy = createdBy,
+            HymnCount = hymnCount,
+            EntryCount = entryCount,
+        });
+    }
+
+    static Dictionary<string, object> CoerceStringObjectMap(object value)
+    {
+        if (value == null)
+            return null;
+        if (value is Dictionary<string, object> dict)
+            return dict;
+        if (value is IDictionary<string, object> generic)
+            return new Dictionary<string, object>(generic);
+        if (value is System.Collections.IDictionary plain)
+        {
+            var copy = new Dictionary<string, object>(StringComparer.Ordinal);
+            foreach (System.Collections.DictionaryEntry entry in plain)
+            {
+                if (entry.Key == null)
+                    continue;
+                copy[entry.Key.ToString()] = entry.Value;
+            }
+            return copy;
+        }
+
+        return null;
+    }
+
+    static string ReadString(IDictionary<string, object> data, string key)
+    {
+        if (data == null || !data.TryGetValue(key, out var value) || value == null)
+            return null;
+        return value.ToString();
+    }
+
+    static long ReadInt64(IDictionary<string, object> data, string key)
+    {
+        if (data == null || !data.TryGetValue(key, out var value) || value == null)
+            return 0;
+        try
+        {
+            return Convert.ToInt64(value);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    static DateTimeOffset? ReadDateTimeOffset(IDictionary<string, object> data, string key)
+    {
+        if (data == null || !data.TryGetValue(key, out var value) || value == null)
+            return null;
+
+        switch (value)
+        {
+            case DateTimeOffset dto:
+                return dto;
+            case DateTime dt:
+                return dt.Kind == DateTimeKind.Unspecified
+                    ? new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc))
+                    : new DateTimeOffset(dt.ToUniversalTime());
+            case string s when DateTimeOffset.TryParse(s, null,
+                System.Globalization.DateTimeStyles.RoundtripKind, out var parsed):
+                return parsed;
+            case long ms when ms > 1_000_000_000_000L:
+                return DateTimeOffset.FromUnixTimeMilliseconds(ms);
+            case long sec:
+                return DateTimeOffset.FromUnixTimeSeconds(sec);
+            case int i:
+                return DateTimeOffset.FromUnixTimeSeconds(i);
+            case double d:
+                return d > 1_000_000_000_000d
+                    ? DateTimeOffset.FromUnixTimeMilliseconds((long)d)
+                    : DateTimeOffset.FromUnixTimeSeconds((long)d);
+            case float f:
+                return f > 1_000_000_000_000f
+                    ? DateTimeOffset.FromUnixTimeMilliseconds((long)f)
+                    : DateTimeOffset.FromUnixTimeSeconds((long)f);
+            case Dictionary<string, object> map:
+                return ReadTimestampMap(map);
+            case IDictionary<string, object> genericMap:
+                return ReadTimestampMap(genericMap);
+        }
+
+        var coerced = CoerceStringObjectMap(value);
+        if (coerced != null)
+        {
+            var fromMap = ReadTimestampMap(coerced);
+            if (fromMap.HasValue)
+                return fromMap;
+        }
+
+        // Numeric boxed as Java.Lang.Long / etc.
+        try
+        {
+            if (value is IConvertible && value is not string)
+            {
+                var n = Convert.ToInt64(value);
+                return n > 1_000_000_000_000L
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(n)
+                    : DateTimeOffset.FromUnixTimeSeconds(n);
+            }
+        }
+        catch { /* ignore */ }
+
+        // Android/iOS Timestamp types often expose Seconds as a property.
+        try
+        {
+            var secondsProp = value.GetType().GetProperty("Seconds")
+                ?? value.GetType().GetProperty("seconds");
+            if (secondsProp != null)
+            {
+                var secVal = Convert.ToInt64(secondsProp.GetValue(value));
+                return DateTimeOffset.FromUnixTimeSeconds(secVal);
+            }
+        }
+        catch { /* ignore */ }
+
+        return null;
+    }
+
+    static DateTimeOffset? ReadTimestampMap(IDictionary<string, object> map)
+    {
+        if (map == null)
+            return null;
+        if (map.TryGetValue("seconds", out var secObj) || map.TryGetValue("_seconds", out secObj))
+        {
+            try
+            {
+                return DateTimeOffset.FromUnixTimeSeconds(Convert.ToInt64(secObj));
+            }
+            catch { /* ignore */ }
+        }
+
+        return null;
     }
 
     static GroupHymnListSummary ToSummary(IDocumentSnapshot<BoardFirestoreDocument> doc)
@@ -317,20 +513,82 @@ public sealed class BoardService : IBoardService
 
     public async Task<GroupHymnList> GetHymnListAsync(string groupId, string listId)
     {
-        if (TryGetCachedList(groupId, listId, out var cached))
+        // Don't trust an empty cached list — typed reads often cached sections-only.
+        if (TryGetCachedList(groupId, listId, out var cached)
+            && cached.Hymns != null
+            && cached.Hymns.Any(h => !h.IsSection))
             return cached;
 
         try
         {
-            var snapshot = await firebase.Firestore
+            var docRef = firebase.Firestore
                 .GetCollection(FirestorePaths.Groups)
                 .GetDocument(groupId)
                 .GetCollection(FirestorePaths.Boards)
-                .GetDocument(listId)
-                .GetDocumentSnapshotAsync<BoardFirestoreDocument>()
-                .WaitAsync(HymnListFetchTimeout);
+                .GetDocument(listId);
 
-            var list = FirestoreMappers.ToGroupHymnList(groupId, listId, snapshot?.Data);
+            GroupHymnList typed = null;
+            try
+            {
+                var snapshot = await docRef
+                    .GetDocumentSnapshotAsync<BoardFirestoreDocument>(Source.Server)
+                    .WaitAsync(HymnListFetchTimeout);
+                if (snapshot?.Data != null)
+                    typed = FirestoreMappers.ToGroupHymnList(groupId, listId, snapshot.Data);
+            }
+            catch (Exception typedEx)
+            {
+                Debug.WriteLine($"GetHymnListAsync typed read failed: {typedEx.Message}");
+                try
+                {
+                    var snapshot = await docRef
+                        .GetDocumentSnapshotAsync<BoardFirestoreDocument>()
+                        .WaitAsync(HymnListFetchTimeout);
+                    if (snapshot?.Data != null)
+                        typed = FirestoreMappers.ToGroupHymnList(groupId, listId, snapshot.Data);
+                }
+                catch (Exception typedRetryEx)
+                {
+                    Debug.WriteLine($"GetHymnListAsync typed cache read failed: {typedRetryEx.Message}");
+                }
+            }
+
+            GroupHymnList loose = null;
+            try
+            {
+                var looseSnap = await docRef
+                    .GetDocumentSnapshotAsync<Dictionary<string, object>>(Source.Server)
+                    .WaitAsync(HymnListFetchTimeout);
+                var data = FirestoreMappers.CoerceStringObjectMap(looseSnap?.Data) ?? looseSnap?.Data;
+                if (data != null)
+                    loose = FirestoreMappers.ToGroupHymnListFromDictionary(groupId, listId, data);
+            }
+            catch (Exception looseEx)
+            {
+                Debug.WriteLine($"GetHymnListAsync loose read failed: {looseEx.Message}");
+                try
+                {
+                    var looseSnap = await docRef
+                        .GetDocumentSnapshotAsync<Dictionary<string, object>>()
+                        .WaitAsync(HymnListFetchTimeout);
+                    var data = FirestoreMappers.CoerceStringObjectMap(looseSnap?.Data) ?? looseSnap?.Data;
+                    if (data != null)
+                        loose = FirestoreMappers.ToGroupHymnListFromDictionary(groupId, listId, data);
+                }
+                catch (Exception looseRetryEx)
+                {
+                    Debug.WriteLine($"GetHymnListAsync loose cache read failed: {looseRetryEx.Message}");
+                }
+            }
+
+            // Prefer richer parse: typed often drops nested hymns; Dictionary keeps PWA entries.
+            var list = PreferRicherHymnList(typed, loose)
+                ?? FirestoreMappers.ToGroupHymnList(groupId, listId, null);
+
+            var parsedHymns = list.Hymns?.Count(h => !h.IsSection) ?? 0;
+            Debug.WriteLine(
+                $"GetHymnListAsync {groupId}/{listId}: typed={typed?.Hymns?.Count ?? -1}, loose={loose?.Hymns?.Count ?? -1}, chosen={list.Hymns?.Count ?? 0} (hymns={parsedHymns})");
+
             CacheList(groupId, listId, list);
             return list;
         }
@@ -346,6 +604,25 @@ public sealed class BoardService : IBoardService
         }
     }
 
+    static GroupHymnList PreferRicherHymnList(GroupHymnList a, GroupHymnList b)
+    {
+        if (a == null)
+            return b;
+        if (b == null)
+            return a;
+
+        static int Score(GroupHymnList list)
+        {
+            var hymns = list.Hymns;
+            if (hymns == null || hymns.Count == 0)
+                return 0;
+            var nonSection = hymns.Count(h => !h.IsSection);
+            return nonSection * 1000 + hymns.Count;
+        }
+
+        return Score(b) > Score(a) ? b : a;
+    }
+
     public async Task<(IDisposable Subscription, GroupHymnList Initial)> SubscribeHymnListWithInitialAsync(
         string groupId,
         string listId,
@@ -356,44 +633,62 @@ public sealed class BoardService : IBoardService
         var initialDelivered = 0;
         var timeout = initialTimeout ?? HymnListInitialDefaultTimeout;
 
+        void Deliver(GroupHymnList incoming)
+        {
+            if (incoming == null)
+                return;
+
+            var list = incoming;
+            if (TryGetCachedList(groupId, listId, out var cached))
+                list = PreferRicherHymnList(cached, incoming) ?? incoming;
+
+            CacheList(groupId, listId, list);
+
+            if (Interlocked.CompareExchange(ref initialDelivered, 1, 0) == 0)
+                tcs.TrySetResult(list);
+            else
+                onChanged?.Invoke(list);
+
+            HymnListChanged?.Invoke(this, list);
+        }
+
+        // Loose Dictionary snapshots keep nested hymns maps on Android/iOS.
         IDisposable registration = firebase.Firestore
             .GetCollection(FirestorePaths.Groups)
             .GetDocument(groupId)
             .GetCollection(FirestorePaths.Boards)
             .GetDocument(listId)
-            .AddSnapshotListener<BoardFirestoreDocument>(
+            .AddSnapshotListener<Dictionary<string, object>>(
                 snapshot =>
                 {
                     try
                     {
-                        var list = FirestoreMappers.ToGroupHymnList(groupId, listId, snapshot?.Data);
-                        CacheList(groupId, listId, list);
-
-                        if (Interlocked.CompareExchange(ref initialDelivered, 1, 0) == 0)
-                            tcs.TrySetResult(list);
-                        else
-                            onChanged?.Invoke(list);
-
-                        HymnListChanged?.Invoke(this, list);
+                        var data = FirestoreMappers.CoerceStringObjectMap(snapshot?.Data) ?? snapshot?.Data;
+                        var loose = data != null
+                            ? FirestoreMappers.ToGroupHymnListFromDictionary(groupId, listId, data)
+                            : FirestoreMappers.ToGroupHymnList(groupId, listId, null);
+                        Deliver(loose);
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"Hymn list snapshot handler failed: {ex.Message}");
+                        Debug.WriteLine($"Hymn list loose snapshot failed: {ex.Message}");
+                        _ = GetHymnListAsync(groupId, listId).ContinueWith(t =>
+                        {
+                            if (t.Status == TaskStatus.RanToCompletion)
+                                Deliver(t.Result);
+                        }, TaskScheduler.Default);
                     }
                 },
                 ex => Debug.WriteLine($"Hymn list subscription error: {ex?.Message}"));
 
         var disposable = new SubscriptionDisposable(() => registration?.Dispose());
 
-        // Race a direct get with the first snapshot so slow listeners do not block first paint.
         var getTask = GetHymnListAsync(groupId, listId);
         _ = getTask.ContinueWith(
             t =>
             {
-                if (t.Status != TaskStatus.RanToCompletion || t.Result == null)
-                    return;
-                if (Interlocked.CompareExchange(ref initialDelivered, 1, 0) == 0)
-                    tcs.TrySetResult(t.Result);
+                if (t.Status == TaskStatus.RanToCompletion)
+                    Deliver(t.Result);
             },
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
@@ -417,9 +712,8 @@ public sealed class BoardService : IBoardService
                 fallback = FirestoreMappers.ToGroupHymnList(groupId, listId, null);
             }
 
-            if (Interlocked.CompareExchange(ref initialDelivered, 1, 0) == 0)
-                tcs.TrySetResult(fallback);
-            return (disposable, fallback);
+            Deliver(fallback);
+            return (disposable, fallback ?? FirestoreMappers.ToGroupHymnList(groupId, listId, null));
         }
     }
 
@@ -430,12 +724,15 @@ public sealed class BoardService : IBoardService
             .GetDocument(groupId)
             .GetCollection(FirestorePaths.Boards)
             .GetDocument(listId)
-            .AddSnapshotListener<BoardFirestoreDocument>(
+            .AddSnapshotListener<Dictionary<string, object>>(
                 snapshot =>
                 {
                     try
                     {
-                        var list = FirestoreMappers.ToGroupHymnList(groupId, listId, snapshot?.Data);
+                        var data = FirestoreMappers.CoerceStringObjectMap(snapshot?.Data) ?? snapshot?.Data;
+                        var list = data != null
+                            ? FirestoreMappers.ToGroupHymnListFromDictionary(groupId, listId, data)
+                            : FirestoreMappers.ToGroupHymnList(groupId, listId, null);
                         CacheList(groupId, listId, list);
                         onChanged?.Invoke(list);
                         HymnListChanged?.Invoke(this, list);

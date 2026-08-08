@@ -47,6 +47,24 @@ service cloud.firestore {
         .hasAny(['pastor', 'worshipLeader', 'projector', 'accompaniment']);
     }
 
+    function memberDoc(groupId, uid) {
+      return get(/databases/$(database)/documents/groups/$(groupId)/members/$(uid)).data;
+    }
+
+    function isGroupAdmin(groupId) {
+      return isGroupMember(groupId)
+        && memberDoc(groupId, request.auth.uid).isAdmin == true;
+    }
+
+    function isGroupCreator(groupId) {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/groups/$(groupId)).data.createdBy == request.auth.uid;
+    }
+
+    function canManageMembers(groupId) {
+      return isVerified() && (isGroupAdmin(groupId) || isGroupCreator(groupId));
+    }
+
     function canEditGroup(groupId) {
       return isVerified()
         && isGroupMember(groupId)
@@ -64,10 +82,17 @@ service cloud.firestore {
         && hasLeadershipRole(request.auth.uid);
 
       match /members/{memberId} {
-        allow read: if isGroupMember(groupId);
+        // Own membership readable so collection-group discovery works even when
+        // profile.groupIds is empty/stale (same pattern as the PWA).
+        allow read: if isGroupMember(groupId)
+          || (isSignedIn() && request.auth.uid == memberId);
         allow create: if isVerified();
-        allow update, delete: if canEditGroup(groupId)
+        // Self may update own membership (e.g. mute). Admins may update others (promote).
+        allow update: if canManageMembers(groupId)
           || (isVerified() && request.auth.uid == memberId);
+        // Self may leave. Only group admins may remove other members.
+        allow delete: if (isVerified() && request.auth.uid == memberId)
+          || canManageMembers(groupId);
       }
 
       match /boards/{dateKey} {

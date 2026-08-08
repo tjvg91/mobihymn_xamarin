@@ -10,7 +10,7 @@ namespace MobiHymn4.Utils;
 /// </summary>
 public static class AuthEmailActionSettings
 {
-    public const string AndroidPackageName = "com.tjapps.mobihymn";
+    public const string AndroidPackageName = "com.mobihymn";
     public const string IosBundleId = "com.tjapps.mobihymn";
 
     /// <summary>Authorized HTTPS continue URL after email verification / reset.</summary>

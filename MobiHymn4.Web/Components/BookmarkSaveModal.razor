@@ -1,0 +1,200 @@
+@namespace MobiHymn4.Web.Components
+
+@if (show)
+{
+    <div class="modal-backdrop bookmark-save-backdrop @(animOpen ? "is-open" : null)"
+         @onclick="Cancel">
+        <div class="modal bookmark-save-modal" @onclick="ClosePicker" @onclick:stopPropagation="true">
+            <h2>@Title</h2>
+
+            <div class="field">
+                <label>Select group</label>
+                <div class="bm-group-picker @(pickerOpen ? "is-open" : null)" @onclick:stopPropagation="true">
+                    <button type="button"
+                            class="bm-group-picker-trigger"
+                            aria-haspopup="listbox"
+                            aria-expanded="@pickerOpen"
+                            @onclick="TogglePicker">
+                        <span class="bm-group-picker-value">@SelectedGroup</span>
+                        <span class="bm-group-picker-caret" aria-hidden="true">
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </span>
+                    </button>
+                    @if (pickerOpen)
+                    {
+                        <ul class="bm-group-picker-menu" role="listbox">
+                            @foreach (var g in EffectiveGroups)
+                            {
+                                var active = string.Equals(g, SelectedGroup, StringComparison.OrdinalIgnoreCase);
+                                <li>
+                                    <button type="button"
+                                            class="bm-group-picker-option @(active ? "is-active" : null)"
+                                            role="option"
+                                            aria-selected="@active"
+                                            @onclick="() => ChooseGroup(g)">
+                                        <span>@g</span>
+                                        @if (active)
+                                        {
+                                            <i class="fa-solid fa-check" aria-hidden="true"></i>
+                                        }
+                                    </button>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+
+            <div class="field">
+                <label>Or create new group</label>
+                <input @bind="NewGroup" @bind:event="oninput" @onfocus="ClosePicker" placeholder="New group name" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(Error))
+            {
+                <div class="error">@Error</div>
+            }
+
+            <div class="actions">
+                <button class="btn secondary" type="button" @onclick="Cancel">@CancelLabel</button>
+                <button class="btn" type="button" @onclick="Save">@ConfirmLabel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    const int CloseMs = 220;
+
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public IReadOnlyList<string> GroupOptions { get; set; } = Array.Empty<string>();
+    [Parameter] public EventCallback<string> OnSaved { get; set; }
+    [Parameter] public string Title { get; set; } = "Save to";
+    [Parameter] public string ConfirmLabel { get; set; } = "Save";
+    [Parameter] public string CancelLabel { get; set; } = "Cancel";
+    /// <summary>When set, prefer this as the initial select-group value if it exists.</summary>
+    [Parameter] public string? PreferredGroup { get; set; }
+
+    string SelectedGroup = "General";
+    string NewGroup = "";
+    string Error = "";
+    bool show;
+    bool animOpen;
+    bool closing;
+    bool pickerOpen;
+
+    IReadOnlyList<string> EffectiveGroups
+    {
+        get
+        {
+            var list = (GroupOptions ?? Array.Empty<string>())
+                .Where(g => !string.IsNullOrWhiteSpace(g))
+                .Select(g => g.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            // Always keep the default "General" group available for new bookmarks.
+            var generalIdx = list.FindIndex(g => g.Equals("General", StringComparison.OrdinalIgnoreCase));
+            if (generalIdx < 0)
+                list.Insert(0, "General");
+            else if (generalIdx > 0)
+            {
+                list.RemoveAt(generalIdx);
+                list.Insert(0, "General");
+            }
+
+            return list;
+        }
+    }
+
+    void TogglePicker() => pickerOpen = !pickerOpen;
+
+    void ClosePicker() => pickerOpen = false;
+
+    void ChooseGroup(string group)
+    {
+        SelectedGroup = group;
+        NewGroup = "";
+        pickerOpen = false;
+        Error = "";
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Visible && !show && !closing)
+        {
+            Error = "";
+            NewGroup = "";
+            pickerOpen = false;
+            if (!string.IsNullOrWhiteSpace(PreferredGroup)
+                && EffectiveGroups.Contains(PreferredGroup, StringComparer.OrdinalIgnoreCase))
+                SelectedGroup = PreferredGroup;
+            else
+                SelectedGroup = "General";
+            show = true;
+            animOpen = false;
+            _ = EnterAsync();
+        }
+        else if (!Visible && show && !closing)
+        {
+            _ = ExitAsync(notifyParent: false);
+        }
+
+        if (show
+            && !EffectiveGroups.Contains(SelectedGroup, StringComparer.OrdinalIgnoreCase))
+            SelectedGroup = EffectiveGroups[0];
+    }
+
+    async Task EnterAsync()
+    {
+        await Task.Delay(20);
+        if (!show || closing) return;
+        animOpen = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task ExitAsync(bool notifyParent)
+    {
+        if (closing) return;
+        closing = true;
+        pickerOpen = false;
+        animOpen = false;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(CloseMs);
+        show = false;
+        closing = false;
+        if (notifyParent || Visible)
+            await VisibleChanged.InvokeAsync(false);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task Save()
+    {
+        var name = string.IsNullOrWhiteSpace(NewGroup) ? SelectedGroup?.Trim() : NewGroup.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            Error = "Group name is required.";
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(NewGroup)
+            && EffectiveGroups.Any(g => g.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        {
+            Error = "Group already exists.";
+            return;
+        }
+
+        Error = "";
+        await OnSaved.InvokeAsync(name);
+        NewGroup = "";
+        await ExitAsync(notifyParent: true);
+    }
+
+    async Task Cancel()
+    {
+        Error = "";
+        NewGroup = "";
+        await ExitAsync(notifyParent: true);
+    }
+}

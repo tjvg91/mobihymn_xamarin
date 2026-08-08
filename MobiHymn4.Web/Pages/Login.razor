@@ -1,0 +1,194 @@
+@page "/login"
+@inject IAuthService Auth
+@inject AuthNavigation AuthNav
+@inject IUserSettingsSyncService Sync
+@inject IAppPreferences Prefs
+@inject NavigationManager Nav
+
+<PageTitle>@(IsSignUp ? "Sign up" : "Log in")</PageTitle>
+
+<div class="login-page">
+    <form class="login-card" @onsubmit="Submit" @onsubmit:preventDefault>
+        <h1 class="login-title">@(IsSignUp ? "Sign up" : "Log in")</h1>
+
+        <div class="field">
+            <label>Email</label>
+            <input type="email" @bind="Email" autocomplete="username" />
+        </div>
+        <div class="field">
+            <label>Password</label>
+            <div class="password-field">
+                <input type="@(ShowPassword ? "text" : "password")"
+                       @bind="Password"
+                       autocomplete="@(IsSignUp ? "new-password" : "current-password")" />
+                <button type="button"
+                        class="password-toggle"
+                        title="@(ShowPassword ? "Hide password" : "Show password")"
+                        aria-label="@(ShowPassword ? "Hide password" : "Show password")"
+                        @onclick="() => ShowPassword = !ShowPassword">
+                    <i class="fa-solid @(ShowPassword ? "fa-eye-slash" : "fa-eye")" aria-hidden="true"></i>
+                </button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Error))
+        {
+            <p class="error">@Error</p>
+        }
+        @if (!string.IsNullOrEmpty(Info))
+        {
+            <p class="success">@Info</p>
+        }
+
+        <button type="submit" class="btn block login-submit" disabled="@Busy">
+            @(Busy ? "Please wait…" : IsSignUp ? "Create account" : "Log in")
+        </button>
+
+        <div class="login-links">
+            <button type="button" class="login-link" @onclick="Toggle">
+                @(IsSignUp ? "Have an account? Log in" : "Need an account? Sign up")
+            </button>
+            @if (!IsSignUp)
+            {
+                <button type="button" class="login-link" disabled="@Busy" @onclick="Reset">
+                    Forgot password
+                </button>
+            }
+        </div>
+    </form>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "mode")]
+    public string? Mode { get; set; }
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    bool IsSignUp;
+    bool ShowPassword;
+    string Email = "";
+    string Password = "";
+    string? Error;
+    string? Info;
+    bool Busy;
+
+    protected override void OnParametersSet()
+    {
+        // MAUI: login?mode=signup
+        if (string.Equals(Mode, "signup", StringComparison.OrdinalIgnoreCase))
+            IsSignUp = true;
+    }
+
+    void Toggle()
+    {
+        IsSignUp = !IsSignUp;
+        Error = Info = null;
+    }
+
+    async Task Submit()
+    {
+        Error = Info = null;
+        Busy = true;
+        try
+        {
+            if (IsSignUp)
+            {
+                // Keep current local settings and upload them into the brand-new account.
+                Prefs.SetBool(PrefKeys.SeedLocalSettingsOnNextSync, true);
+                await Auth.SignUpWithEmailAsync(Email, Password);
+                await Sync.PullAndMergeAsync(preferCloud: false);
+                Nav.NavigateTo("verify");
+            }
+            else
+            {
+                await Auth.SignInWithEmailAsync(Email, Password);
+                // Apply cloud prefs while still on login (keeps chrome stable), then return
+                // to the previous page — not Account (which felt like a white flash).
+                await Sync.PullAndMergeAsync(preferCloud: true);
+                await AuthNav.NavigateAfterSignInAsync(ReturnUrl, replace: true);
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Error = FriendlyAuthError(ex);
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    async Task Reset()
+    {
+        Error = Info = null;
+        if (string.IsNullOrWhiteSpace(Email))
+        {
+            Error = "Enter your email first.";
+            return;
+        }
+
+        Busy = true;
+        try
+        {
+            await Auth.SendPasswordResetEmailAsync(Email);
+            Info = "Password reset email sent.";
+        }
+        catch (Exception ex)
+        {
+            Error = FriendlyAuthError(ex);
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    static string FriendlyAuthError(Exception ex)
+    {
+        var raw = (ex.GetBaseException().Message ?? ex.Message ?? "").ToLowerInvariant();
+
+        if (raw.Contains("auth/wrong-password")
+            || raw.Contains("auth/invalid-password")
+            || raw.Contains("auth/user-not-found")
+            || raw.Contains("auth/invalid-credential")
+            || raw.Contains("auth/invalid-login-credentials"))
+            return "Incorrect email or password.";
+
+        if (raw.Contains("auth/invalid-email"))
+            return "Enter a valid email address.";
+
+        if (raw.Contains("auth/email-already-in-use"))
+            return "An account with this email already exists.";
+
+        if (raw.Contains("auth/weak-password"))
+            return "Password should be at least 6 characters.";
+
+        if (raw.Contains("auth/too-many-requests"))
+            return "Too many attempts. Try again later.";
+
+        if (raw.Contains("auth/network-request-failed") || raw.Contains("failed to fetch"))
+            return "Network error. Check your connection and try again.";
+
+        if (raw.Contains("auth/user-disabled"))
+            return "This account has been disabled.";
+
+        if (raw.Contains("firebase is not configured"))
+            return "Sign-in isn’t configured in this build.";
+
+        if (raw.Contains("auth/missing-email") || raw.Contains("auth/missing-password"))
+            return "Enter your email and password.";
+
+        // Prefer a short Firebase code line over a full stack dump.
+        if (raw.Contains("auth/", StringComparison.Ordinal))
+            return "Couldn’t complete sign-in. Please try again.";
+
+        var firstLine = (ex.GetBaseException().Message ?? ex.Message ?? "")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault() ?? "Something went wrong. Please try again.";
+        if (firstLine.Length > 120)
+            firstLine = firstLine[..117] + "…";
+        return firstLine;
+    }
+}

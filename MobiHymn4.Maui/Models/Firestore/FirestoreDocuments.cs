@@ -83,6 +83,9 @@ public sealed class MemberFirestoreDocument : IFirestoreObject
 
     [FirestoreProperty("notificationsMuted")]
     public bool NotificationsMuted { get; set; }
+
+    [FirestoreProperty("isAdmin")]
+    public bool IsAdmin { get; set; }
 }
 
 public sealed class InviteFirestoreDocument : IFirestoreObject
@@ -114,14 +117,15 @@ public sealed class BoardFirestoreDocument : IFirestoreObject
     [FirestoreProperty("name")]
     public string Name { get; set; }
 
+    /// <summary>PWA epoch ms or Timestamp — keep flexible.</summary>
     [FirestoreProperty("createdAt")]
-    public DateTimeOffset CreatedAt { get; set; }
+    public object CreatedAtValue { get; set; }
 
     [FirestoreProperty("createdBy")]
     public string CreatedBy { get; set; }
 
     [FirestoreProperty("updatedAt")]
-    public DateTimeOffset UpdatedAt { get; set; }
+    public object UpdatedAtValue { get; set; }
 
     [FirestoreProperty("updatedBy")]
     public string UpdatedBy { get; set; }
@@ -189,8 +193,11 @@ public sealed class BoardHymnFirestoreDocument : IFirestoreObject
     [FirestoreProperty("addedByName")]
     public string AddedByName { get; set; }
 
+    /// <summary>
+    /// PWA writes epoch ms (long); MAUI writes Timestamp. Keep as object so either form deserializes.
+    /// </summary>
     [FirestoreProperty("updatedAt")]
-    public DateTimeOffset UpdatedAt { get; set; }
+    public object UpdatedAtValue { get; set; }
 }
 
 public sealed class BoardSectionTemplateFirestoreDocument : IFirestoreObject

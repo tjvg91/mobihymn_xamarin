@@ -1,0 +1,180 @@
+@page "/account"
+@inject IAuthService Auth
+@inject IProfileService Profiles
+@inject IUserSettingsSyncService Sync
+@inject IBoardNotificationService BoardNotifications
+@inject IAppPreferences Prefs
+@inject AuthNavigation AuthNav
+@inject NavigationManager Nav
+
+<PageTitle>Account</PageTitle>
+
+@if (!Auth.IsSignedIn)
+{
+    <div class="empty">
+        <p class="muted">Sign in to access your account.</p>
+        <a class="btn" href="@AuthNav.LoginUrl("account")">Log in</a>
+    </div>
+}
+else
+{
+    <!-- User header row — mirrors AccountPage Grid with RoleAvatarView + name/email -->
+    <div class="account-header">
+        <div class="avatar-circle">@Initials</div>
+        <div>
+            <div class="title">@(Profiles.CurrentProfile?.DisplayName ?? Auth.CurrentEmail)</div>
+            <div class="subtitle">@Auth.CurrentEmail</div>
+        </div>
+    </div>
+    <div class="list-divider"></div>
+
+    <!-- Verification row — mirrors verification Grid with colored badge -->
+    <div class="list-row">
+        <div class="list-row-content">
+            <span class="verify-icon" style="color:@(Auth.IsEmailVerified?"var(--success)":"var(--brown)")">
+                @(Auth.IsEmailVerified ? "✓" : "!")
+            </span>
+            <div>
+                <div class="title">Email verification</div>
+                <div class="subtitle" style="color:@(Auth.IsEmailVerified?"var(--success)":"var(--brown)")">
+                    @(Auth.IsEmailVerified ? "Verified" : "Not verified")
+                </div>
+            </div>
+        </div>
+        <span class="badge" style="background:@(Auth.IsEmailVerified?"#E8F5E9":"#FFF8E1");
+              color:@(Auth.IsEmailVerified?"var(--success)":"var(--brown)")">
+            @(Auth.IsEmailVerified ? "OK" : "Pending")
+        </span>
+    </div>
+    @if (!Auth.IsEmailVerified)
+    {
+        <div style="padding:10px 16px 12px;display:flex;flex-direction:column;gap:8px">
+            <a class="btn block" href="verify">Verify email</a>
+        </div>
+    }
+    <div class="list-divider"></div>
+
+    <!-- Edit profile row — mirrors ColumnDefinitions="*,Auto" with ChevronRight -->
+    <a class="list-row" href="profile">
+        <div class="list-row-content">
+            <div>
+                <div class="title">Edit profile</div>
+                <div class="subtitle">Update your name, nickname, and roles.</div>
+            </div>
+        </div>
+        <span class="list-chevron">›</span>
+    </a>
+    <div class="list-divider"></div>
+
+    <!-- Board notifications — mirrors MAUI Account mute toggle -->
+    <div class="list-row account-notif-row">
+        <div class="list-row-content">
+            <div>
+                <div class="title">@(NotificationsEnabled ? "Board notifications" : "Board notifications muted")</div>
+                <div class="subtitle">
+                    @(NotificationsEnabled
+                        ? "Push alerts when someone updates a group board."
+                        : "You will not receive board push alerts.")
+                </div>
+            </div>
+        </div>
+        <label class="switch" title="Board notifications">
+            <input type="checkbox"
+                   checked="@NotificationsEnabled"
+                   disabled="@Busy"
+                   @onchange="OnNotificationsToggled" />
+            <span class="switch-slider"></span>
+        </label>
+    </div>
+    <div class="list-divider"></div>
+
+    <!-- Sign out -->
+    <div class="account-signout">
+        <button class="btn block" disabled="@Busy" @onclick="() => showSignOutConfirm = true">
+            @(Busy ? "Signing out…" : "Sign out")
+        </button>
+    </div>
+}
+
+<ConfirmDialog @bind-Visible="showSignOutConfirm"
+               Title="Sign out?"
+               Message="Are you sure you want to sign out?"
+               ConfirmLabel="Yes"
+               CancelLabel="No"
+               OnConfirmed="SignOut" />
+
+@code {
+    bool Busy;
+    bool showSignOutConfirm;
+    bool NotificationsEnabled = true;
+    bool suppressNotifToggle;
+    string Initials => string.IsNullOrWhiteSpace(Profiles.CurrentProfile?.DisplayName)
+        ? (Auth.CurrentEmail?.Substring(0, 1) ?? "?").ToUpperInvariant()
+        : string.Concat(Profiles.CurrentProfile.DisplayName.Split(' ').Take(2).Select(w => w[0])).ToUpperInvariant();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Auth.IsSignedIn)
+        {
+            await Profiles.RefreshCurrentProfileAsync();
+            LoadNotificationsFromProfile();
+        }
+    }
+
+    void LoadNotificationsFromProfile()
+    {
+        var profile = Profiles.CurrentProfile;
+        if (profile == null)
+        {
+            NotificationsEnabled = true;
+            return;
+        }
+
+        if (profile.NotificationsPreferenceSet)
+            NotificationsEnabled = !profile.NotificationsMuted;
+        else
+        {
+            var leadership = profile.Roles.Any(r =>
+                r is "pastor" or "preacher" or "worshipLeader" or "projector" or "accompaniment");
+            NotificationsEnabled = leadership;
+        }
+    }
+
+    async Task OnNotificationsToggled(ChangeEventArgs e)
+    {
+        if (suppressNotifToggle || Busy) return;
+        var enabled = e.Value is bool b ? b : string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        var muted = !enabled;
+        Busy = true;
+        try
+        {
+            NotificationsEnabled = enabled;
+            await Profiles.SetNotificationsMutedAsync(muted);
+            if (enabled)
+                await BoardNotifications.RegisterTokenAsync();
+        }
+        catch
+        {
+            suppressNotifToggle = true;
+            LoadNotificationsFromProfile();
+            suppressNotifToggle = false;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    async Task SignOut()
+    {
+        Busy = true;
+        try
+        {
+            if (Auth.IsSignedIn && Prefs.GetBool(PrefKeys.CloudPending, false))
+                await Sync.PushAsync();
+            await Auth.SignOutAsync();
+            Nav.NavigateTo("");
+        }
+        finally { Busy = false; }
+    }
+}

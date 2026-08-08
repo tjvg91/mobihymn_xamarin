@@ -16,6 +16,8 @@ public class GroupMember
     public DateTime JoinedAt { get; set; }
     public string InvitedBy { get; set; } = string.Empty;
     public bool NotificationsMuted { get; set; }
+    /// <summary>Group admin — distinct from ministry <see cref="Roles"/>.</summary>
+    public bool IsAdmin { get; set; }
 
     public string DisplayName =>
         !string.IsNullOrWhiteSpace(Nickname)
@@ -44,6 +46,8 @@ public class GroupMember
             member.InvitedBy = invitedBy?.ToString() ?? string.Empty;
         if (data.TryGetValue("notificationsMuted", out var muted) && muted is bool mutedValue)
             member.NotificationsMuted = mutedValue;
+        if (data.TryGetValue("isAdmin", out var admin) && admin is bool adminValue)
+            member.IsAdmin = adminValue;
 
         return member;
     }
@@ -60,6 +64,7 @@ public class GroupMember
             ["joinedAt"] = JoinedAt == default ? DateTime.UtcNow : JoinedAt,
             ["invitedBy"] = InvitedBy ?? string.Empty,
             ["notificationsMuted"] = NotificationsMuted,
+            ["isAdmin"] = IsAdmin,
         };
     }
 }

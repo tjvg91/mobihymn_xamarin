@@ -733,8 +733,8 @@ namespace MobiHymn4
         async Task RunSyncAsync()
         {
             try
-            {
-                if (await globalInstance.ResyncHymns())
+        {
+            if (await globalInstance.ResyncHymns())
                     await globalInstance.FinishAfterDownloadAsync(isUserSync: true);
             }
             catch (Exception ex)

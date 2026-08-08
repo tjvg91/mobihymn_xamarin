@@ -1,0 +1,253 @@
+@page "/profile"
+@inject IAuthService Auth
+@inject IProfileService Profiles
+@inject AuthNavigation AuthNav
+@inject NavigationManager Nav
+
+<div class="field">
+    <label>Email</label>
+    <input type="email" value="@Email" disabled readonly />
+</div>
+<div class="field">
+    <label>First name</label>
+    <input @bind="FirstName" autocomplete="given-name" />
+</div>
+<div class="field">
+    <label>Last name</label>
+    <input @bind="LastName" autocomplete="family-name" />
+</div>
+<div class="field">
+    <label>Nickname (optional)</label>
+    <input @bind="Nickname" autocomplete="nickname" />
+</div>
+
+<div class="field profile-roles">
+    <label>Your roles</label>
+    <p class="muted profile-roles-hint">Select every role that applies to you.</p>
+    <div class="profile-role-chips" role="group" aria-label="Your roles">
+        @foreach (var chip in RoleChips)
+        {
+            <button type="button"
+                    class="profile-role-chip @(chip.Selected ? "is-selected" : null) @(chip.Disabled ? "is-disabled" : null)"
+                    disabled="@chip.Disabled"
+                    aria-pressed="@chip.Selected"
+                    @onclick="() => ToggleRole(chip)">
+                @chip.Label
+            </button>
+        }
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(Error))
+{
+    <p class="error" style="margin: 12px 0 0;">@Error</p>
+}
+
+<div style="height: 28px;" aria-hidden="true"></div>
+<button class="btn block" disabled="@(Busy || !CanSave)" @onclick="Save">
+    @(Busy ? "Saving…" : "Save")
+</button>
+
+@code {
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    /// <summary>Canonical Firestore role keys (MAUI UserRole.ToStorageKey).</summary>
+    static readonly (string Key, string Label)[] RoleCatalog =
+    {
+        ("pastor", "Preacher"),
+        ("worshipLeader", "Worship Leader"),
+        ("projector", "Projector"),
+        ("accompaniment", "Accompaniment"),
+        ("congregant", "Congregant"),
+    };
+
+    const string CongregantKey = "congregant";
+
+    string Email = "";
+    string FirstName = "";
+    string LastName = "";
+    string Nickname = "";
+    bool Busy;
+    string? Error;
+    readonly HashSet<string> selectedRoles = new(StringComparer.OrdinalIgnoreCase);
+    List<RoleChip> RoleChips = new();
+
+    bool CanSave =>
+        !string.IsNullOrWhiteSpace(FirstName)
+        && !string.IsNullOrWhiteSpace(LastName)
+        && selectedRoles.Count > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Auth.IsSignedIn)
+        {
+            Nav.NavigateTo(AuthNav.LoginUrl(WithProfileReturn()), forceLoad: false, replace: true);
+            return;
+        }
+
+        Email = Auth.CurrentEmail ?? "";
+        await Profiles.RefreshCurrentProfileAsync();
+        var p = Profiles.CurrentProfile;
+        if (!string.IsNullOrWhiteSpace(p?.Email))
+            Email = p.Email;
+        FirstName = p?.FirstName ?? "";
+        LastName = p?.LastName ?? "";
+        Nickname = p?.Nickname ?? "";
+
+        selectedRoles.Clear();
+        foreach (var raw in p?.Roles ?? Enumerable.Empty<string>())
+        {
+            var key = NormalizeRoleKey(raw);
+            if (key != null)
+                selectedRoles.Add(key);
+        }
+
+        SyncRoleChips();
+    }
+
+    void ToggleRole(RoleChip chip)
+    {
+        if (chip.Disabled)
+            return;
+
+        if (chip.Selected)
+        {
+            selectedRoles.Remove(chip.Key);
+
+            // Deselecting last leadership role while Congregant was auto-added → clear Congregant too.
+            if (!IsCongregantKey(chip.Key)
+                && !HasLeadershipRoles()
+                && selectedRoles.Contains(CongregantKey))
+            {
+                selectedRoles.Remove(CongregantKey);
+            }
+        }
+        else if (IsCongregantKey(chip.Key))
+        {
+            selectedRoles.Clear();
+            selectedRoles.Add(CongregantKey);
+        }
+        else
+        {
+            if (IsCongregantOnlyMode())
+                selectedRoles.Clear();
+
+            selectedRoles.Add(chip.Key);
+        }
+
+        SyncRoleChips();
+    }
+
+    void SyncRoleChips()
+    {
+        NormalizeSelectedRoles();
+
+        var congregantOnly = IsCongregantOnlyMode();
+        var leadership = HasLeadershipRoles();
+
+        RoleChips = RoleCatalog.Select(r => new RoleChip
+        {
+            Key = r.Key,
+            Label = r.Label,
+            Selected = selectedRoles.Contains(r.Key),
+            Disabled = IsCongregantKey(r.Key) ? leadership : congregantOnly
+        }).ToList();
+    }
+
+    void NormalizeSelectedRoles()
+    {
+        if (HasLeadershipRoles())
+        {
+            selectedRoles.Add(CongregantKey);
+            return;
+        }
+
+        if (!IsCongregantOnlyMode())
+            selectedRoles.Remove(CongregantKey);
+    }
+
+    bool HasLeadershipRoles() =>
+        selectedRoles.Any(r => !IsCongregantKey(r));
+
+    bool IsCongregantOnlyMode() =>
+        selectedRoles.Count == 1 && selectedRoles.Contains(CongregantKey);
+
+    static bool IsCongregantKey(string key) =>
+        key.Equals(CongregantKey, StringComparison.OrdinalIgnoreCase);
+
+    static string? NormalizeRoleKey(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        var n = raw.Trim().ToLowerInvariant().Replace(" ", "").Replace("_", "");
+        return n switch
+        {
+            "pastor" or "preacher" => "pastor",
+            "worshipleader" or "worship leader" => "worshipLeader",
+            "projector" => "projector",
+            "accompaniment" => "accompaniment",
+            "congregant" => "congregant",
+            _ => null
+        };
+    }
+
+    async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(FirstName) || string.IsNullOrWhiteSpace(LastName))
+        {
+            Error = "First and last name are required.";
+            return;
+        }
+
+        NormalizeSelectedRoles();
+        if (selectedRoles.Count == 0)
+        {
+            Error = "Select at least one role.";
+            return;
+        }
+
+        Busy = true;
+        Error = null;
+        try
+        {
+            var p = Profiles.CurrentProfile ?? new UserProfileDoc();
+            p.FirstName = FirstName.Trim();
+            p.LastName = LastName.Trim();
+            p.Nickname = Nickname.Trim();
+            // Persist canonical storage keys in catalog order (MAUI).
+            p.Roles = RoleCatalog
+                .Select(r => r.Key)
+                .Where(k => selectedRoles.Contains(k))
+                .ToList();
+            await Profiles.SaveProfileAsync(p);
+            var dest = AuthNav.SanitizeReturnUrl(ReturnUrl) ?? "account";
+            Nav.NavigateTo(dest, forceLoad: false, replace: true);
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    string WithProfileReturn()
+    {
+        var inner = AuthNav.SanitizeReturnUrl(ReturnUrl);
+        return string.IsNullOrEmpty(inner)
+            ? "profile"
+            : $"profile?returnUrl={Uri.EscapeDataString(inner)}";
+    }
+
+    sealed class RoleChip
+    {
+        public string Key { get; set; } = "";
+        public string Label { get; set; } = "";
+        public bool Selected { get; set; }
+        public bool Disabled { get; set; }
+    }
+}

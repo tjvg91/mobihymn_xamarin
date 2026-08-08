@@ -55,17 +55,17 @@
             Margin="0,0,0,2"
             BackgroundColor="{AppThemeBinding Dark={StaticResource Gray}, Light={StaticResource White}, Default=White}">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="0">
-                <SearchBar x:Name="searchBar"
+        <SearchBar x:Name="searchBar"
                            Grid.Column="0"
-                           HorizontalOptions="Fill"
+                   HorizontalOptions="Fill"
                            VerticalOptions="Center"
                            BackgroundColor="Transparent"
                            Placeholder="{Binding SearchPlaceholder}"
-                           IsEnabled="{Binding IsNotBusy}"
-                           SearchCommand="{Binding SearchHymns}"
-                           SearchCommandParameter="{Binding Text, Source={x:Reference searchBar}}"
+                   IsEnabled="{Binding IsNotBusy}"
+                   SearchCommand="{Binding SearchHymns}" 
+                   SearchCommandParameter="{Binding Text, Source={x:Reference searchBar}}"
                            SearchButtonPressed="searchBar_SearchButtonPressed"
-                           Keyboard="Text"
+                   Keyboard="Text"
                            HandlerChanged="searchBar_HandlerChanged"/>
                 <Image
                     x:Name="btnVoiceSearch"
@@ -341,8 +341,10 @@
                 Speed="3"/>
         </FlexLayout>
         <CollectionView
+                x:Name="GroupsListView"
                 ItemsSource="{Binding Groups}"
                 IsVisible="{Binding IsGroupedSearchType}"
+                ChildAdded="SearchResults_ChildAdded"
                 VerticalOptions="StartAndExpand"
                 SelectionMode="None">
             <CollectionView.ItemTemplate>
@@ -427,7 +429,7 @@
         <CollectionView x:Name="MyListView"
                 ItemsSource="{Binding Items}"
                 IsVisible="{Binding IsFlatSearchType}"
-                ChildAdded="MyListView_ChildAdded"
+                ChildAdded="SearchResults_ChildAdded"
                 VerticalOptions="StartAndExpand"
                 SelectionMode="None"
                 Margin="0,4,0,0">
@@ -492,7 +494,7 @@
                                         CornerRadius="1.5"
                                         Color="{StaticResource Primary}"
                                         VerticalOptions="Fill"/>
-                                    <Label
+                        <Label
                                         Grid.Column="1"
                                         Text="{Binding Reason}"
                                         FontSize="12.5"
@@ -505,6 +507,6 @@
                     </SwipeView>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
-        </CollectionView>
+      </CollectionView>
     </StackLayout>
 </ContentPage>

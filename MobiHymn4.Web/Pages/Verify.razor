@@ -1,0 +1,77 @@
+@page "/verify"
+@inject IAuthService Auth
+@inject AuthNavigation AuthNav
+@inject NavigationManager Nav
+
+<h1>Verify email</h1>
+<p class="muted">We sent a verification link to <strong>@Auth.CurrentEmail</strong>.</p>
+
+@if (!string.IsNullOrEmpty(Error))
+{
+    <p class="error">@Error</p>
+}
+@if (!string.IsNullOrEmpty(Info))
+{
+    <p class="success">@Info</p>
+}
+
+<button class="btn block" disabled="@Busy" @onclick="Refresh">I've verified — continue</button>
+<button class="btn secondary block" style="margin-top:8px" disabled="@Busy" @onclick="Resend">Resend email</button>
+
+@code {
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    bool Busy;
+    string? Error;
+    string? Info;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Auth.IsSignedIn)
+            Nav.NavigateTo(AuthNav.LoginUrl(ReturnUrl), forceLoad: false, replace: true);
+        else if (Auth.IsEmailVerified)
+            await AuthNav.NavigateForAuthStateAsync(ReturnUrl);
+    }
+
+    async Task Refresh()
+    {
+        Busy = true;
+        Error = null;
+        try
+        {
+            await Auth.RefreshEmailVerificationStatusAsync();
+            if (Auth.IsEmailVerified)
+                await AuthNav.NavigateForAuthStateAsync(ReturnUrl);
+            else
+                Error = "Email is not verified yet.";
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    async Task Resend()
+    {
+        Busy = true;
+        Error = null;
+        try
+        {
+            await Auth.SendEmailVerificationAsync();
+            Info = "Verification email sent.";
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+}

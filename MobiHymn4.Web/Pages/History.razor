@@ -1,0 +1,53 @@
+@page "/history"
+@inject AppState State
+@inject NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>History</PageTitle>
+
+@if (State.History.Count == 0)
+{
+    <div class="history-empty">
+        <p class="muted">Your recent hymns will show here.</p>
+    </div>
+}
+else
+{
+    <div class="history-page">
+        @foreach (var grp in HistoryGroups)
+        {
+            <div class="history-section-header">@grp.Key</div>
+            @foreach (var h in grp)
+            {
+                <button type="button" class="history-row" @onclick="() => Open(h.Number)">
+                    <span class="history-row-main">
+                        <span class="history-row-title">@h.NumberText</span>
+                        @if (!string.IsNullOrWhiteSpace(h.Line))
+                        {
+                            <span class="history-row-line">@h.Line</span>
+                        }
+                    </span>
+                    <span class="history-row-date">@h.DateTimeText</span>
+                </button>
+            }
+        }
+    </div>
+}
+
+@code {
+    IEnumerable<IGrouping<string, ShortHymn>> HistoryGroups =>
+        State.History
+            .OrderByDescending(h => h.TimeStamp)
+            .GroupBy(h => h.HistoryGroup);
+
+    protected override void OnInitialized() => State.Changed += OnChanged;
+    void OnChanged() => InvokeAsync(StateHasChanged);
+
+    async Task Open(string number)
+    {
+        var hymn = await State.OpenHymnAsync(number);
+        if (hymn != null) Nav.NavigateTo($"read/{Uri.EscapeDataString(hymn.Number)}");
+    }
+
+    public void Dispose() => State.Changed -= OnChanged;
+}

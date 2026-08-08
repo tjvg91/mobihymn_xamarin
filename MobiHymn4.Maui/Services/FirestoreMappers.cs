@@ -68,29 +68,32 @@ public static class FirestoreMappers
             JoinedAt = doc?.JoinedAt.UtcDateTime ?? default,
             InvitedBy = doc?.InvitedBy ?? string.Empty,
             NotificationsMuted = doc?.NotificationsMuted ?? false,
+            IsAdmin = doc?.IsAdmin ?? false,
         };
 
     public static GroupHymnList ToGroupHymnList(string groupId, string listId, BoardFirestoreDocument doc)
     {
-        var (name, createdAt, createdBy) = ResolveListMetadata(
+        var createdAt = ConvertFlexibleDate(doc?.CreatedAtValue) ?? default;
+        var updatedAt = ConvertFlexibleDate(doc?.UpdatedAtValue) ?? default;
+        var (name, created, createdBy) = ResolveListMetadata(
             listId,
             doc?.Name,
-            doc?.CreatedAt ?? default,
-            doc?.UpdatedAt ?? default,
+            createdAt,
+            updatedAt,
             doc?.CreatedBy);
         var list = new GroupHymnList
         {
             Id = listId ?? string.Empty,
             GroupId = groupId,
             Name = name,
-            CreatedAt = createdAt,
+            CreatedAt = created,
             CreatedBy = createdBy,
         };
 
         if (doc == null)
             return list;
 
-        list.UpdatedAt = doc.UpdatedAt.UtcDateTime;
+        list.UpdatedAt = updatedAt == default ? created : updatedAt.UtcDateTime;
         list.UpdatedBy = doc.UpdatedBy ?? string.Empty;
         list.Hymns = doc.Hymns?.Select(h => new BoardHymnEntry
         {
@@ -102,10 +105,265 @@ public static class FirestoreMappers
             Notes = h.Notes ?? string.Empty,
             AddedBy = h.AddedBy ?? string.Empty,
             AddedByName = h.AddedByName ?? string.Empty,
-            UpdatedAt = h.UpdatedAt.UtcDateTime,
+            UpdatedAt = ConvertFlexibleDate(h.UpdatedAtValue)?.UtcDateTime ?? default,
         }).OrderBy(h => h.SortOrder).ToList() ?? new List<BoardHymnEntry>();
 
         return list;
+    }
+
+    public static DateTimeOffset? ConvertFlexibleDate(object value)
+    {
+        if (value == null)
+            return null;
+
+        switch (value)
+        {
+            case DateTimeOffset dto:
+                return dto;
+            case DateTime dt:
+                return dt.Kind == DateTimeKind.Unspecified
+                    ? new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc))
+                    : new DateTimeOffset(dt.ToUniversalTime());
+            case string s when DateTimeOffset.TryParse(s, null,
+                DateTimeStyles.RoundtripKind, out var parsed):
+                return parsed;
+            case long ms when ms > 1_000_000_000_000L:
+                return DateTimeOffset.FromUnixTimeMilliseconds(ms);
+            case long sec:
+                return DateTimeOffset.FromUnixTimeSeconds(sec);
+            case int i:
+                return DateTimeOffset.FromUnixTimeSeconds(i);
+            case double d:
+                return d > 1_000_000_000_000d
+                    ? DateTimeOffset.FromUnixTimeMilliseconds((long)d)
+                    : DateTimeOffset.FromUnixTimeSeconds((long)d);
+            case float f:
+                return f > 1_000_000_000_000f
+                    ? DateTimeOffset.FromUnixTimeMilliseconds((long)f)
+                    : DateTimeOffset.FromUnixTimeSeconds((long)f);
+        }
+
+        var map = CoerceStringObjectMap(value);
+        if (map != null
+            && (map.TryGetValue("seconds", out var secObj) || map.TryGetValue("_seconds", out secObj)))
+        {
+            try { return DateTimeOffset.FromUnixTimeSeconds(Convert.ToInt64(secObj)); }
+            catch { /* ignore */ }
+        }
+
+        try
+        {
+            if (value is IConvertible && value is not string)
+            {
+                var n = Convert.ToInt64(value);
+                return n > 1_000_000_000_000L
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(n)
+                    : DateTimeOffset.FromUnixTimeSeconds(n);
+            }
+        }
+        catch { /* ignore */ }
+
+        try
+        {
+            var secondsProp = value.GetType().GetProperty("Seconds")
+                ?? value.GetType().GetProperty("seconds");
+            if (secondsProp != null)
+                return DateTimeOffset.FromUnixTimeSeconds(Convert.ToInt64(secondsProp.GetValue(value)));
+        }
+        catch { /* ignore */ }
+
+        return null;
+    }
+
+    public static GroupHymnList ToGroupHymnListFromDictionary(
+        string groupId,
+        string listId,
+        IDictionary<string, object> data)
+    {
+        var name = ReadDictString(data, "name") ?? string.Empty;
+        var createdAt = ReadDictDate(data, "createdAt") ?? default;
+        var updatedAt = ReadDictDate(data, "updatedAt") ?? default;
+        var createdBy = ReadDictString(data, "createdBy") ?? string.Empty;
+        var (resolvedName, resolvedCreated, resolvedBy) = ResolveListMetadata(
+            listId, name, createdAt, updatedAt, createdBy);
+
+        var list = new GroupHymnList
+        {
+            Id = listId ?? string.Empty,
+            GroupId = groupId,
+            Name = resolvedName,
+            CreatedAt = resolvedCreated,
+            CreatedBy = resolvedBy,
+            UpdatedAt = updatedAt == default ? resolvedCreated : updatedAt.UtcDateTime,
+            UpdatedBy = ReadDictString(data, "updatedBy") ?? string.Empty,
+            Hymns = new List<BoardHymnEntry>(),
+        };
+
+        if (data != null
+            && data.TryGetValue("hymns", out var hymnsObj)
+            && hymnsObj != null)
+        {
+            foreach (var item in EnumerateFirestoreList(hymnsObj))
+            {
+                var h = CoerceStringObjectMap(item);
+                if (h == null || h.Count == 0)
+                    continue;
+
+                list.Hymns.Add(BoardHymnEntry.FromDictionary(h));
+            }
+
+            list.Hymns = list.Hymns.OrderBy(x => x.SortOrder).ToList();
+        }
+
+        return list;
+    }
+
+    public static Dictionary<string, object> CoerceStringObjectMap(object value)
+    {
+        if (value == null)
+            return null;
+        if (value is Dictionary<string, object> dict)
+            return dict;
+        if (value is IDictionary<string, object> generic)
+            return new Dictionary<string, object>(generic);
+
+        // Plugin.Firebase / Android often yields Dictionary<string, object?> or non-generic maps.
+        if (value is System.Collections.IDictionary plain)
+        {
+            var copy = new Dictionary<string, object>(StringComparer.Ordinal);
+            foreach (System.Collections.DictionaryEntry entry in plain)
+            {
+                if (entry.Key == null)
+                    continue;
+                copy[entry.Key.ToString()] = entry.Value;
+            }
+            return copy;
+        }
+
+        // Reflective fallback for Java HashMap / ArrayMap wrappers.
+        try
+        {
+            var type = value.GetType();
+            var keysProp = type.GetProperty("Keys") ?? type.GetProperty("KeySet");
+            var getMethod = type.GetMethod("Get", new[] { typeof(object) })
+                ?? type.GetMethod("get_Item", new[] { typeof(object) });
+            if (keysProp != null && getMethod != null)
+            {
+                var keysObj = keysProp.GetValue(value);
+                if (keysObj is System.Collections.IEnumerable keysEnum)
+                {
+                    var copy = new Dictionary<string, object>(StringComparer.Ordinal);
+                    foreach (var key in keysEnum)
+                    {
+                        if (key == null)
+                            continue;
+                        var v = getMethod.Invoke(value, new[] { key });
+                        copy[key.ToString()] = v;
+                    }
+                    return copy;
+                }
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return null;
+    }
+
+    public static IEnumerable<object> EnumerateFirestoreList(object value)
+    {
+        if (value == null || value is string)
+            yield break;
+
+        if (value is System.Collections.IEnumerable enumerable)
+        {
+            foreach (var item in enumerable)
+            {
+                if (item != null)
+                    yield return item;
+            }
+        }
+    }
+
+    static string ReadDictString(IDictionary<string, object> data, string key)
+    {
+        if (data == null || !data.TryGetValue(key, out var value) || value == null)
+            return null;
+        return value.ToString();
+    }
+
+    static long ReadDictInt64(IDictionary<string, object> data, string key)
+    {
+        if (data == null || !data.TryGetValue(key, out var value) || value == null)
+            return 0;
+        try { return Convert.ToInt64(value); }
+        catch { return 0; }
+    }
+
+    static DateTimeOffset? ReadDictDate(IDictionary<string, object> data, string key)
+    {
+        if (data == null || !data.TryGetValue(key, out var value) || value == null)
+            return null;
+
+        switch (value)
+        {
+            case DateTimeOffset dto:
+                return dto;
+            case DateTime dt:
+                return dt.Kind == DateTimeKind.Unspecified
+                    ? new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc))
+                    : new DateTimeOffset(dt.ToUniversalTime());
+            case string s when DateTimeOffset.TryParse(s, null,
+                System.Globalization.DateTimeStyles.RoundtripKind, out var parsed):
+                return parsed;
+            case long ms when ms > 1_000_000_000_000L:
+                return DateTimeOffset.FromUnixTimeMilliseconds(ms);
+            case long sec:
+                return DateTimeOffset.FromUnixTimeSeconds(sec);
+            case int i:
+                return DateTimeOffset.FromUnixTimeSeconds(i);
+            case double d:
+                return d > 1_000_000_000_000d
+                    ? DateTimeOffset.FromUnixTimeMilliseconds((long)d)
+                    : DateTimeOffset.FromUnixTimeSeconds((long)d);
+            case float f:
+                return f > 1_000_000_000_000f
+                    ? DateTimeOffset.FromUnixTimeMilliseconds((long)f)
+                    : DateTimeOffset.FromUnixTimeSeconds((long)f);
+        }
+
+        var map = CoerceStringObjectMap(value);
+        if (map != null
+            && (map.TryGetValue("seconds", out var secObj) || map.TryGetValue("_seconds", out secObj)))
+        {
+            try { return DateTimeOffset.FromUnixTimeSeconds(Convert.ToInt64(secObj)); }
+            catch { /* ignore */ }
+        }
+
+        try
+        {
+            if (value is IConvertible && value is not string)
+            {
+                var n = Convert.ToInt64(value);
+                return n > 1_000_000_000_000L
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(n)
+                    : DateTimeOffset.FromUnixTimeSeconds(n);
+            }
+        }
+        catch { /* ignore */ }
+
+        try
+        {
+            var secondsProp = value.GetType().GetProperty("Seconds")
+                ?? value.GetType().GetProperty("seconds");
+            if (secondsProp != null)
+                return DateTimeOffset.FromUnixTimeSeconds(Convert.ToInt64(secondsProp.GetValue(value)));
+        }
+        catch { /* ignore */ }
+
+        return null;
     }
 
     public static GroupHymnListSummary ToGroupHymnListSummary(string listId, BoardListSummaryFirestoreDocument doc)
@@ -130,11 +388,13 @@ public static class FirestoreMappers
 
     public static GroupHymnListSummary ToGroupHymnListSummary(string listId, BoardFirestoreDocument doc)
     {
-        var (name, createdAt, createdBy) = ResolveListMetadata(
+        var createdAt = ConvertFlexibleDate(doc?.CreatedAtValue) ?? default;
+        var updatedAt = ConvertFlexibleDate(doc?.UpdatedAtValue) ?? default;
+        var (name, created, createdBy) = ResolveListMetadata(
             listId,
             doc?.Name,
-            doc?.CreatedAt ?? default,
-            doc?.UpdatedAt ?? default,
+            createdAt,
+            updatedAt,
             doc?.CreatedBy);
 
         // Prefer denormalized counts so overview listing does not depend on hymns[].
@@ -155,7 +415,7 @@ public static class FirestoreMappers
         {
             Id = listId ?? string.Empty,
             Name = name,
-            CreatedAt = createdAt,
+            CreatedAt = created,
             CreatedBy = createdBy,
             HymnCount = hymnCount,
             EntryCount = entryCount,
@@ -172,11 +432,11 @@ public static class FirestoreMappers
             Name = list.Name ?? string.Empty,
             HymnCount = hymnCount,
             EntryCount = hymns.Count,
-            CreatedAt = list.CreatedAt == default
+            CreatedAtValue = list.CreatedAt == default
                 ? DateTimeOffset.UtcNow
                 : new DateTimeOffset(list.CreatedAt, TimeSpan.Zero),
             CreatedBy = list.CreatedBy ?? string.Empty,
-            UpdatedAt = list.UpdatedAt == default ? DateTimeOffset.UtcNow : new DateTimeOffset(list.UpdatedAt, TimeSpan.Zero),
+            UpdatedAtValue = list.UpdatedAt == default ? DateTimeOffset.UtcNow : new DateTimeOffset(list.UpdatedAt, TimeSpan.Zero),
             UpdatedBy = list.UpdatedBy ?? string.Empty,
             Hymns = hymns.Select(h => new BoardHymnFirestoreDocument
             {
@@ -188,7 +448,9 @@ public static class FirestoreMappers
                 Notes = h.Notes,
                 AddedBy = h.AddedBy,
                 AddedByName = h.AddedByName,
-                UpdatedAt = h.UpdatedAt == default ? DateTimeOffset.UtcNow : new DateTimeOffset(h.UpdatedAt, TimeSpan.Zero),
+                UpdatedAtValue = h.UpdatedAt == default
+                    ? DateTimeOffset.UtcNow
+                    : new DateTimeOffset(h.UpdatedAt, TimeSpan.Zero),
             }).ToList(),
         };
     }

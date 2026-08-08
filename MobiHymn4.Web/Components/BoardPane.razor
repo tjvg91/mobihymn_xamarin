@@ -1,0 +1,3813 @@
+@namespace MobiHymn4.Web.Components
+@inject IAuthService Auth
+@inject IGroupService GroupService
+@inject IBoardService BoardService
+@inject IBoardNotificationService BoardNotifications
+@inject BoardUiState BoardUi
+@inject IProfileService Profiles
+@inject IHymnLyricsSource Lyrics
+@inject AppState State
+@inject AuthNavigation AuthNav
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+@implements IDisposable
+
+@if (show)
+{
+    <div class="board-pane-host @(animOpen ? "is-open" : null)" aria-live="polite">
+        <div class="board-pane-dimmer" @onclick="Close"></div>
+        <aside class="board-pane @(UseDashboardChrome ? "board-pane--dash" : null)"
+               @onclick:stopPropagation="true"
+               role="dialog"
+               aria-label="Group board">
+            @if (!UseDashboardChrome)
+            {
+                <header class="board-pane-header">
+                    @if (CanGoBack)
+                    {
+                        <button type="button" class="board-pane-icon-btn" title="Back" @onclick="GoBack">
+                            <i class="fa-solid fa-arrow-left"></i>
+                        </button>
+                    }
+                    <div class="board-pane-titles">
+                        <div class="board-pane-title">@HeaderTitle</div>
+                    </div>
+                    <button type="button" class="board-pane-icon-btn" title="Close" @onclick="Close">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </header>
+            }
+
+            <div class="board-pane-body @(UseDashboardChrome ? "board-pane-body--dash" : null) @(ScrollClass)">
+                @if (!Auth.IsSignedIn)
+                {
+                    <div class="board-pane-empty">
+                        <lottie-player class="board-pane-lottie"
+                                       src="/lottie/group.json"
+                                       background="transparent"
+                                       speed="1"
+                                       loop
+                                       autoplay>
+                        </lottie-player>
+                        <p class="board-pane-empty-title">Join your worship community</p>
+                        <p class="board-pane-empty-copy">Sign in to plan hymns on a group board.</p>
+                        <a class="btn" href="@AuthNav.LoginUrl()" @onclick="Close">Log in</a>
+                    </div>
+                }
+                else if (view == View.Groups)
+                {
+                    @if (Busy)
+                    {
+                        <div class="board-pane-empty">
+                            <span class="spinner" aria-hidden="true"></span>
+                            <p class="board-pane-empty-copy">Loading…</p>
+                        </div>
+                    }
+                    else if (!string.IsNullOrEmpty(Error))
+                    {
+                        <p class="board-pane-error">@Error</p>
+                    }
+                    else if (Groups.Count == 0)
+                    {
+                        <div class="board-pane-empty">
+                            <lottie-player class="board-pane-lottie"
+                                           src="/lottie/group.json"
+                                           background="transparent"
+                                           speed="1"
+                                           loop
+                                           autoplay>
+                            </lottie-player>
+                            <p class="board-pane-empty-title">No groups yet</p>
+                            <p class="board-pane-empty-copy">Create or join a worship group to use boards.</p>
+                            <a class="btn" href="groups" @onclick="Close">Open groups</a>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="board-pane-list">
+                            @foreach (var g in Groups)
+                            {
+                                <button type="button" class="board-pane-row" @onclick="() => OpenGroup(g)">
+                                    <span class="board-pane-row-main">
+                                        <span class="board-pane-row-title">@g.Name</span>
+                                        <span class="board-pane-row-meta">Code @g.JoinCode</span>
+                                    </span>
+                                    <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                                </button>
+                            }
+                        </div>
+                        <a class="board-pane-manage" href="groups" @onclick="Close">Manage groups</a>
+                    }
+                }
+                else if (Auth.IsSignedIn && view == View.Lists && ActiveGroup != null)
+                {
+                    <header class="board-pane-dash-header">
+                        <div class="board-pane-eyebrow">Group Board</div>
+                        <div class="board-pane-dash-title-row">
+                            <h2 class="board-pane-dash-name">@ActiveGroup.Name</h2>
+                            <button type="button"
+                                    class="board-pane-dash-icon"
+                                    title="Group options"
+                                    @onclick="OpenGroupMenuAsync">
+                                <i class="fa-solid fa-users" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </header>
+
+                    <h3 class="board-pane-section-title">Hymn Setlist</h3>
+
+                    @if (!string.IsNullOrEmpty(Error))
+                    {
+                        <p class="board-pane-error">@Error</p>
+                    }
+
+                    @if (Busy && Lists.Count == 0)
+                    {
+                        <div class="board-pane-empty board-pane-empty--inline">
+                            <span class="spinner" aria-hidden="true"></span>
+                        </div>
+                    }
+                    else if (Lists.Count == 0)
+                    {
+                        <div class="board-pane-empty board-pane-empty--inline">
+                            <p class="board-pane-empty-title">No hymn lists yet</p>
+                            <p class="board-pane-empty-copy">Tap + to create today’s setlist (same as the mobile app).</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="board-pane-setlist board-cascade @(listsEnterAnim ? "is-entering" : null)">
+                            <Virtualize Items="Lists" ItemSize="72f" OverscanCount="10" Context="list">
+                                @{
+                                    var unread = ActiveGroup == null
+                                        ? 0
+                                        : BoardUi.GetListUnreadCount(ActiveGroup.Id, list.Id);
+                                    var isOpen = string.Equals(swipedListId, list.Id, StringComparison.Ordinal);
+                                    var isDragging = string.Equals(swipeDragListId, list.Id, StringComparison.Ordinal);
+                                    var offset = isDragging ? swipeDragX : (isOpen ? -SwipeActionsWidth : 0);
+                                    var listEnterIdx = listsEnterAnim ? Lists.IndexOf(list) : -1;
+                                }
+                                <div class="board-swipe board-cascade-item @(isOpen ? "is-open" : null) @(isDragging ? "is-dragging" : null) @(offset < -1 ? "is-revealing" : null)"
+                                     data-list-id="@list.Id"
+                                     style="@CascadeStyle(offset, listEnterIdx)">
+                                    <div class="board-swipe-actions" aria-hidden="@(!isOpen)">
+                                        <button type="button"
+                                                class="board-swipe-btn board-swipe-btn--delete"
+                                                title="Delete"
+                                                @onclick="() => AskDeleteList(list)"
+                                                @onclick:stopPropagation="true">
+                                            <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                        </button>
+                                        <button type="button"
+                                                class="board-swipe-btn board-swipe-btn--edit"
+                                                title="Edit date"
+                                                @onclick="() => StartEditList(list)"
+                                                @onclick:stopPropagation="true">
+                                            <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                    <div class="board-swipe-front board-pane-card"
+                                         @onpointerdown="e => OnSwipePointerDown(list, e)"
+                                         @onpointermove="e => OnSwipePointerMove(list, e)"
+                                         @onpointerup="e => OnSwipePointerUp(list, e)"
+                                         @onpointercancel="e => OnSwipePointerUp(list, e)"
+                                         @onclick="() => OnListCardClick(list)">
+                                        <span class="board-pane-card-title-row">
+                                            <span class="board-pane-card-title">@list.Name</span>
+                                            @if (unread > 0)
+                                            {
+                                                <span class="board-unread-badge" aria-label="@unread unread">
+                                                    @(unread > 99 ? "99+" : unread.ToString())
+                                                </span>
+                                            }
+                                        </span>
+                                        <span class="board-pane-card-meta">@HymnCountLabel(list)</span>
+                                    </div>
+                                </div>
+                            </Virtualize>
+                        </div>
+                    }
+
+                    <button type="button"
+                            class="board-pane-fab"
+                            title="Create list"
+                            disabled="@Busy"
+                            @onclick="StartCreateList">
+                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                    </button>
+                }
+                else if (Auth.IsSignedIn && view == View.Members && ActiveGroup != null)
+                {
+                    <header class="board-pane-dash-header">
+                        <div class="board-pane-eyebrow">Group Board</div>
+                        <div class="board-pane-dash-title-row">
+                            <h2 class="board-pane-dash-name">@ActiveGroup.Name</h2>
+                            <button type="button"
+                                    class="board-pane-dash-icon"
+                                    title="Group options"
+                                    @onclick="OpenGroupMenuAsync">
+                                <i class="fa-solid fa-users" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </header>
+
+                    <div class="board-pane-members-title-row">
+                        <button type="button" class="board-pane-dash-icon" title="Back" @onclick="BackFromMembers">
+                            <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                        </button>
+                        <h3 class="board-pane-members-title">Members</h3>
+                    </div>
+
+                    <label class="board-pane-field-label">Search</label>
+                    <div class="board-pane-search">
+                        <input type="search"
+                               placeholder="Name or nickname"
+                               @bind="memberSearch"
+                               @bind:event="oninput"
+                               @bind:after="RefreshMemberPresentation" />
+                    </div>
+
+                    <label class="board-pane-field-label">Filter by role</label>
+                    <div class="board-pane-chips">
+                        @foreach (var role in RoleFilters)
+                        {
+                            var selected = string.Equals(memberRoleFilter, role, StringComparison.OrdinalIgnoreCase)
+                                           || (role == "All" && string.IsNullOrEmpty(memberRoleFilter));
+                            <button type="button"
+                                    class="board-pane-chip @(selected ? "is-selected" : null)"
+                                    @onclick="() => SetRoleFilter(role)">
+                                @role
+                            </button>
+                        }
+                    </div>
+
+                    <label class="board-pane-field-label">View</label>
+                    <div class="board-pane-segments">
+                        <button type="button"
+                                class="board-pane-segment @(!membersGroupByRole ? "is-selected" : null)"
+                                @onclick="() => SetMembersGrouped(false)">
+                            List
+                        </button>
+                        <button type="button"
+                                class="board-pane-segment @(membersGroupByRole ? "is-selected" : null)"
+                                @onclick="() => SetMembersGrouped(true)">
+                            By role
+                        </button>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(Error))
+                    {
+                        <p class="board-pane-error">@Error</p>
+                    }
+
+                    @if (Busy && Members.Count == 0)
+                    {
+                        <div class="board-pane-empty board-pane-empty--inline">
+                            <span class="spinner" aria-hidden="true"></span>
+                        </div>
+                    }
+                    else if (DisplayedMemberRows.Count == 0)
+                    {
+                        <div class="board-pane-empty board-pane-empty--inline">
+                            <p class="board-pane-empty-copy">No members match.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="board-pane-members board-cascade @(membersEnterAnim ? "is-entering" : null)">
+                            <Virtualize @key="memberVirtualKey"
+                                        Items="DisplayedMemberRows"
+                                        ItemSize="52f"
+                                        OverscanCount="12"
+                                        Context="row">
+                                @if (row.IsHeader)
+                                {
+                                    <div class="board-pane-member-section board-cascade-item"
+                                         style="@EnterDelayStyle(DisplayedMemberRows.IndexOf(row))">@row.Header</div>
+                                }
+                                else if (row.Member != null)
+                                {
+                                    <div class="board-pane-member board-cascade-item"
+                                         style="@EnterDelayStyle(DisplayedMemberRows.IndexOf(row))">
+                                        <span class="board-pane-avatar" style="@AvatarStyle(row.Member)">@Initials(row.Member)</span>
+                                        <span class="board-pane-member-main">
+                                            <span class="board-pane-member-name">@MemberListName(row.Member)</span>
+                                            @if (string.IsNullOrEmpty(memberRoleFilter)
+                                                 && !membersGroupByRole
+                                                 && !string.IsNullOrWhiteSpace(RolesSummary(row.Member)))
+                                            {
+                                                <span class="board-pane-member-roles">@RolesSummary(row.Member)</span>
+                                            }
+                                        </span>
+                                        @if (currentUserIsGroupAdmin
+                                             && !string.Equals(row.Member.Id, Auth.CurrentUserId, StringComparison.Ordinal))
+                                        {
+                                            <button type="button"
+                                                    class="board-pane-member-menu"
+                                                    title="Member options"
+                                                    disabled="@Busy"
+                                                    @onclick="() => OpenMemberMenu(row.Member)"
+                                                    @onclick:stopPropagation="true">
+                                                <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </Virtualize>
+                        </div>
+                    }
+                }
+                else if (Auth.IsSignedIn && view == View.ListDetail && ActiveList != null && ActiveGroup != null)
+                {
+                    <header class="board-pane-dash-header board-pane-list-header">
+                        <div class="board-pane-eyebrow">Group Board</div>
+                        <div class="board-pane-dash-title-row">
+                            <h2 class="board-pane-dash-name">@ActiveGroup.Name</h2>
+                        </div>
+                    </header>
+
+                    <div class="board-pane-detail-header">
+                        <button type="button" class="board-pane-dash-icon" title="Back" @onclick="GoBack">
+                            <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                        </button>
+                        <div class="board-pane-detail-titles">
+                            <div class="board-pane-detail-name">@ActiveList.Name</div>
+                        </div>
+                        <button type="button"
+                                class="board-pane-dash-icon"
+                                title="Board options"
+                                @onclick="OpenBoardOptions">
+                            <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
+                        </button>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(Status))
+                    {
+                        <p class="board-pane-status">@Status</p>
+                    }
+                    @if (!string.IsNullOrEmpty(Error))
+                    {
+                        <p class="board-pane-error">@Error</p>
+                    }
+
+                    <div class="board-pane-list board-pane-hymns board-cascade @(hymnsEnterAnim ? "is-entering" : null)">
+                        @if (ActiveList.Hymns.Count == 0)
+                        {
+                            <div class="board-pane-empty board-pane-empty--inline">
+                                <p class="board-pane-empty-title">No hymns scheduled</p>
+                                <p class="board-pane-empty-copy">Tap + below to add a hymn.</p>
+                            </div>
+                        }
+                        else
+                        {
+                            var boardCascade = 0;
+                            @foreach (var group in BoardGroups)
+                            {
+                                <div class="board-pane-section-block @(DragClass(group.Section?.Id))" @key="group.Key">
+                                    @if (group.Section != null)
+                                    {
+                                        var sectionEntry = group.Section;
+                                        var sectionSaved = IsSectionSaved(sectionEntry.SectionName);
+                                        var sectionOpen = string.Equals(swipedSectionId, sectionEntry.Id, StringComparison.Ordinal);
+                                        var sectionDragging = string.Equals(swipeSectionDragId, sectionEntry.Id, StringComparison.Ordinal);
+                                        var sectionOffset = sectionDragging ? swipeSectionDragX : (sectionOpen ? -SwipeActionsWidth : 0);
+                                        var sectionEnterIdx = hymnsEnterAnim ? boardCascade++ : -1;
+                                        <div class="board-pane-drop-line @(DropLineClass(sectionEntry.Id, below: false))"></div>
+                                        <div class="board-swipe board-swipe--section board-cascade-item @(sectionOpen ? "is-open" : null) @(sectionDragging ? "is-dragging" : null) @(sectionOffset < -1 ? "is-revealing" : null)"
+                                             style="@CascadeStyle(sectionOffset, sectionEnterIdx)">
+                                            <div class="board-swipe-actions" aria-hidden="@(!sectionOpen)">
+                                                <button type="button"
+                                                        class="board-swipe-btn board-swipe-btn--delete"
+                                                        title="Delete section"
+                                                        @onclick="() => AskDeleteSection(sectionEntry)"
+                                                        @onclick:stopPropagation="true">
+                                                    <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                                </button>
+                                                @if (sectionSaved)
+                                                {
+                                                    <button type="button"
+                                                            class="board-swipe-btn board-swipe-btn--unsave"
+                                                            title="This setlist only"
+                                                            @onclick="() => ToggleSectionTemplate(sectionEntry, false)"
+                                                            @onclick:stopPropagation="true">
+                                                        <i class="fa-solid fa-bookmark" aria-hidden="true"></i>
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <button type="button"
+                                                            class="board-swipe-btn board-swipe-btn--save"
+                                                            title="All future setlists"
+                                                            @onclick="() => ToggleSectionTemplate(sectionEntry, true)"
+                                                            @onclick:stopPropagation="true">
+                                                        <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                                                    </button>
+                                                }
+                                            </div>
+                                            <div class="board-swipe-front board-pane-section-row"
+                                                 data-board-entry-id="@sectionEntry.Id"
+                                                 @onpointerdown="e => OnSectionSwipePointerDown(sectionEntry, e)"
+                                                 @onpointermove="e => OnSectionSwipePointerMove(sectionEntry, e)"
+                                                 @onpointerup="e => OnSectionSwipePointerUp(sectionEntry, e)"
+                                                 @onpointercancel="e => OnSectionSwipePointerUp(sectionEntry, e)"
+                                                 @onclick="() => OnSectionRowClick(group.Key)">
+                                                <span class="board-pane-grip"
+                                                      title="Drag to reorder"
+                                                      @onpointerdown="e => BeginBoardPointerDrag(e, sectionEntry)"
+                                                      @onpointerdown:preventDefault
+                                                      @onpointerdown:stopPropagation="true"
+                                                      @onclick:stopPropagation="true">
+                                                    <i class="fa-solid fa-grip-vertical" aria-hidden="true"></i>
+                                                </span>
+                                                <span class="board-pane-section-name">@(sectionEntry.SectionName ?? "Section")</span>
+                                                @if (sectionSaved)
+                                                {
+                                                    <i class="fa-solid fa-bookmark board-pane-section-saved"
+                                                       title="Applies to future setlists"
+                                                       aria-hidden="true"></i>
+                                                }
+                                                <span class="board-pane-section-count">@group.Hymns.Count</span>
+                                                <i class="fa-solid fa-chevron-down board-pane-section-chevron @(group.IsCollapsed ? "is-collapsed" : null)"
+                                                   aria-hidden="true"></i>
+                                            </div>
+                                        </div>
+                                        <div class="board-pane-drop-line @(DropLineClass(sectionEntry.Id, below: true))"></div>
+                                    }
+
+                                    <div class="board-pane-section-panel @(group.IsCollapsed ? "is-collapsed" : null)">
+                                        <div class="board-pane-section-panel-inner@(group.Section != null ? " board-pane-section-panel-inner--indented" : "")">
+                                            @foreach (var hymn in group.Hymns)
+                                            {
+                                                var hymnOpen = string.Equals(swipedHymnId, hymn.Id, StringComparison.Ordinal);
+                                                var hymnDragging = string.Equals(swipeHymnDragId, hymn.Id, StringComparison.Ordinal);
+                                                var hymnOffset = hymnDragging ? swipeHymnDragX : (hymnOpen ? -SwipeActionsWidth : 0);
+                                                var hymnEnterIdx = hymnsEnterAnim && !group.IsCollapsed ? boardCascade++ : -1;
+                                                <div class="board-pane-hymn-wrap board-cascade-item @(DragClass(hymn.Id))"
+                                                     @key="hymn.Id"
+                                                     style="@EnterDelayStyle(hymnEnterIdx)">
+                                                    <div class="board-pane-drop-line @(DropLineClass(hymn.Id, below: false))"></div>
+                                                    <div class="board-swipe board-swipe--hymn @(hymnOpen ? "is-open" : null) @(hymnDragging ? "is-dragging" : null) @(hymnOffset < -1 ? "is-revealing" : null)"
+                                                         style="--swipe-x: @(hymnOffset.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))px">
+                                                        <div class="board-swipe-actions" aria-hidden="@(!hymnOpen)">
+                                                            <button type="button"
+                                                                    class="board-swipe-btn board-swipe-btn--delete"
+                                                                    title="Delete"
+                                                                    @onclick="() => AskDeleteHymn(hymn)"
+                                                                    @onclick:stopPropagation="true">
+                                                                <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                                            </button>
+                                                            <button type="button"
+                                                                    class="board-swipe-btn board-swipe-btn--edit"
+                                                                    title="Edit"
+                                                                    @onclick="() => StartEditHymn(hymn)"
+                                                                    @onclick:stopPropagation="true">
+                                                                <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                                                            </button>
+                                                        </div>
+                                                        <div class="board-swipe-front board-pane-hymn-card"
+                                                             data-board-entry-id="@hymn.Id"
+                                                             @onpointerdown="e => OnHymnSwipePointerDown(hymn, e)"
+                                                             @onpointermove="e => OnHymnSwipePointerMove(hymn, e)"
+                                                             @onpointerup="e => OnHymnSwipePointerUp(hymn, e)"
+                                                             @onpointercancel="e => OnHymnSwipePointerUp(hymn, e)"
+                                                             @onclick="() => OnHymnCardClick(hymn)">
+                                                            <span class="board-pane-grip"
+                                                                  title="Drag to reorder"
+                                                                  @onpointerdown="e => BeginBoardPointerDrag(e, hymn)"
+                                                                  @onpointerdown:preventDefault
+                                                                  @onpointerdown:stopPropagation="true"
+                                                                  @onclick:stopPropagation="true">
+                                                                <i class="fa-solid fa-grip-vertical" aria-hidden="true"></i>
+                                                            </span>
+                                                            <span class="board-pane-hymn-body">
+                                                                <span class="board-pane-hymn-top">
+                                                                    <span class="board-pane-hymn-number">Hymn #@hymn.HymnNumber</span>
+                                                                    @if (hymn.UpdatedAt != default)
+                                                                    {
+                                                                        <span class="board-pane-hymn-when">
+                                                                            <i class="fa-regular fa-clock" aria-hidden="true"></i>
+                                                                            @FormatAddedAt(hymn.UpdatedAt)
+                                                                        </span>
+                                                                    }
+                                                                </span>
+                                                                @if (!string.IsNullOrWhiteSpace(FirstLineFor(hymn)))
+                                                                {
+                                                                    <span class="board-pane-hymn-line">@FirstLineFor(hymn)</span>
+                                                                }
+                                                                @if (!string.IsNullOrWhiteSpace(hymn.AddedByName))
+                                                                {
+                                                                    <span class="board-pane-hymn-meta">
+                                                                        <i class="fa-solid fa-user" aria-hidden="true"></i>
+                                                                        @hymn.AddedByName
+                                                                    </span>
+                                                                }
+                                                                @if (!string.IsNullOrWhiteSpace(hymn.Notes)
+                                                                     && !string.Equals(hymn.Notes, FirstLineFor(hymn), StringComparison.Ordinal))
+                                                                {
+                                                                    <span class="board-pane-hymn-note">
+                                                                        <i class="fa-solid fa-note-sticky" aria-hidden="true"></i>
+                                                                        @hymn.Notes
+                                                                    </span>
+                                                                }
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="board-pane-drop-line @(DropLineClass(hymn.Id, below: true))"></div>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+
+                    @if (showAddHymn)
+                    {
+                        <div class="board-add-panel" @onclick:stopPropagation="true">
+                            <div class="board-add-panel-head">
+                                <span class="board-add-panel-title">Add hymn</span>
+                                <button type="button"
+                                        class="board-add-panel-close"
+                                        title="Close"
+                                        @onclick="CloseAddHymn">
+                                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div class="board-add-suggest-wrap">
+                                @if (addHymnSuggestions.Count > 0)
+                                {
+                                    <div class="board-add-suggest" role="listbox" aria-label="Hymn suggestions">
+                                        @foreach (var s in addHymnSuggestions)
+                                        {
+                                            <button type="button"
+                                                    class="board-add-suggest-item"
+                                                    role="option"
+                                                    @onclick="() => PickHymnSuggestion(s)">
+                                                @if (s.LineFirst)
+                                                {
+                                                    <span class="board-add-suggest-primary">@s.Line</span>
+                                                    <span class="board-add-suggest-secondary">Hymn #@s.Number</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="board-add-suggest-primary">Hymn #@s.Number</span>
+                                                    @if (!string.IsNullOrWhiteSpace(s.Line))
+                                                    {
+                                                        <span class="board-add-suggest-secondary">@s.Line</span>
+                                                    }
+                                                }
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                                <input class="board-add-panel-input"
+                                       type="text"
+                                       autocomplete="off"
+                                       placeholder="Number or any line"
+                                       value="@addHymnQuery"
+                                       @oninput="OnAddHymnQueryInput"
+                                       @onkeydown="OnAddHymnKeyDown" />
+                            </div>
+                            <input class="board-add-panel-input"
+                                   type="text"
+                                   autocomplete="off"
+                                   placeholder="Note (optional)"
+                                   @bind="addHymnNotes"
+                                   @bind:event="oninput" />
+                            @if (!string.IsNullOrWhiteSpace(addHymnError))
+                            {
+                                <p class="board-add-panel-error">@addHymnError</p>
+                            }
+                            <button type="button"
+                                    class="btn btn-yellow-black board-add-panel-submit-wide"
+                                    disabled="@Busy"
+                                    @onclick="ConfirmAddHymn">
+                                Add hymn
+                            </button>
+                        </div>
+                    }
+                    else if (showAddSection)
+                    {
+                        <div class="board-add-panel" @onclick:stopPropagation="true">
+                            <div class="board-add-panel-head">
+                                <span class="board-add-panel-title">Add section</span>
+                                <button type="button"
+                                        class="board-add-panel-close"
+                                        title="Close"
+                                        @onclick="CloseAddSection">
+                                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <input class="board-add-panel-input"
+                                   type="text"
+                                   autocomplete="off"
+                                   placeholder="Section name (e.g. Group 1)"
+                                   @bind="addSectionName"
+                                   @bind:event="oninput"
+                                   @onkeydown="OnAddSectionKeyDown" />
+                            @if (!string.IsNullOrWhiteSpace(addSectionError))
+                            {
+                                <p class="board-add-panel-error">@addSectionError</p>
+                            }
+                            <div class="board-add-panel-foot">
+                                <label class="board-add-panel-check">
+                                    <input type="checkbox" @bind="addSectionThisListOnly" />
+                                    <span>This list only</span>
+                                </label>
+                                <button type="button"
+                                        class="btn btn-yellow-black board-add-panel-submit"
+                                        disabled="@Busy"
+                                        @onclick="ConfirmAddSection">
+                                    Add
+                                </button>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="board-pane-fab-stack @(fabMenuOpen ? "is-open" : null)">
+                            <div class="board-pane-fab-sub">
+                                <span class="board-pane-fab-label">Section</span>
+                                <button type="button"
+                                        class="board-pane-fab"
+                                        title="Add section"
+                                        disabled="@Busy"
+                                        @onclick="OpenAddSection">
+                                    <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div class="board-pane-fab-sub">
+                                <span class="board-pane-fab-label">Hymn</span>
+                                <button type="button"
+                                        class="board-pane-fab"
+                                        title="Add hymn"
+                                        disabled="@Busy"
+                                        @onclick="OpenAddHymn">
+                                    <i class="fa-solid fa-music" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <button type="button"
+                                    class="board-pane-fab"
+                                    title="@(fabMenuOpen ? "Close" : "Add")"
+                                    disabled="@Busy"
+                                    aria-expanded="@fabMenuOpen"
+                                    @onclick="ToggleFabMenu">
+                                <i class="fa-solid @(fabMenuOpen ? "fa-xmark" : "fa-plus")" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    }
+                }
+            </div>
+        </aside>
+    </div>
+}
+
+@if (showCreateList && ActiveGroup != null)
+{
+    <div class="modal-backdrop" @onclick="CloseCreateList">
+        <div class="modal create-hymn-list-modal" @onclick:stopPropagation="true">
+            <h2>@(editingList == null ? "New hymn list" : "Change date")</h2>
+            <p class="create-hymn-list-copy">@(editingList == null ? "Choose a date for this hymn list." : "Choose a new date for this hymn list.")</p>
+            <p class="create-hymn-list-selected">@newListDate.ToString("dddd, MMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture)</p>
+            <div class="create-hymn-cal" role="group" aria-label="Choose date">
+                <div class="create-hymn-cal-head">
+                    <button type="button" class="create-hymn-cal-nav" @onclick="PrevCreateListMonth" aria-label="Previous month">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <div class="create-hymn-cal-title">@createListMonthTitle</div>
+                    <button type="button" class="create-hymn-cal-nav" @onclick="NextCreateListMonth" aria-label="Next month">
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                </div>
+                <div class="create-hymn-cal-weekdays" aria-hidden="true">
+                    <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                </div>
+                <div class="create-hymn-cal-grid">
+                    @foreach (var day in CreateListCalendarDays)
+                    {
+                        if (day == null)
+                        {
+                            <span class="create-hymn-cal-cell is-empty"></span>
+                        }
+                        else
+                        {
+                            var d = day.Value;
+                            var selected = d.Date == newListDate.Date;
+                            var today = d.Date == DateTime.Today;
+                            <button type="button"
+                                    class="create-hymn-cal-cell @(selected ? "is-selected" : null) @(today ? "is-today" : null)"
+                                    @onclick="() => SelectCreateListDate(d)">
+                                <span>@d.Day</span>
+                            </button>
+                        }
+                    }
+                </div>
+                <div class="create-hymn-cal-footer">
+                    <button type="button" class="create-hymn-cal-link" @onclick="SelectCreateListToday">Today</button>
+                </div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(createListError))
+            {
+                <p class="create-hymn-list-error">@createListError</p>
+            }
+            <div class="actions">
+                <button type="button" class="btn secondary" @onclick="CloseCreateList">Cancel</button>
+                <button type="button" class="btn btn-yellow-black" disabled="@Busy" @onclick="ConfirmListDate">
+                    @(editingList == null ? "Create" : "Save")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<ActionMenuDialog @bind-Visible="showGroupMenu"
+                  Title="@(ActiveGroup?.Name ?? "Group")"
+                  Options="groupMenuOptions"
+                  OnSelected="OnGroupMenuSelected" />
+
+<ActionMenuDialog @bind-Visible="showBoardOptions"
+                  Title="Board options"
+                  Options="boardOptionsMenu"
+                  OnSelected="OnBoardOptionSelected" />
+
+<ActionMenuDialog @bind-Visible="showSortMenu"
+                  Title="Sort sections"
+                  Options="sortMenuOptions"
+                  OnSelected="OnSortOptionSelected" />
+
+<ActionMenuDialog @bind-Visible="showMemberMenu"
+                  Title="@(memberMenuTarget == null ? "Member" : DisplayName(memberMenuTarget))"
+                  Options="memberMenuOptions"
+                  OnSelected="OnMemberMenuSelected" />
+
+<ConfirmDialog @bind-Visible="showLeaveConfirm"
+               Title="Leave group"
+               Message="@LeaveConfirmMessage"
+               ConfirmLabel="Leave"
+               CancelLabel="Cancel"
+               DangerConfirm="true"
+               OnConfirmed="ConfirmLeaveGroup" />
+
+<ConfirmDialog @bind-Visible="showRemoveMemberConfirm"
+               Title="Remove member"
+               Message="@removeMemberConfirmMessage"
+               ConfirmLabel="Remove"
+               CancelLabel="Cancel"
+               DangerConfirm="true"
+               OnConfirmed="ConfirmRemoveMember" />
+
+<ConfirmDialog @bind-Visible="showRemoveAdminConfirm"
+               Title="Remove as Admin"
+               Message="@removeAdminConfirmMessage"
+               ConfirmLabel="Remove"
+               CancelLabel="Cancel"
+               DangerConfirm="true"
+               OnConfirmed="ConfirmRemoveAdmin" />
+
+<ConfirmDialog @bind-Visible="showBoardConfirm"
+               Title="@boardConfirmTitle"
+               Message="@boardConfirmMessage"
+               ConfirmLabel="Continue"
+               CancelLabel="Cancel"
+               OnConfirmed="ConfirmBoardAction" />
+
+<ConfirmDialog @bind-Visible="showDeleteListConfirm"
+               Title="Delete hymn list"
+               Message="@deleteListConfirmMessage"
+               ConfirmLabel="Delete"
+               CancelLabel="Cancel"
+               DangerConfirm="true"
+               OnConfirmed="ConfirmDeleteList" />
+
+<ConfirmDialog @bind-Visible="showDeleteHymnConfirm"
+               Title="Remove hymn"
+               Message="@deleteHymnConfirmMessage"
+               ConfirmLabel="Remove"
+               CancelLabel="Cancel"
+               DangerConfirm="true"
+               OnConfirmed="ConfirmDeleteHymn" />
+
+@if (showRemoveSection && pendingRemoveSection != null)
+{
+    <div class="modal-backdrop" @onclick="CloseRemoveSection">
+        <div class="modal create-hymn-list-modal edit-hymn-modal" @onclick:stopPropagation="true">
+            <h2>Remove “@(pendingRemoveSection.SectionName ?? "Section")”?</h2>
+            <p class="create-hymn-list-copy">
+                @(removeSectionIsSaved
+                    ? "Remove this saved section from the board?"
+                    : "Remove this section from the board?")
+            </p>
+            @if (removeSectionHymnCount > 0)
+            {
+                <label class="field field--check">
+                    <input type="checkbox" @bind="removeDeleteHymns" />
+                    <span>
+                        @(removeSectionHymnCount == 1
+                            ? "Also delete 1 hymn in this section"
+                            : $"Also delete {removeSectionHymnCount} hymns in this section")
+                    </span>
+                </label>
+            }
+            @if (removeSectionIsSaved)
+            {
+                <label class="field field--check">
+                    <input type="checkbox" @bind="removeCurrentDateOnly" />
+                    <span>Current date only</span>
+                </label>
+            }
+            <div class="actions">
+                <button type="button" class="btn secondary" @onclick="CloseRemoveSection">Cancel</button>
+                <button type="button" class="btn danger" disabled="@Busy" @onclick="ConfirmRemoveSection">Remove</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showEditHymn && editingHymn != null)
+{
+    <div class="modal-backdrop" @onclick="CloseEditHymn">
+        <div class="modal create-hymn-list-modal edit-hymn-modal" @onclick:stopPropagation="true">
+            <h2>Edit hymn</h2>
+            <p class="create-hymn-list-copy">Update the hymn number or notes.</p>
+            <label class="field">
+                <span>Hymn number</span>
+                <input type="text"
+                       inputmode="numeric"
+                       autocomplete="off"
+                       @bind="editHymnNumber"
+                       @bind:event="oninput" />
+            </label>
+            <label class="field">
+                <span>Notes</span>
+                <textarea rows="3" @bind="editHymnNotes" @bind:event="oninput"></textarea>
+            </label>
+            @if (!string.IsNullOrWhiteSpace(editHymnError))
+            {
+                <p class="create-hymn-list-error">@editHymnError</p>
+            }
+            <div class="actions">
+                <button type="button" class="btn secondary" @onclick="CloseEditHymn">Cancel</button>
+                <button type="button" class="btn btn-yellow-black" disabled="@Busy" @onclick="SaveEditHymn">Save</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    enum View { Groups, Lists, ListDetail, Members }
+    enum BoardConfirmAction { None, ClearHymns, ClearSections, ClearSavedSections }
+
+    static readonly string[] BoardOptionsMenu =
+    [
+        "Sort sections",
+        "Clear all hymns in this list",
+        "Clear all sections in this list",
+        "Clear all saved sections",
+    ];
+
+    static readonly (string Mode, string Label)[] SortModes =
+    [
+        ("AddedOrder", "Order added"),
+        ("DateNewest", "Date (newest first)"),
+        ("DateOldest", "Date (oldest first)"),
+        ("NameAsc", "Name (A–Z)"),
+        ("NameDesc", "Name (Z–A)"),
+    ];
+
+    sealed class MemberRow
+    {
+        public bool IsHeader { get; init; }
+        public string? Header { get; init; }
+        public GroupMemberDoc? Member { get; init; }
+    }
+
+    sealed class BoardSectionGroup
+    {
+        public string Key { get; init; } = "";
+        public BoardHymnDoc? Section { get; init; }
+        public List<BoardHymnDoc> Hymns { get; init; } = new();
+        public bool IsCollapsed { get; set; }
+    }
+
+    static readonly string[] RoleFilters =
+    [
+        "All", "Admin", "Preacher", "Worship Leader", "Projector", "Accompaniment"
+    ];
+
+    static readonly string[] RoleOrder =
+    [
+        "Preacher", "Worship Leader", "Projector", "Accompaniment"
+    ];
+
+    const int CloseMs = 220;
+
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+
+    bool show;
+    bool animOpen;
+    bool closing;
+    bool Busy;
+    bool showCreateList;
+    bool showGroupMenu;
+    bool showBoardOptions;
+    bool showSortMenu;
+    bool showLeaveConfirm;
+    bool showRemoveMemberConfirm;
+    bool showRemoveAdminConfirm;
+    bool showMemberMenu;
+    bool showBoardConfirm;
+    bool showDeleteListConfirm;
+    bool showDeleteHymnConfirm;
+    bool showEditHymn;
+    bool showAddHymn;
+    bool showAddSection;
+    bool fabMenuOpen;
+    bool addSectionThisListOnly = true;
+    bool showRemoveSection;
+    bool removeDeleteHymns;
+    bool removeCurrentDateOnly = true;
+    bool removeSectionIsSaved;
+    int removeSectionHymnCount;
+    bool membersGroupByRole;
+    bool currentUserIsGroupAdmin;
+    bool listsEnterAnim;
+    bool hymnsEnterAnim;
+    bool membersEnterAnim;
+    int listsEnterAnimToken;
+    int hymnsEnterAnimToken;
+    int membersEnterAnimToken;
+    string? Error;
+    string? Status;
+    string? createListError;
+    string deleteListConfirmMessage = "";
+    string deleteHymnConfirmMessage = "";
+    string removeMemberConfirmMessage = "";
+    string removeAdminConfirmMessage = "";
+    GroupMemberDoc? pendingRemoveMember;
+    GroupMemberDoc? pendingRemoveAdmin;
+    GroupMemberDoc? memberMenuTarget;
+    List<string> memberMenuOptions = new();
+    string editHymnNumber = "";
+    string editHymnNotes = "";
+    string? editHymnError;
+    string addHymnQuery = "";
+    string addHymnNotes = "";
+    string? addHymnError;
+    string? addHymnPickedNumber;
+    string? addHymnPickedLine;
+    string addSectionName = "";
+    string? addSectionError;
+    List<BoardHymnSuggestion> addHymnSuggestions = new();
+    List<HymnCatalogEntry> addHymnCatalog = new();
+    CancellationTokenSource? addHymnSuggestCts;
+    const int AddHymnSuggestDebounceMs = 180;
+    BoardListDoc? editingList;
+    BoardListDoc? pendingDeleteList;
+    BoardHymnDoc? pendingDeleteHymn;
+    BoardHymnDoc? pendingRemoveSection;
+    BoardHymnDoc? editingHymn;
+    DateTime newListDate = DateTime.Today;
+    DateTime createListMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+
+    const double SwipeActionsWidth = 116;
+    string? swipedListId;
+    string? swipeDragListId;
+    double swipeStartX;
+    double swipeStartY;
+    double swipeStartOffset;
+    double swipeDragX;
+    bool swipeMoved;
+    bool swipeAxisLocked;
+    bool swipeHorizontal;
+    bool suppressListClick;
+    long? swipePointerId;
+
+    string? swipedHymnId;
+    string? swipeHymnDragId;
+    double swipeHymnStartX;
+    double swipeHymnStartY;
+    double swipeHymnStartOffset;
+    double swipeHymnDragX;
+    bool swipeHymnMoved;
+    bool swipeHymnAxisLocked;
+    bool swipeHymnHorizontal;
+    bool suppressHymnClick;
+    long? swipeHymnPointerId;
+
+    string? swipedSectionId;
+    string? swipeSectionDragId;
+    double swipeSectionStartX;
+    double swipeSectionStartY;
+    double swipeSectionStartOffset;
+    double swipeSectionDragX;
+    bool swipeSectionMoved;
+    bool swipeSectionAxisLocked;
+    bool swipeSectionHorizontal;
+    bool suppressSectionClick;
+    long? swipeSectionPointerId;
+    string createListMonthTitle => createListMonth.ToString("MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture);
+    IEnumerable<DateTime?> CreateListCalendarDays
+    {
+        get
+        {
+            var first = createListMonth;
+            var startPad = (int)first.DayOfWeek; // Sunday = 0
+            var daysInMonth = DateTime.DaysInMonth(first.Year, first.Month);
+            for (var i = 0; i < startPad; i++)
+                yield return null;
+            for (var d = 1; d <= daysInMonth; d++)
+                yield return new DateTime(first.Year, first.Month, d);
+        }
+    }
+    string memberSearch = "";
+    string? memberRoleFilter;
+    string sectionSortMode = "AddedOrder";
+    string boardConfirmTitle = "";
+    string boardConfirmMessage = "";
+    BoardConfirmAction pendingBoardAction = BoardConfirmAction.None;
+    View view = View.Groups;
+
+    List<WorshipGroupDoc> Groups = new();
+    List<BoardListDoc> Lists = new();
+    List<GroupMemberDoc> Members = new();
+    List<MemberRow> DisplayedMemberRows = new();
+    List<BoardSectionGroup> BoardGroups = new();
+    List<string> groupMenuOptions = new();
+    List<string> boardOptionsMenu = BoardOptionsMenu.ToList();
+    List<string> sortMenuOptions = new();
+    readonly HashSet<string> collapsedSections = new(StringComparer.Ordinal);
+    readonly HashSet<string> savedSectionNames = new(StringComparer.OrdinalIgnoreCase);
+    readonly Dictionary<string, string> firstLineCache = new(StringComparer.OrdinalIgnoreCase);
+    WorshipGroupDoc? ActiveGroup;
+    BoardListDoc? ActiveList;
+    IDisposable? listSub;
+    DotNetObjectReference<BoardPane>? dragDotNetRef;
+    string? dragEntryId;
+    string? dropLineEntryId;
+    bool dropLineBelow;
+    bool suppressNextClick;
+
+    bool HasActiveHymn => State.ActiveHymn != null && !string.IsNullOrWhiteSpace(State.ActiveHymn.Number);
+    bool UseDashboardChrome => Auth.IsSignedIn
+        && view is View.Lists or View.ListDetail or View.Members
+        && ActiveGroup != null;
+    bool CanGoBack => false;
+
+    string ScrollClass => view switch
+    {
+        View.Lists => "board-pane-body--scroll-lists",
+        View.Members => "board-pane-body--scroll-members",
+        View.ListDetail => "board-pane-body--scroll-hymns",
+        _ => ""
+    };
+
+    string memberVirtualKey =>
+        $"{membersGroupByRole}|{memberRoleFilter}|{memberSearch}|{DisplayedMemberRows.Count}";
+
+    string HeaderTitle => "Group Board";
+
+    string LeaveConfirmMessage =>
+        ActiveGroup == null
+            ? "Leave this group? You can rejoin later with the group code or ID."
+            : $"Leave {ActiveGroup.Name}? You can rejoin later with the group code or ID.";
+
+    static string HymnCountLabel(BoardListDoc list)
+    {
+        var n = list.Hymns?.Count(h => !h.IsSection) ?? 0;
+        return n == 1 ? "1 hymn" : $"{n} hymns";
+    }
+
+    protected override void OnInitialized()
+    {
+        Auth.AuthStateChanged += OnAuth;
+        State.Changed += OnStateChanged;
+        BoardUi.UnreadChanged += OnUnreadChanged;
+        BoardUi.OpenRequested += OnOpenRequested;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Visible && !show && !closing)
+        {
+            show = true;
+            animOpen = false;
+            ResetNav();
+            await EnterAsync();
+            if (Auth.IsSignedIn)
+                await LoadGroupsAsync();
+        }
+        else if (!Visible && show && !closing)
+        {
+            await ExitAsync(notifyParent: false);
+        }
+    }
+
+    async Task EnterAsync()
+    {
+        await Task.Delay(20);
+        if (!show || closing) return;
+        animOpen = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task ExitAsync(bool notifyParent)
+    {
+        if (closing) return;
+        closing = true;
+        animOpen = false;
+        showGroupMenu = false;
+        showBoardOptions = false;
+        showSortMenu = false;
+        showLeaveConfirm = false;
+        showBoardConfirm = false;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(CloseMs);
+        show = false;
+        closing = false;
+        listSub?.Dispose();
+        listSub = null;
+        if (notifyParent || Visible)
+            await VisibleChanged.InvokeAsync(false);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    Task Close() => ExitAsync(notifyParent: true);
+
+    void ResetNav()
+    {
+        view = View.Groups;
+        ActiveGroup = null;
+        ActiveList = null;
+        Lists = new();
+        Members = new();
+        DisplayedMemberRows = new();
+        BoardGroups = new();
+        collapsedSections.Clear();
+        memberSearch = "";
+        memberRoleFilter = null;
+        membersGroupByRole = false;
+        Error = null;
+        Status = null;
+        listSub?.Dispose();
+        listSub = null;
+    }
+
+    void GoBack()
+    {
+        Status = null;
+        Error = null;
+        fabMenuOpen = false;
+        showAddSection = false;
+        showAddHymn = false;
+        if (view == View.ListDetail)
+        {
+            listSub?.Dispose();
+            listSub = null;
+            ActiveList = null;
+            view = View.Lists;
+            TriggerListsEnterAnim();
+            return;
+        }
+
+        if (view == View.Members)
+        {
+            BackFromMembers();
+            return;
+        }
+
+        ActiveGroup = null;
+        Lists = new();
+        view = View.Groups;
+    }
+
+    void BackFromMembers()
+    {
+        Error = null;
+        view = View.Lists;
+        TriggerListsEnterAnim();
+    }
+
+    void TriggerListsEnterAnim() =>
+        TriggerCascadeEnter(ref listsEnterAnim, ref listsEnterAnimToken, Lists.Count, "lists");
+
+    void TriggerHymnsEnterAnim() =>
+        TriggerCascadeEnter(ref hymnsEnterAnim, ref hymnsEnterAnimToken, CountVisibleBoardCascadeItems(), "hymns");
+
+    void TriggerMembersEnterAnim() =>
+        TriggerCascadeEnter(ref membersEnterAnim, ref membersEnterAnimToken, DisplayedMemberRows.Count, "members");
+
+    void TriggerCascadeEnter(ref bool flag, ref int token, int itemCount, string kind)
+    {
+        token++;
+        var t = token;
+        flag = itemCount > 0;
+        if (!flag)
+            return;
+        _ = ClearCascadeEnterKindAsync(kind, t, itemCount);
+    }
+
+    async Task ClearCascadeEnterKindAsync(string kind, int token, int itemCount)
+    {
+        var wait = 320 + Math.Min(Math.Max(itemCount, 1), 24) * 45;
+        await Task.Delay(wait);
+        var changed = false;
+        switch (kind)
+        {
+            case "lists" when token == listsEnterAnimToken:
+                listsEnterAnim = false;
+                changed = true;
+                break;
+            case "hymns" when token == hymnsEnterAnimToken:
+                hymnsEnterAnim = false;
+                changed = true;
+                break;
+            case "members" when token == membersEnterAnimToken:
+                membersEnterAnim = false;
+                changed = true;
+                break;
+        }
+        if (changed)
+            await InvokeAsync(StateHasChanged);
+    }
+
+    int CountVisibleBoardCascadeItems()
+    {
+        var n = 0;
+        foreach (var group in BoardGroups)
+        {
+            if (group.Section != null)
+                n++;
+            if (!group.IsCollapsed)
+                n += group.Hymns.Count;
+        }
+        return n;
+    }
+
+    static string EnterDelayStyle(int index)
+    {
+        if (index < 0)
+            return "";
+        var ms = index * 45;
+        return $"--enter-delay:{ms.ToString(System.Globalization.CultureInfo.InvariantCulture)}ms";
+    }
+
+    static string CascadeStyle(double swipeX, int enterIndex)
+    {
+        var x = swipeX.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        if (enterIndex < 0)
+            return $"--swipe-x: {x}px";
+        var delay = (enterIndex * 45).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return $"--swipe-x: {x}px; --enter-delay:{delay}ms";
+    }
+
+    void OpenBoardOptions()
+    {
+        showBoardOptions = true;
+    }
+
+    async Task OnBoardOptionSelected(string action)
+    {
+        if (ActiveGroup == null || ActiveList == null || string.IsNullOrEmpty(action)) return;
+        switch (action)
+        {
+            case "Sort sections":
+                sortMenuOptions = SortModes
+                    .Select(m => m.Mode == sectionSortMode ? $"✓ {m.Label}" : m.Label)
+                    .ToList();
+                showSortMenu = true;
+                break;
+            case "Clear all hymns in this list":
+                pendingBoardAction = BoardConfirmAction.ClearHymns;
+                boardConfirmTitle = "Clear all hymns";
+                boardConfirmMessage = "Remove every hymn from this list? Unsaved sections will also be removed.";
+                showBoardConfirm = true;
+                break;
+            case "Clear all sections in this list":
+                pendingBoardAction = BoardConfirmAction.ClearSections;
+                boardConfirmTitle = "Clear all sections";
+                boardConfirmMessage = "Remove every section from this list? Saved sections for other lists will remain.";
+                showBoardConfirm = true;
+                break;
+            case "Clear all saved sections":
+                pendingBoardAction = BoardConfirmAction.ClearSavedSections;
+                boardConfirmTitle = "Clear all saved sections";
+                boardConfirmMessage = "Clear saved sections for all lists and remove sections from this list?";
+                showBoardConfirm = true;
+                break;
+        }
+
+        await Task.CompletedTask;
+    }
+
+    async Task OnSortOptionSelected(string picked)
+    {
+        if (ActiveGroup == null || ActiveList == null || string.IsNullOrWhiteSpace(picked)) return;
+        var label = picked.StartsWith("✓ ", StringComparison.Ordinal) ? picked[2..] : picked;
+        var mode = SortModes.FirstOrDefault(m => m.Label == label).Mode;
+        if (string.IsNullOrEmpty(mode)) return;
+
+        Busy = true;
+        Error = null;
+        try
+        {
+            sectionSortMode = mode;
+            ActiveList = await BoardService.ApplySectionSortAsync(ActiveGroup.Id, ActiveList.Id, mode);
+            RebuildBoardDisplayRows();
+            var nice = SortModes.First(m => m.Mode == mode).Label.ToLowerInvariant();
+            State.ShowToast("/lottie/done.gif", $"Sections sorted by {nice}.");
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    async Task ConfirmBoardAction()
+    {
+        if (ActiveGroup == null || ActiveList == null || pendingBoardAction == BoardConfirmAction.None)
+            return;
+
+        Busy = true;
+        Error = null;
+        try
+        {
+            switch (pendingBoardAction)
+            {
+                case BoardConfirmAction.ClearHymns:
+                    await BoardService.ClearAllHymnsAsync(ActiveGroup.Id, ActiveList.Id);
+                    State.ShowToast("/lottie/done.gif", "Hymns cleared.");
+                    break;
+                case BoardConfirmAction.ClearSections:
+                    await BoardService.ClearAllSectionsInListAsync(ActiveGroup.Id, ActiveList.Id);
+                    State.ShowToast("/lottie/done.gif", "Sections cleared.");
+                    break;
+                case BoardConfirmAction.ClearSavedSections:
+                    await BoardService.ClearAllSavedSectionsAsync(ActiveGroup.Id, ActiveList.Id);
+                    savedSectionNames.Clear();
+                    State.ShowToast("/lottie/done.gif", "Saved sections cleared.");
+                    break;
+            }
+
+            ActiveList = await BoardService.GetListAsync(ActiveGroup.Id, ActiveList.Id) ?? ActiveList;
+            RebuildBoardDisplayRows();
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            pendingBoardAction = BoardConfirmAction.None;
+            Busy = false;
+        }
+    }
+
+    async Task OpenGroupMenuAsync()
+    {
+        if (ActiveGroup == null) return;
+        var muted = false;
+        try
+        {
+            muted = await GroupService.IsGroupNotificationsMutedAsync(ActiveGroup.Id);
+        }
+        catch { /* offline / missing */ }
+
+        groupMenuOptions =
+        [
+            "View members",
+            "Share Invite Code",
+            muted ? "Unmute notifications" : "Mute notifications",
+            "Leave group",
+        ];
+        showGroupMenu = true;
+    }
+
+    async Task OnGroupMenuSelected(string action)
+    {
+        if (ActiveGroup == null || string.IsNullOrEmpty(action)) return;
+        try
+        {
+            switch (action)
+            {
+                case "View members":
+                    await ShowMembersAsync();
+                    break;
+                case "Share Invite Code":
+                    await ShareInviteCodeAsync();
+                    break;
+                case "Mute notifications":
+                    await GroupService.SetGroupNotificationsMutedAsync(ActiveGroup.Id, true);
+                    State.ShowToast("/lottie/done.gif", "Notifications muted for this group.");
+                    break;
+                case "Unmute notifications":
+                    await GroupService.SetGroupNotificationsMutedAsync(ActiveGroup.Id, false);
+                    State.ShowToast("/lottie/done.gif", "Notifications enabled for this group.");
+                    break;
+                case "Leave group":
+                    showLeaveConfirm = true;
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+    }
+
+    async Task ShowMembersAsync()
+    {
+        if (ActiveGroup == null) return;
+        view = View.Members;
+        memberSearch = "";
+        memberRoleFilter = null;
+        membersGroupByRole = false;
+        Members = new();
+        DisplayedMemberRows = new();
+        Busy = true;
+        Error = null;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            Members = (await GroupService.GetMembersAsync(ActiveGroup.Id))
+                .OrderBy(m => DisplayName(m), StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            currentUserIsGroupAdmin = Members.Any(m =>
+                string.Equals(m.Id, Auth.CurrentUserId, StringComparison.Ordinal) && m.IsAdmin)
+                || string.Equals(ActiveGroup.CreatedBy, Auth.CurrentUserId, StringComparison.Ordinal);
+            RefreshMemberPresentation();
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+            TriggerMembersEnterAnim();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    void SetRoleFilter(string role)
+    {
+        memberRoleFilter = role == "All" ? null : role;
+        RefreshMemberPresentation();
+    }
+
+    void SetMembersGrouped(bool grouped)
+    {
+        membersGroupByRole = grouped;
+        RefreshMemberPresentation();
+    }
+
+    void RefreshMemberPresentation()
+    {
+        var filtered = FilterMembers(Members).ToList();
+        var rows = new List<MemberRow>();
+
+        if (membersGroupByRole)
+        {
+            if (string.Equals(memberRoleFilter, "Admin", StringComparison.OrdinalIgnoreCase))
+            {
+                var admins = filtered
+                    .Where(m => m.IsAdmin)
+                    .OrderBy(m => DisplayName(m), StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (admins.Count > 0)
+                {
+                    rows.Add(new MemberRow { IsHeader = true, Header = "Admin" });
+                    rows.AddRange(admins.Select(m => new MemberRow { Member = m }));
+                }
+            }
+            else
+            {
+                foreach (var role in RoleOrder)
+                {
+                    if (!string.IsNullOrEmpty(memberRoleFilter) &&
+                        !role.Equals(memberRoleFilter, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var section = filtered
+                        .Where(m => HasRole(m, role))
+                        .OrderBy(m => DisplayName(m), StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    if (section.Count == 0) continue;
+                    rows.Add(new MemberRow { IsHeader = true, Header = role });
+                    rows.AddRange(section.Select(m => new MemberRow { Member = m }));
+                }
+
+                if (string.IsNullOrEmpty(memberRoleFilter))
+                {
+                    var other = filtered
+                        .Where(m => !RoleOrder.Any(r => HasRole(m, r)))
+                        .OrderBy(m => DisplayName(m), StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    if (other.Count > 0)
+                    {
+                        rows.Add(new MemberRow { IsHeader = true, Header = "Members" });
+                        rows.AddRange(other.Select(m => new MemberRow { Member = m }));
+                    }
+                }
+            }
+        }
+        else
+        {
+            rows.AddRange(filtered
+                .OrderBy(m => DisplayName(m), StringComparer.OrdinalIgnoreCase)
+                .Select(m => new MemberRow { Member = m }));
+        }
+
+        DisplayedMemberRows = rows;
+    }
+
+    IEnumerable<GroupMemberDoc> FilterMembers(IEnumerable<GroupMemberDoc> source)
+    {
+        var filtered = source;
+        if (!string.IsNullOrEmpty(memberRoleFilter))
+        {
+            if (string.Equals(memberRoleFilter, "Admin", StringComparison.OrdinalIgnoreCase))
+                filtered = filtered.Where(m => m.IsAdmin);
+            else
+                filtered = filtered.Where(m => HasRole(m, memberRoleFilter));
+        }
+
+        if (string.IsNullOrWhiteSpace(memberSearch))
+            return filtered;
+
+        var tokens = memberSearch.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        return filtered.Where(m =>
+        {
+            var hay = $"{m.FirstName} {m.LastName} {m.Nickname} {m.Email}";
+            return tokens.All(t => hay.Contains(t, StringComparison.OrdinalIgnoreCase));
+        });
+    }
+
+    static bool HasRole(GroupMemberDoc member, string roleLabel)
+    {
+        if (string.Equals(roleLabel, "Admin", StringComparison.OrdinalIgnoreCase))
+            return member.IsAdmin;
+        if (member.Roles == null || member.Roles.Count == 0) return false;
+        return member.Roles.Any(r => RoleMatches(r, roleLabel));
+    }
+
+    static bool RoleMatches(string raw, string label)
+    {
+        var n = NormalizeRole(raw);
+        return n.Equals(NormalizeRole(label), StringComparison.OrdinalIgnoreCase);
+    }
+
+    static string NormalizeRole(string raw) =>
+        (raw ?? "").Trim().ToLowerInvariant() switch
+        {
+            "pastor" or "preacher" => "preacher",
+            "worshipleader" or "worship leader" => "worship leader",
+            "projector" => "projector",
+            "accompaniment" => "accompaniment",
+            _ => (raw ?? "").Trim().ToLowerInvariant()
+        };
+
+    static string DisplayName(GroupMemberDoc m)
+    {
+        if (!string.IsNullOrWhiteSpace(m.Nickname)) return m.Nickname.Trim();
+        var full = $"{m.FirstName} {m.LastName}".Trim();
+        if (!string.IsNullOrWhiteSpace(full)) return full;
+        if (!string.IsNullOrWhiteSpace(m.Email)) return m.Email.Trim();
+        return "Member";
+    }
+
+    string MemberListName(GroupMemberDoc m) =>
+        string.Equals(m.Id, Auth.CurrentUserId, StringComparison.Ordinal)
+            ? "You"
+            : DisplayName(m);
+
+    static string Initials(GroupMemberDoc m)
+    {
+        var first = m.FirstName?.Trim() ?? "";
+        var last = m.LastName?.Trim() ?? "";
+        if (first.Length > 0 && last.Length > 0)
+            return $"{char.ToUpperInvariant(first[0])}{char.ToUpperInvariant(last[0])}";
+        if (first.Length > 0)
+            return first.Length >= 2
+                ? first[..2].ToUpperInvariant()
+                : char.ToUpperInvariant(first[0]).ToString();
+        if (last.Length > 0)
+            return last.Length >= 2
+                ? last[..2].ToUpperInvariant()
+                : char.ToUpperInvariant(last[0]).ToString();
+
+        var fallback = DisplayName(m);
+        var parts = fallback.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2)
+            return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[1][0])}";
+        if (parts.Length == 1 && parts[0].Length >= 2)
+            return parts[0][..2].ToUpperInvariant();
+        if (parts.Length == 1)
+            return char.ToUpperInvariant(parts[0][0]).ToString();
+        return "?";
+    }
+
+    static string RolesSummary(GroupMemberDoc m)
+    {
+        var labels = new List<string>();
+        if (m.IsAdmin)
+            labels.Add("Admin");
+        if (m.Roles != null)
+        {
+            labels.AddRange(m.Roles
+                .Select(PrettyRole)
+                .Where(r => !string.IsNullOrWhiteSpace(r)));
+        }
+
+        return string.Join(", ", labels.Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
+    static string PrettyRole(string raw) =>
+        NormalizeRole(raw) switch
+        {
+            "preacher" => "Preacher",
+            "worship leader" => "Worship Leader",
+            "projector" => "Projector",
+            "accompaniment" => "Accompaniment",
+            _ => string.IsNullOrWhiteSpace(raw) ? "" : raw.Trim()
+        };
+
+    static string AvatarStyle(GroupMemberDoc m)
+    {
+        var (fg, bg) = AvatarColors(m);
+        return $"color:{fg};background:{bg};border-color:{fg}";
+    }
+
+    static (string Fg, string Bg) AvatarColors(GroupMemberDoc m)
+    {
+        if (m.IsAdmin) return ("#0F766E", "rgba(15,118,110,.15)");
+        if (HasRole(m, "Preacher")) return ("#B8860B", "rgba(184,134,11,.15)");
+        if (HasRole(m, "Worship Leader")) return ("#2563EB", "rgba(37,99,235,.15)");
+        if (HasRole(m, "Projector")) return ("#6B7280", "rgba(107,114,128,.15)");
+        if (HasRole(m, "Accompaniment")) return ("#8B5CF6", "rgba(139,92,246,.15)");
+        return ("#2563EB", "rgba(37,99,235,.15)");
+    }
+
+    void OpenMemberMenu(GroupMemberDoc member)
+    {
+        if (member == null) return;
+        memberMenuTarget = member;
+        memberMenuOptions = new List<string>
+        {
+            member.IsAdmin ? "Remove as Admin" : "Add as Admin",
+            "Remove member"
+        };
+        showMemberMenu = true;
+    }
+
+    async Task OnMemberMenuSelected(string action)
+    {
+        if (memberMenuTarget == null || string.IsNullOrEmpty(action)) return;
+        var member = memberMenuTarget;
+        memberMenuTarget = null;
+
+        if (string.Equals(action, "Add as Admin", StringComparison.OrdinalIgnoreCase))
+            await MakeMemberAdminAsync(member);
+        else if (string.Equals(action, "Remove as Admin", StringComparison.OrdinalIgnoreCase))
+            AskRemoveAdmin(member);
+        else if (string.Equals(action, "Remove member", StringComparison.OrdinalIgnoreCase))
+            AskRemoveMember(member);
+    }
+
+    async Task MakeMemberAdminAsync(GroupMemberDoc member)
+    {
+        if (ActiveGroup == null || member == null) return;
+        Busy = true;
+        Error = null;
+        try
+        {
+            await GroupService.SetMemberAdminAsync(ActiveGroup.Id, member.Id, true);
+            member.IsAdmin = true;
+            State.ShowToast("/lottie/done.gif", "Member is now an admin.");
+            RefreshMemberPresentation();
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    void AskRemoveAdmin(GroupMemberDoc member)
+    {
+        if (member == null) return;
+        pendingRemoveAdmin = member;
+        removeAdminConfirmMessage = $"Remove {DisplayName(member)} as a group admin?";
+        showRemoveAdminConfirm = true;
+    }
+
+    async Task ConfirmRemoveAdmin()
+    {
+        if (ActiveGroup == null || pendingRemoveAdmin == null) return;
+        var member = pendingRemoveAdmin;
+        Busy = true;
+        Error = null;
+        try
+        {
+            await GroupService.SetMemberAdminAsync(ActiveGroup.Id, member.Id, false);
+            member.IsAdmin = false;
+            RefreshMemberPresentation();
+            State.ShowToast("/lottie/done.gif", "Admin role removed.");
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            pendingRemoveAdmin = null;
+            Busy = false;
+        }
+    }
+
+    void AskRemoveMember(GroupMemberDoc member)
+    {
+        if (member == null) return;
+        pendingRemoveMember = member;
+        removeMemberConfirmMessage = $"Remove {DisplayName(member)} from this group?";
+        showRemoveMemberConfirm = true;
+    }
+
+    async Task ConfirmRemoveMember()
+    {
+        if (ActiveGroup == null || pendingRemoveMember == null) return;
+        var memberId = pendingRemoveMember.Id;
+        Busy = true;
+        Error = null;
+        try
+        {
+            await GroupService.RemoveMemberAsync(ActiveGroup.Id, memberId);
+            Members.RemoveAll(m => string.Equals(m.Id, memberId, StringComparison.Ordinal));
+            RefreshMemberPresentation();
+            State.ShowToast("/lottie/done.gif", "Member removed.");
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            pendingRemoveMember = null;
+            Busy = false;
+        }
+    }
+
+    async Task ShareInviteCodeAsync()
+    {
+        if (ActiveGroup == null) return;
+        var code = ActiveGroup.JoinCode?.Trim();
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            Error = "This group does not have an invite code yet.";
+            return;
+        }
+
+        var label = string.IsNullOrWhiteSpace(ActiveGroup.Name) ? "our group" : ActiveGroup.Name.Trim();
+        var joinUrl = Nav.ToAbsoluteUri($"groups?code={Uri.EscapeDataString(code)}").ToString();
+        var text = $"Join {label} on MobiHymn with invite code: {code}\n{joinUrl}";
+        try
+        {
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            State.ShowToast("/lottie/done.gif", "Invite link copied.");
+        }
+        catch
+        {
+            Error = $"Invite code: {code}";
+        }
+    }
+
+    async Task ConfirmLeaveGroup()
+    {
+        if (ActiveGroup == null) return;
+        Busy = true;
+        Error = null;
+        try
+        {
+            await GroupService.LeaveGroupAsync(ActiveGroup.Id);
+            State.ShowToast("/lottie/done.gif", "Left group.");
+            ResetNav();
+            await LoadGroupsAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    void StartCreateList()
+    {
+        editingList = null;
+        newListDate = DateTime.Today;
+        createListMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        createListError = null;
+        CloseOpenSwipe();
+        showCreateList = true;
+    }
+
+    void StartEditList(BoardListDoc list)
+    {
+        CloseOpenSwipe();
+        editingList = list;
+        var initial = ResolveListDate(list);
+        newListDate = initial;
+        createListMonth = new DateTime(initial.Year, initial.Month, 1);
+        createListError = null;
+        showCreateList = true;
+    }
+
+    void CloseCreateList()
+    {
+        showCreateList = false;
+        createListError = null;
+        editingList = null;
+    }
+
+    void SelectCreateListDate(DateTime date)
+    {
+        createListError = null;
+        newListDate = date.Date;
+        createListMonth = new DateTime(date.Year, date.Month, 1);
+    }
+
+    void SelectCreateListToday() => SelectCreateListDate(DateTime.Today);
+
+    void PrevCreateListMonth() => createListMonth = createListMonth.AddMonths(-1);
+
+    void NextCreateListMonth() => createListMonth = createListMonth.AddMonths(1);
+
+    static DateTime ResolveListDate(BoardListDoc list)
+    {
+        if (DateTime.TryParseExact(
+                list.Id,
+                "yyyy-MM-dd",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None,
+                out var idDate))
+            return idDate.Date;
+
+        if (DateTime.TryParseExact(
+                list.Name,
+                "MMM d, yyyy",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None,
+                out var nameDate))
+            return nameDate.Date;
+
+        if (list.CreatedAt != default)
+            return list.CreatedAt.Date;
+
+        return DateTime.Today;
+    }
+
+    void CloseOpenSwipe()
+    {
+        swipedListId = null;
+        swipeDragListId = null;
+        swipeDragX = 0;
+        swipePointerId = null;
+    }
+
+    void CloseOpenHymnSwipe()
+    {
+        swipedHymnId = null;
+        swipeHymnDragId = null;
+        swipeHymnDragX = 0;
+        swipeHymnPointerId = null;
+    }
+
+    void CloseOpenSectionSwipe()
+    {
+        swipedSectionId = null;
+        swipeSectionDragId = null;
+        swipeSectionDragX = 0;
+        swipeSectionPointerId = null;
+    }
+
+    void CloseAllSwipes()
+    {
+        CloseOpenSwipe();
+        CloseOpenHymnSwipe();
+        CloseOpenSectionSwipe();
+    }
+
+    void OnSwipePointerDown(BoardListDoc list, PointerEventArgs e)
+    {
+        if (e.Button != 0 && e.PointerType == "mouse")
+            return;
+
+        CloseOpenHymnSwipe();
+        CloseOpenSectionSwipe();
+        swipePointerId = e.PointerId;
+        swipeDragListId = list.Id;
+        swipeStartX = e.ClientX;
+        swipeStartY = e.ClientY;
+        swipeStartOffset = string.Equals(swipedListId, list.Id, StringComparison.Ordinal) ? -SwipeActionsWidth : 0;
+        swipeDragX = swipeStartOffset;
+        swipeMoved = false;
+        swipeAxisLocked = false;
+        swipeHorizontal = false;
+    }
+
+    void OnSwipePointerMove(BoardListDoc list, PointerEventArgs e)
+    {
+        if (swipePointerId != e.PointerId || !string.Equals(swipeDragListId, list.Id, StringComparison.Ordinal))
+            return;
+
+        var dx = e.ClientX - swipeStartX;
+        var dy = e.ClientY - swipeStartY;
+
+        if (!swipeAxisLocked && (Math.Abs(dx) > 8 || Math.Abs(dy) > 8))
+        {
+            swipeAxisLocked = true;
+            swipeHorizontal = Math.Abs(dx) >= Math.Abs(dy);
+            if (!swipeHorizontal)
+            {
+                swipeDragListId = null;
+                swipePointerId = null;
+                return;
+            }
+        }
+
+        if (!swipeHorizontal)
+            return;
+
+        if (Math.Abs(dx) > 6)
+            swipeMoved = true;
+
+        var next = Math.Clamp(swipeStartOffset + dx, -SwipeActionsWidth, 0);
+        swipeDragX = next;
+
+        if (swipedListId != null && !string.Equals(swipedListId, list.Id, StringComparison.Ordinal))
+            swipedListId = null;
+    }
+
+    void OnSwipePointerUp(BoardListDoc list, PointerEventArgs e)
+    {
+        if (swipePointerId != e.PointerId)
+            return;
+
+        var wasDraggingThis = string.Equals(swipeDragListId, list.Id, StringComparison.Ordinal);
+        swipePointerId = null;
+        swipeDragListId = null;
+
+        if (!wasDraggingThis)
+            return;
+
+        if (swipeMoved && swipeHorizontal)
+        {
+            suppressListClick = true;
+            var open = swipeDragX <= -SwipeActionsWidth * 0.4;
+            swipedListId = open ? list.Id : null;
+            swipeDragX = open ? -SwipeActionsWidth : 0;
+        }
+        else if (string.Equals(swipedListId, list.Id, StringComparison.Ordinal))
+        {
+            // Tap on an already-open card closes swipe instead of opening the list.
+            suppressListClick = true;
+            CloseOpenSwipe();
+        }
+    }
+
+    void OnListCardClick(BoardListDoc list)
+    {
+        if (suppressListClick)
+        {
+            suppressListClick = false;
+            return;
+        }
+
+        if (swipedListId != null && !string.Equals(swipedListId, list.Id, StringComparison.Ordinal))
+        {
+            CloseOpenSwipe();
+            return;
+        }
+
+        if (string.Equals(swipedListId, list.Id, StringComparison.Ordinal))
+        {
+            CloseOpenSwipe();
+            return;
+        }
+
+        OpenList(list);
+    }
+
+    void AskDeleteList(BoardListDoc list)
+    {
+        CloseOpenSwipe();
+        pendingDeleteList = list;
+        deleteListConfirmMessage = $"Delete {list.Name}? This cannot be undone.";
+        showDeleteListConfirm = true;
+    }
+
+    async Task ConfirmDeleteList()
+    {
+        if (ActiveGroup == null || pendingDeleteList == null)
+            return;
+
+        var listId = pendingDeleteList.Id;
+        Busy = true;
+        Error = null;
+        try
+        {
+            await BoardService.DeleteListAsync(ActiveGroup.Id, listId);
+            Lists.RemoveAll(l => string.Equals(l.Id, listId, StringComparison.Ordinal));
+            if (ActiveList != null && string.Equals(ActiveList.Id, listId, StringComparison.Ordinal))
+            {
+                ActiveList = null;
+                view = View.Lists;
+            }
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            pendingDeleteList = null;
+            Busy = false;
+        }
+    }
+
+    void OnHymnSwipePointerDown(BoardHymnDoc hymn, PointerEventArgs e)
+    {
+        if (e.Button != 0 && e.PointerType == "mouse")
+            return;
+
+        CloseOpenSwipe();
+        CloseOpenSectionSwipe();
+        swipeHymnPointerId = e.PointerId;
+        swipeHymnDragId = hymn.Id;
+        swipeHymnStartX = e.ClientX;
+        swipeHymnStartY = e.ClientY;
+        swipeHymnStartOffset = string.Equals(swipedHymnId, hymn.Id, StringComparison.Ordinal) ? -SwipeActionsWidth : 0;
+        swipeHymnDragX = swipeHymnStartOffset;
+        swipeHymnMoved = false;
+        swipeHymnAxisLocked = false;
+        swipeHymnHorizontal = false;
+    }
+
+    void OnHymnSwipePointerMove(BoardHymnDoc hymn, PointerEventArgs e)
+    {
+        if (swipeHymnPointerId != e.PointerId || !string.Equals(swipeHymnDragId, hymn.Id, StringComparison.Ordinal))
+            return;
+
+        var dx = e.ClientX - swipeHymnStartX;
+        var dy = e.ClientY - swipeHymnStartY;
+
+        if (!swipeHymnAxisLocked && (Math.Abs(dx) > 8 || Math.Abs(dy) > 8))
+        {
+            swipeHymnAxisLocked = true;
+            swipeHymnHorizontal = Math.Abs(dx) >= Math.Abs(dy);
+            if (!swipeHymnHorizontal)
+            {
+                swipeHymnDragId = null;
+                swipeHymnPointerId = null;
+                return;
+            }
+        }
+
+        if (!swipeHymnHorizontal)
+            return;
+
+        if (Math.Abs(dx) > 6)
+            swipeHymnMoved = true;
+
+        swipeHymnDragX = Math.Clamp(swipeHymnStartOffset + dx, -SwipeActionsWidth, 0);
+
+        if (swipedHymnId != null && !string.Equals(swipedHymnId, hymn.Id, StringComparison.Ordinal))
+            swipedHymnId = null;
+    }
+
+    void OnHymnSwipePointerUp(BoardHymnDoc hymn, PointerEventArgs e)
+    {
+        if (swipeHymnPointerId != e.PointerId)
+            return;
+
+        var wasDraggingThis = string.Equals(swipeHymnDragId, hymn.Id, StringComparison.Ordinal);
+        swipeHymnPointerId = null;
+        swipeHymnDragId = null;
+
+        if (!wasDraggingThis)
+            return;
+
+        if (swipeHymnMoved && swipeHymnHorizontal)
+        {
+            suppressHymnClick = true;
+            var open = swipeHymnDragX <= -SwipeActionsWidth * 0.4;
+            swipedHymnId = open ? hymn.Id : null;
+            swipeHymnDragX = open ? -SwipeActionsWidth : 0;
+        }
+        else if (string.Equals(swipedHymnId, hymn.Id, StringComparison.Ordinal))
+        {
+            suppressHymnClick = true;
+            CloseOpenHymnSwipe();
+        }
+    }
+
+    async Task OnHymnCardClick(BoardHymnDoc hymn)
+    {
+        if (suppressHymnClick)
+        {
+            suppressHymnClick = false;
+            return;
+        }
+
+        if (swipedHymnId != null)
+        {
+            CloseOpenHymnSwipe();
+            return;
+        }
+
+        await OnHymnClick(hymn.HymnNumber);
+    }
+
+    bool CanModifyHymn(BoardHymnDoc hymn)
+    {
+        if (hymn == null || hymn.IsSection)
+            return false;
+        var uid = Auth.CurrentUserId;
+        return !string.IsNullOrEmpty(uid)
+            && string.Equals(hymn.AddedBy, uid, StringComparison.Ordinal);
+    }
+
+    void AskDeleteHymn(BoardHymnDoc hymn)
+    {
+        CloseOpenHymnSwipe();
+        if (!CanModifyHymn(hymn))
+        {
+            Error = "You can only remove hymns you added.";
+            return;
+        }
+
+        pendingDeleteHymn = hymn;
+        deleteHymnConfirmMessage = $"Remove Hymn #{hymn.HymnNumber} from the board?";
+        showDeleteHymnConfirm = true;
+    }
+
+    async Task ConfirmDeleteHymn()
+    {
+        if (ActiveGroup == null || ActiveList == null || pendingDeleteHymn == null)
+            return;
+
+        var entryId = pendingDeleteHymn.Id;
+        Busy = true;
+        Error = null;
+        try
+        {
+            ActiveList.Hymns.RemoveAll(h => string.Equals(h.Id, entryId, StringComparison.Ordinal));
+            RenumberBoard();
+            await BoardService.UpdateListAsync(ActiveGroup.Id, ActiveList);
+            RebuildBoardDisplayRows();
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            pendingDeleteHymn = null;
+            Busy = false;
+        }
+    }
+
+    void StartEditHymn(BoardHymnDoc hymn)
+    {
+        CloseOpenHymnSwipe();
+        if (!CanModifyHymn(hymn))
+        {
+            Error = "You can only edit hymns you added.";
+            return;
+        }
+
+        editingHymn = hymn;
+        editHymnNumber = hymn.HymnNumber ?? "";
+        editHymnNotes = hymn.Notes ?? "";
+        editHymnError = null;
+        showEditHymn = true;
+    }
+
+    void CloseEditHymn()
+    {
+        showEditHymn = false;
+        editingHymn = null;
+        editHymnError = null;
+    }
+
+    async Task SaveEditHymn()
+    {
+        if (ActiveGroup == null || ActiveList == null || editingHymn == null)
+            return;
+
+        var number = (editHymnNumber ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(number))
+        {
+            editHymnError = "Enter a hymn number.";
+            return;
+        }
+
+        if (ActiveList.Hymns.Any(h =>
+                !h.IsSection
+                && !string.Equals(h.Id, editingHymn.Id, StringComparison.Ordinal)
+                && string.Equals(h.HymnNumber, number, StringComparison.OrdinalIgnoreCase)))
+        {
+            editHymnError = $"Hymn #{number} is already on this list.";
+            return;
+        }
+
+        Busy = true;
+        editHymnError = null;
+        Error = null;
+        try
+        {
+            editingHymn.HymnNumber = number;
+            editingHymn.Notes = string.IsNullOrWhiteSpace(editHymnNotes) ? null : editHymnNotes.Trim();
+            editingHymn.UpdatedAt = DateTimeOffset.UtcNow;
+            await BoardService.UpdateListAsync(ActiveGroup.Id, ActiveList);
+            RebuildBoardDisplayRows();
+            CloseEditHymn();
+        }
+        catch (Exception ex)
+        {
+            editHymnError = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    async Task LoadGroupsAsync()
+    {
+        Busy = true;
+        Error = null;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            Groups = (await GroupService.GetMyGroupsAsync()).ToList();
+            if (Groups.Count == 0)
+                return;
+
+            // Prefer a group that actually has hymn lists (groupIds order can be wrong/stale).
+            WorshipGroupDoc? preferred = null;
+            if (Groups.Count == 1)
+            {
+                preferred = Groups[0];
+            }
+            else
+            {
+                foreach (var g in Groups)
+                {
+                    try
+                    {
+                        var lists = await BoardService.GetListsAsync(g.Id);
+                        if (lists.Count > 0)
+                        {
+                            preferred = g;
+                            break;
+                        }
+                    }
+                    catch
+                    {
+                        // try next group
+                    }
+                }
+
+                preferred ??= Groups[0];
+            }
+
+            await OpenGroup(preferred);
+            return;
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+            Groups = new();
+        }
+        finally
+        {
+            if (view == View.Groups)
+                Busy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task OpenGroup(WorshipGroupDoc group)
+    {
+        ActiveGroup = group;
+        view = View.Lists;
+        Lists = new();
+        Busy = true;
+        Error = null;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            Lists = (await BoardService.GetListsAsync(group.Id))
+                .OrderByDescending(l => l.CreatedAt)
+                .ToList();
+
+            if (Lists.Count == 0)
+            {
+                // Distinguish "truly empty" from "can't read boards" (not a member / rules).
+                try
+                {
+                    var members = await GroupService.GetMembersAsync(group.Id);
+                    var me = members.FirstOrDefault(m =>
+                        string.Equals(m.Id, Auth.CurrentUserId, StringComparison.Ordinal));
+                    if (me == null)
+                    {
+                        Error = "You're not a member of this group in Firestore, so board lists can't load. Try leaving and rejoining with the invite code.";
+                    }
+                }
+                catch (Exception memberEx)
+                {
+                    var msg = memberEx.Message ?? "";
+                    if (msg.Contains("permission", StringComparison.OrdinalIgnoreCase)
+                        || msg.Contains("insufficient", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Error = "Can't read this group's boards (membership/permission). Try rejoining with the invite code.";
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            var msg = ex.Message ?? "";
+            Error = msg.Contains("permission", StringComparison.OrdinalIgnoreCase)
+                || msg.Contains("insufficient", StringComparison.OrdinalIgnoreCase)
+                ? "Can't load hymn lists for this group (permission). Confirm you're a member and try rejoining."
+                : msg;
+        }
+        finally
+        {
+            Busy = false;
+            TriggerListsEnterAnim();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    void OpenList(BoardListDoc list)
+    {
+        if (ActiveGroup == null) return;
+        ActiveList = list;
+        view = View.ListDetail;
+        Status = null;
+        collapsedSections.Clear();
+        fabMenuOpen = false;
+        showAddSection = false;
+        showAddHymn = false;
+        CloseAllSwipes();
+        RebuildBoardDisplayRows();
+        TriggerHymnsEnterAnim();
+        listSub?.Dispose();
+        listSub = BoardService.SubscribeList(ActiveGroup.Id, list.Id, updated =>
+        {
+            ActiveList = updated;
+            RebuildBoardDisplayRows();
+            _ = ResolveFirstLinesAsync();
+            InvokeAsync(StateHasChanged);
+        });
+        _ = ResolveFirstLinesAsync();
+        _ = RefreshSavedSectionNamesAsync();
+        _ = EnsureSavedSectionsForActiveListAsync();
+        _ = BoardNotifications.MarkListReadAsync(ActiveGroup.Id, list.Id);
+    }
+
+    async Task EnsureSavedSectionsForActiveListAsync()
+    {
+        if (ActiveGroup == null || ActiveList == null)
+            return;
+
+        try
+        {
+            var merged = await BoardService.EnsureSavedSectionsOnListAsync(ActiveGroup.Id, ActiveList.Id);
+            if (merged == null)
+                return;
+
+            ActiveList = merged;
+            RebuildBoardDisplayRows();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Optional seed — list is still usable without it.
+        }
+    }
+
+    async Task RefreshSavedSectionNamesAsync()
+    {
+        if (ActiveGroup == null)
+            return;
+
+        try
+        {
+            var names = await BoardService.GetSavedSectionNamesAsync(ActiveGroup.Id);
+            savedSectionNames.Clear();
+            foreach (var name in names)
+            {
+                if (!string.IsNullOrWhiteSpace(name))
+                    savedSectionNames.Add(name.Trim());
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Template load is optional for viewing the board.
+        }
+    }
+
+    bool IsSectionSaved(string? sectionName)
+    {
+        var name = sectionName?.Trim();
+        return !string.IsNullOrEmpty(name) && savedSectionNames.Contains(name);
+    }
+
+    void OnUnreadChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
+
+    void OnOpenRequested(object? sender, EventArgs e) => _ = HandleOpenRequestAsync();
+
+    async Task HandleOpenRequestAsync()
+    {
+        var groupId = BoardUi.PendingGroupId;
+        var listId = BoardUi.PendingListId;
+        BoardUi.ClearPendingOpen();
+
+        if (!Visible)
+            await VisibleChanged.InvokeAsync(true);
+
+        // Wait for pane to open / groups to load.
+        for (var i = 0; i < 20 && (!show || Groups.Count == 0); i++)
+            await Task.Delay(50);
+
+        if (!Auth.IsSignedIn) return;
+
+        if (Groups.Count == 0)
+            await LoadGroupsAsync();
+
+        if (string.IsNullOrWhiteSpace(groupId))
+        {
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        var group = Groups.FirstOrDefault(g => string.Equals(g.Id, groupId, StringComparison.Ordinal));
+        if (group == null)
+        {
+            await LoadGroupsAsync();
+            group = Groups.FirstOrDefault(g => string.Equals(g.Id, groupId, StringComparison.Ordinal));
+        }
+
+        if (group == null) return;
+
+        await OpenGroup(group);
+        if (!string.IsNullOrWhiteSpace(listId))
+        {
+            var list = Lists.FirstOrDefault(l => string.Equals(l.Id, listId, StringComparison.Ordinal));
+            if (list != null)
+                OpenList(list);
+        }
+    }
+
+    void RebuildBoardDisplayRows()
+    {
+        var groups = new List<BoardSectionGroup>();
+        if (ActiveList == null)
+        {
+            BoardGroups = groups;
+            return;
+        }
+
+        var ordered = ActiveList.Hymns.OrderBy(h => h.SortOrder).ToList();
+        BoardSectionGroup? current = null;
+
+        foreach (var entry in ordered)
+        {
+            if (entry.IsSection)
+            {
+                current = new BoardSectionGroup
+                {
+                    Key = entry.Id,
+                    Section = entry,
+                    Hymns = new List<BoardHymnDoc>(),
+                    IsCollapsed = collapsedSections.Contains(entry.Id)
+                };
+                groups.Add(current);
+                continue;
+            }
+
+            if (current == null)
+            {
+                current = new BoardSectionGroup
+                {
+                    Key = "_leading",
+                    Hymns = new List<BoardHymnDoc>()
+                };
+                groups.Add(current);
+            }
+
+            current.Hymns.Add(entry);
+        }
+
+        BoardGroups = groups;
+    }
+
+    void ToggleSection(string sectionId)
+    {
+        if (string.IsNullOrEmpty(sectionId) || sectionId == "_leading")
+            return;
+
+        if (!collapsedSections.Add(sectionId))
+            collapsedSections.Remove(sectionId);
+
+        var group = BoardGroups.FirstOrDefault(g => g.Key == sectionId);
+        if (group != null)
+            group.IsCollapsed = collapsedSections.Contains(sectionId);
+    }
+
+    void OnSectionClick(string sectionId)
+    {
+        if (suppressNextClick)
+        {
+            suppressNextClick = false;
+            return;
+        }
+
+        ToggleSection(sectionId);
+    }
+
+    void OnSectionRowClick(string sectionId)
+    {
+        if (suppressSectionClick)
+        {
+            suppressSectionClick = false;
+            return;
+        }
+
+        if (swipedSectionId != null)
+        {
+            CloseOpenSectionSwipe();
+            return;
+        }
+
+        OnSectionClick(sectionId);
+    }
+
+    void OnSectionSwipePointerDown(BoardHymnDoc section, PointerEventArgs e)
+    {
+        if (e.Button != 0 && e.PointerType == "mouse")
+            return;
+
+        CloseOpenSwipe();
+        CloseOpenHymnSwipe();
+        swipeSectionPointerId = e.PointerId;
+        swipeSectionDragId = section.Id;
+        swipeSectionStartX = e.ClientX;
+        swipeSectionStartY = e.ClientY;
+        swipeSectionStartOffset = string.Equals(swipedSectionId, section.Id, StringComparison.Ordinal) ? -SwipeActionsWidth : 0;
+        swipeSectionDragX = swipeSectionStartOffset;
+        swipeSectionMoved = false;
+        swipeSectionAxisLocked = false;
+        swipeSectionHorizontal = false;
+    }
+
+    void OnSectionSwipePointerMove(BoardHymnDoc section, PointerEventArgs e)
+    {
+        if (swipeSectionPointerId != e.PointerId || !string.Equals(swipeSectionDragId, section.Id, StringComparison.Ordinal))
+            return;
+
+        var dx = e.ClientX - swipeSectionStartX;
+        var dy = e.ClientY - swipeSectionStartY;
+
+        if (!swipeSectionAxisLocked && (Math.Abs(dx) > 8 || Math.Abs(dy) > 8))
+        {
+            swipeSectionAxisLocked = true;
+            swipeSectionHorizontal = Math.Abs(dx) >= Math.Abs(dy);
+            if (!swipeSectionHorizontal)
+            {
+                swipeSectionDragId = null;
+                swipeSectionPointerId = null;
+                return;
+            }
+        }
+
+        if (!swipeSectionHorizontal)
+            return;
+
+        if (Math.Abs(dx) > 6)
+            swipeSectionMoved = true;
+
+        swipeSectionDragX = Math.Clamp(swipeSectionStartOffset + dx, -SwipeActionsWidth, 0);
+
+        if (swipedSectionId != null && !string.Equals(swipedSectionId, section.Id, StringComparison.Ordinal))
+            swipedSectionId = null;
+    }
+
+    void OnSectionSwipePointerUp(BoardHymnDoc section, PointerEventArgs e)
+    {
+        if (swipeSectionPointerId != e.PointerId)
+            return;
+
+        var wasDraggingThis = string.Equals(swipeSectionDragId, section.Id, StringComparison.Ordinal);
+        swipeSectionPointerId = null;
+        swipeSectionDragId = null;
+
+        if (!wasDraggingThis)
+            return;
+
+        if (swipeSectionMoved && swipeSectionHorizontal)
+        {
+            suppressSectionClick = true;
+            var open = swipeSectionDragX <= -SwipeActionsWidth * 0.4;
+            swipedSectionId = open ? section.Id : null;
+            swipeSectionDragX = open ? -SwipeActionsWidth : 0;
+        }
+        else if (string.Equals(swipedSectionId, section.Id, StringComparison.Ordinal))
+        {
+            suppressSectionClick = true;
+            CloseOpenSectionSwipe();
+        }
+    }
+
+    async Task ToggleSectionTemplate(BoardHymnDoc section, bool save)
+    {
+        CloseOpenSectionSwipe();
+        if (ActiveGroup == null || ActiveList == null || section == null || !section.IsSection)
+            return;
+
+        var name = section.SectionName?.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            Error = "Section name is required.";
+            return;
+        }
+
+        Busy = true;
+        Error = null;
+        try
+        {
+            if (save)
+            {
+                await BoardService.SaveSectionToTemplateAsync(ActiveGroup.Id, ActiveList.Id, name);
+                savedSectionNames.Add(name);
+                State.ShowToast("/lottie/done.gif", "Applies to future setlists.");
+            }
+            else
+            {
+                await BoardService.RemoveSectionFromTemplateAsync(ActiveGroup.Id, name);
+                savedSectionNames.Remove(name);
+                State.ShowToast("/lottie/done.gif", "This setlist only.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    void AskDeleteSection(BoardHymnDoc section)
+    {
+        CloseOpenSectionSwipe();
+        if (section == null || !section.IsSection || ActiveList == null)
+            return;
+
+        pendingRemoveSection = section;
+        removeSectionIsSaved = IsSectionSaved(section.SectionName);
+        removeSectionHymnCount = CountHymnsInSection(section);
+        removeDeleteHymns = false;
+        removeCurrentDateOnly = true;
+        showRemoveSection = true;
+    }
+
+    void CloseRemoveSection()
+    {
+        showRemoveSection = false;
+        pendingRemoveSection = null;
+        removeDeleteHymns = false;
+        removeCurrentDateOnly = true;
+        removeSectionIsSaved = false;
+        removeSectionHymnCount = 0;
+    }
+
+    int CountHymnsInSection(BoardHymnDoc section)
+    {
+        if (ActiveList == null)
+            return 0;
+
+        var index = ActiveList.Hymns.FindIndex(h => h.Id == section.Id);
+        if (index < 0)
+            return 0;
+
+        var count = 0;
+        for (var i = index + 1; i < ActiveList.Hymns.Count; i++)
+        {
+            if (ActiveList.Hymns[i].IsSection)
+                break;
+            count++;
+        }
+
+        return count;
+    }
+
+    async Task ConfirmRemoveSection()
+    {
+        if (ActiveGroup == null || ActiveList == null || pendingRemoveSection == null)
+            return;
+
+        var section = pendingRemoveSection;
+        var name = section.SectionName?.Trim() ?? "";
+        Busy = true;
+        Error = null;
+        try
+        {
+            if (removeSectionIsSaved && !removeCurrentDateOnly && !string.IsNullOrEmpty(name))
+            {
+                await BoardService.RemoveSectionFromTemplateAsync(ActiveGroup.Id, name);
+                savedSectionNames.Remove(name);
+            }
+
+            await BoardService.RemoveSectionAsync(
+                ActiveGroup.Id,
+                ActiveList.Id,
+                section.Id,
+                removeDeleteHymns);
+
+            ActiveList = await BoardService.GetListAsync(ActiveGroup.Id, ActiveList.Id) ?? ActiveList;
+            RebuildBoardDisplayRows();
+            State.ShowToast("/lottie/done.gif", "Section removed.");
+            CloseRemoveSection();
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    async Task OnHymnClick(string? number)
+    {
+        if (suppressNextClick)
+        {
+            suppressNextClick = false;
+            return;
+        }
+
+        await OpenHymn(number);
+    }
+
+    string DragClass(string? id) =>
+        !string.IsNullOrEmpty(id) && id == dragEntryId ? "is-dragging" : "";
+
+    string DropLineClass(string id, bool below) =>
+        dropLineEntryId == id && dropLineBelow == below ? "is-active" : "";
+
+    async Task BeginBoardPointerDrag(PointerEventArgs e, BoardHymnDoc entry)
+    {
+        if (e.Button != 0 && e.PointerType == "mouse")
+            return;
+
+        dragEntryId = entry.Id;
+        dropLineEntryId = null;
+        dropLineBelow = false;
+        suppressNextClick = true;
+        dragDotNetRef ??= DotNetObjectReference.Create(this);
+        await Js.InvokeVoidAsync("mobihymnBoardDrag.begin", dragDotNetRef, entry.Id, e.ClientX, e.ClientY);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnBoardPointerDragOver(string? targetId, bool preferBelow)
+    {
+        if (string.IsNullOrEmpty(dragEntryId) || ActiveList == null)
+            return;
+
+        var source = ActiveList.Hymns.FirstOrDefault(h => h.Id == dragEntryId);
+        if (source == null)
+        {
+            ClearDropLine();
+            return;
+        }
+
+        if (string.IsNullOrEmpty(targetId) || targetId == source.Id)
+        {
+            ClearDropLine();
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        var target = ActiveList.Hymns.FirstOrDefault(h => h.Id == targetId);
+        if (target == null)
+        {
+            ClearDropLine();
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        var indicator = ResolveDropIndicator(source, target, preferBelow, out var below);
+        if (indicator == null)
+        {
+            ClearDropLine();
+        }
+        else
+        {
+            dropLineEntryId = indicator.Id;
+            dropLineBelow = below;
+        }
+
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnBoardPointerDragEnd(string? targetId, bool preferBelow)
+    {
+        if (ActiveGroup == null || ActiveList == null || string.IsNullOrEmpty(dragEntryId))
+        {
+            dragEntryId = null;
+            ClearDropLine();
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        var source = ActiveList.Hymns.FirstOrDefault(h => h.Id == dragEntryId);
+
+        // Prefer the last resolved indicator so the drop matches the yellow line.
+        BoardHymnDoc? target = null;
+        var below = dropLineBelow;
+        if (!string.IsNullOrEmpty(dropLineEntryId))
+        {
+            target = ActiveList.Hymns.FirstOrDefault(h => h.Id == dropLineEntryId);
+        }
+        else if (!string.IsNullOrEmpty(targetId))
+        {
+            target = ActiveList.Hymns.FirstOrDefault(h => h.Id == targetId);
+            if (source != null && target != null)
+                ResolveDropIndicator(source, target, preferBelow, out below);
+        }
+
+        dragEntryId = null;
+        ClearDropLine();
+
+        if (source == null || target == null || source.Id == target.Id)
+        {
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        MoveEntry(source, target, below);
+        RenumberBoard();
+        RebuildBoardDisplayRows();
+        Busy = true;
+        try
+        {
+            await BoardService.UpdateListAsync(ActiveGroup.Id, ActiveList);
+            if (sectionSortMode != "AddedOrder" && source.IsSection)
+                sectionSortMode = "AddedOrder";
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    void ClearDropLine()
+    {
+        dropLineEntryId = null;
+        dropLineBelow = false;
+    }
+
+    BoardHymnDoc? ResolveDropIndicator(BoardHymnDoc source, BoardHymnDoc target, bool preferBelow, out bool below)
+    {
+        below = preferBelow;
+        if (ActiveList == null) return null;
+        var hymns = ActiveList.Hymns;
+        var sourceIndex = hymns.FindIndex(h => h.Id == source.Id);
+        var targetIndex = hymns.FindIndex(h => h.Id == target.Id);
+        if (sourceIndex < 0 || targetIndex < 0) return null;
+
+        // Sections only reorder at section boundaries — never between a header and its hymns.
+        if (source.IsSection)
+        {
+            var sourceBlock = GetSectionBlock(hymns, source);
+            if (sourceBlock.Any(h => h.Id == target.Id))
+                return null;
+
+            var boundary = ResolveSectionBoundaryTarget(target, preferBelow, out below);
+            return boundary;
+        }
+
+        if (target.IsSection)
+        {
+            // Hymn onto section: top half = above header, bottom half = first under header.
+            below = preferBelow;
+            return target;
+        }
+
+        below = preferBelow;
+        return target;
+    }
+
+    /// <summary>
+    /// Maps a hover target to a section-boundary drop: above a section header, or after
+    /// its last visible item — never inside the section under the header.
+    /// </summary>
+    BoardHymnDoc? ResolveSectionBoundaryTarget(BoardHymnDoc target, bool preferBelow, out bool below)
+    {
+        below = preferBelow;
+        if (ActiveList == null) return null;
+
+        var owningSection = target.IsSection ? target : FindOwningSection(target);
+        if (owningSection == null)
+        {
+            // Unsectioned hymns: allow placing the section relative to that hymn.
+            below = preferBelow;
+            return target;
+        }
+
+        if (target.IsSection && !preferBelow)
+        {
+            below = false;
+            return owningSection;
+        }
+
+        // Bottom half of header, or any hymn in the section → after the whole block.
+        var last = LastVisibleInSectionBlock(owningSection);
+        below = true;
+        return last;
+    }
+
+    BoardHymnDoc? FindOwningSection(BoardHymnDoc entry)
+    {
+        if (ActiveList == null || entry.IsSection) return entry.IsSection ? entry : null;
+        var hymns = ActiveList.Hymns;
+        var idx = hymns.FindIndex(h => h.Id == entry.Id);
+        if (idx < 0) return null;
+        for (var i = idx; i >= 0; i--)
+        {
+            if (hymns[i].IsSection)
+                return hymns[i];
+        }
+        return null;
+    }
+
+    BoardHymnDoc LastVisibleInSectionBlock(BoardHymnDoc section)
+    {
+        var group = BoardGroups.FirstOrDefault(g => g.Section?.Id == section.Id || g.Key == section.Id);
+        if (group == null || group.IsCollapsed || group.Hymns.Count == 0)
+            return section;
+        return group.Hymns[^1];
+    }
+
+    void MoveEntry(BoardHymnDoc source, BoardHymnDoc target, bool below)
+    {
+        if (ActiveList == null) return;
+        if (source.IsSection)
+        {
+            MoveSectionBlock(source, target, below);
+            return;
+        }
+
+        var hymns = ActiveList.Hymns;
+        var sourceIndex = hymns.FindIndex(h => h.Id == source.Id);
+        var targetIndex = hymns.FindIndex(h => h.Id == target.Id);
+        if (sourceIndex < 0 || targetIndex < 0) return;
+
+        int insertIndex;
+        if (target.IsSection)
+        {
+            var group = BoardGroups.FirstOrDefault(g => g.Key == target.Id);
+            if (group != null)
+            {
+                group.IsCollapsed = false;
+                collapsedSections.Remove(target.Id);
+            }
+
+            // Above header = before section; under header = first hymn in section.
+            insertIndex = below ? targetIndex + 1 : targetIndex;
+        }
+        else
+        {
+            insertIndex = below ? targetIndex + 1 : targetIndex;
+        }
+
+        hymns.RemoveAt(sourceIndex);
+        if (sourceIndex < insertIndex)
+            insertIndex--;
+
+        insertIndex = Math.Clamp(insertIndex, 0, hymns.Count);
+        hymns.Insert(insertIndex, source);
+    }
+
+    void MoveSectionBlock(BoardHymnDoc section, BoardHymnDoc target, bool below)
+    {
+        if (ActiveList == null) return;
+        var hymns = ActiveList.Hymns;
+        var sourceIndex = hymns.FindIndex(h => h.Id == section.Id);
+        var targetIndex = hymns.FindIndex(h => h.Id == target.Id);
+        if (sourceIndex < 0 || targetIndex < 0) return;
+
+        var block = GetSectionBlock(hymns, section);
+        if (block.Count == 0) return;
+
+        var blockEnd = sourceIndex + block.Count - 1;
+        if (targetIndex >= sourceIndex && targetIndex <= blockEnd)
+            return;
+
+        // Snap insert to a section boundary when the indicator landed on a hymn/section.
+        int insertIndex;
+        var owningSection = target.IsSection ? target : FindOwningSection(target);
+        if (owningSection != null)
+        {
+            var ownerIndex = hymns.FindIndex(h => h.Id == owningSection.Id);
+            if (ownerIndex < 0) return;
+
+            if (!below && target.IsSection && target.Id == owningSection.Id)
+            {
+                insertIndex = ownerIndex;
+            }
+            else
+            {
+                var targetBlock = GetSectionBlock(hymns, owningSection);
+                insertIndex = ownerIndex + targetBlock.Count;
+            }
+        }
+        else
+        {
+            insertIndex = below ? targetIndex + 1 : targetIndex;
+        }
+
+        foreach (var item in block)
+            hymns.Remove(item);
+
+        if (sourceIndex < insertIndex)
+            insertIndex -= block.Count;
+
+        insertIndex = Math.Clamp(insertIndex, 0, hymns.Count);
+        hymns.InsertRange(insertIndex, block);
+    }
+
+    static List<BoardHymnDoc> GetSectionBlock(IList<BoardHymnDoc> entries, BoardHymnDoc section)
+    {
+        var index = -1;
+        for (var i = 0; i < entries.Count; i++)
+        {
+            if (entries[i].Id == section.Id)
+            {
+                index = i;
+                break;
+            }
+        }
+
+        if (index < 0) return new List<BoardHymnDoc>();
+
+        var block = new List<BoardHymnDoc>();
+        for (var i = index; i < entries.Count; i++)
+        {
+            if (i > index && entries[i].IsSection)
+                break;
+            block.Add(entries[i]);
+        }
+
+        return block;
+    }
+
+    void RenumberBoard()
+    {
+        if (ActiveList == null) return;
+        for (var i = 0; i < ActiveList.Hymns.Count; i++)
+            ActiveList.Hymns[i].SortOrder = i + 1;
+    }
+
+    string FirstLineFor(BoardHymnDoc hymn)
+    {
+        var number = hymn.HymnNumber?.Trim() ?? "";
+        if (number.Length == 0) return "";
+        return firstLineCache.TryGetValue(number, out var line) ? line : "";
+    }
+
+    async Task ResolveFirstLinesAsync()
+    {
+        if (ActiveList == null) return;
+        var numbers = ActiveList.Hymns
+            .Where(h => !h.IsSection && !string.IsNullOrWhiteSpace(h.HymnNumber))
+            .Select(h => h.HymnNumber!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(n => !firstLineCache.ContainsKey(n))
+            .ToList();
+
+        foreach (var number in numbers)
+        {
+            try
+            {
+                var hymn = await Lyrics.GetHymnAsync(number);
+                firstLineCache[number] = hymn.FirstLine?.Trim() ?? "";
+            }
+            catch
+            {
+                firstLineCache[number] = "";
+            }
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    static string FormatAddedAt(DateTimeOffset when)
+    {
+        var local = when.ToLocalTime();
+        var now = DateTimeOffset.Now;
+        if (local.Date == now.Date)
+            return local.ToString("h:mm tt");
+        if (local.Year == now.Year)
+            return local.ToString("MMM d");
+        return local.ToString("MMM d, yyyy");
+    }
+
+    async Task ConfirmListDate()
+    {
+        if (editingList != null)
+            await SaveEditedListDate();
+        else
+            await CreateList();
+    }
+
+    async Task SaveEditedListDate()
+    {
+        if (ActiveGroup == null || editingList == null) return;
+        var date = newListDate.Date;
+        var displayName = date.ToString("MMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture);
+        var dateKey = date.ToString("yyyy-MM-dd");
+        var oldId = editingList.Id;
+        if (Lists.Any(l =>
+                string.Equals(l.Id, dateKey, StringComparison.Ordinal)
+                && !string.Equals(l.Id, oldId, StringComparison.Ordinal)))
+        {
+            createListError = $"A hymn list already exists for {displayName}.";
+            return;
+        }
+
+        Busy = true;
+        Error = null;
+        createListError = null;
+        try
+        {
+            var updated = await BoardService.UpdateListDateAsync(ActiveGroup.Id, oldId, date);
+            var idx = Lists.FindIndex(l => string.Equals(l.Id, oldId, StringComparison.Ordinal));
+            if (idx >= 0)
+                Lists[idx] = updated;
+            else
+                Lists.Insert(0, updated);
+
+            Lists = Lists
+                .OrderByDescending(l => l.CreatedAt)
+                .ToList();
+
+            if (ActiveList != null && string.Equals(ActiveList.Id, oldId, StringComparison.Ordinal))
+                ActiveList = updated;
+
+            CloseCreateList();
+        }
+        catch (Exception ex)
+        {
+            var msg = ex.Message ?? "";
+            if (msg.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+            {
+                createListError = msg;
+                return;
+            }
+
+            Error = msg;
+            CloseCreateList();
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    async Task CreateList()
+    {
+        if (ActiveGroup == null) return;
+        var date = newListDate.Date;
+        var displayName = date.ToString("MMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture);
+        var dateKey = date.ToString("yyyy-MM-dd");
+        if (Lists.Any(l => string.Equals(l.Id, dateKey, StringComparison.Ordinal)))
+        {
+            createListError = $"A hymn list already exists for {displayName}.";
+            return;
+        }
+
+        Busy = true;
+        Error = null;
+        createListError = null;
+        try
+        {
+            var created = await BoardService.CreateListAsync(ActiveGroup.Id, displayName);
+            CloseCreateList();
+            Lists.Insert(0, created);
+            OpenList(created);
+        }
+        catch (Exception ex)
+        {
+            var msg = ex.Message ?? "";
+            if (msg.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+            {
+                createListError = msg;
+                return;
+            }
+
+            Error = msg.Contains("permission", StringComparison.OrdinalIgnoreCase)
+                || msg.Contains("insufficient", StringComparison.OrdinalIgnoreCase)
+                ? "Could not create list. Confirm your email is verified and you have a leadership role."
+                : msg;
+            CloseCreateList();
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    async Task AddActiveHymn()
+    {
+        if (!HasActiveHymn) return;
+        await AddHymnToListAsync(State.ActiveHymn!.Number.Trim(), notes: "", firstLine: State.ActiveHymn.FirstLine);
+    }
+
+    void ToggleFabMenu()
+    {
+        fabMenuOpen = !fabMenuOpen;
+    }
+
+    async Task OpenAddHymn()
+    {
+        fabMenuOpen = false;
+        showAddSection = false;
+        addHymnQuery = "";
+        addHymnNotes = "";
+        addHymnError = null;
+        addHymnPickedNumber = null;
+        addHymnPickedLine = null;
+        addHymnSuggestions = new();
+        showAddHymn = true;
+        await EnsureAddHymnCatalogAsync();
+        _ = Lyrics.WarmSearchIndexAsync();
+    }
+
+    void CloseAddHymn()
+    {
+        addHymnSuggestCts?.Cancel();
+        addHymnSuggestCts = null;
+        showAddHymn = false;
+        addHymnError = null;
+        addHymnQuery = "";
+        addHymnNotes = "";
+        addHymnPickedNumber = null;
+        addHymnPickedLine = null;
+        addHymnSuggestions = new();
+    }
+
+    void OpenAddSection()
+    {
+        fabMenuOpen = false;
+        showAddHymn = false;
+        addSectionName = "";
+        addSectionThisListOnly = true;
+        addSectionError = null;
+        showAddSection = true;
+    }
+
+    void CloseAddSection()
+    {
+        showAddSection = false;
+        addSectionError = null;
+        addSectionName = "";
+        addSectionThisListOnly = true;
+    }
+
+    async Task EnsureAddHymnCatalogAsync()
+    {
+        if (addHymnCatalog.Count > 0)
+            return;
+
+        try
+        {
+            var meta = await Lyrics.GetCatalogMetaAsync();
+            addHymnCatalog = meta.Hymns?
+                .Where(h => !string.IsNullOrWhiteSpace(h.Number))
+                .ToList() ?? new();
+        }
+        catch
+        {
+            addHymnCatalog = new();
+        }
+    }
+
+    async Task OnAddHymnQueryInput(ChangeEventArgs e)
+    {
+        addHymnQuery = e.Value?.ToString() ?? "";
+        addHymnPickedNumber = null;
+        addHymnPickedLine = null;
+        addHymnError = null;
+        await UpdateAddHymnSuggestionsAsync(addHymnQuery);
+    }
+
+    async Task UpdateAddHymnSuggestionsAsync(string query)
+    {
+        addHymnSuggestCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        addHymnSuggestCts = cts;
+        var token = cts.Token;
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            addHymnSuggestions = new();
+            return;
+        }
+
+        try
+        {
+            await Task.Delay(AddHymnSuggestDebounceMs, token);
+            await EnsureAddHymnCatalogAsync();
+            if (token.IsCancellationRequested)
+                return;
+
+            List<BoardHymnSuggestion> suggestions;
+            if (IsNumberQuery(query))
+            {
+                suggestions = BuildNumberSuggestions(query, addHymnCatalog);
+            }
+            else
+            {
+                var hits = await Lyrics.SearchLyricsAsync(query.Trim(), token);
+                if (token.IsCancellationRequested)
+                    return;
+
+                suggestions = hits
+                    .Take(8)
+                    .Select(h => new BoardHymnSuggestion
+                    {
+                        Number = h.Number,
+                        Line = h.Line ?? "",
+                        LineFirst = true,
+                    })
+                    .ToList();
+            }
+
+            if (token.IsCancellationRequested)
+                return;
+
+            addHymnSuggestions = suggestions;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // superseded
+        }
+        catch
+        {
+            // Fall back to first-line catalog match if lyrics index isn't ready.
+            if (!token.IsCancellationRequested && !IsNumberQuery(query))
+            {
+                addHymnSuggestions = BuildCatalogLineSuggestions(query, addHymnCatalog);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    void PickHymnSuggestion(BoardHymnSuggestion suggestion)
+    {
+        addHymnPickedNumber = suggestion.Number;
+        addHymnPickedLine = suggestion.Line;
+        addHymnQuery = suggestion.Number;
+        addHymnSuggestions = new();
+        addHymnError = null;
+        addHymnSuggestCts?.Cancel();
+        addHymnSuggestCts = null;
+    }
+
+    async Task OnAddHymnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await ConfirmAddHymn();
+        else if (e.Key == "Escape")
+            CloseAddHymn();
+    }
+
+    async Task OnAddSectionKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await ConfirmAddSection();
+    }
+
+    async Task ConfirmAddHymn()
+    {
+        addHymnError = null;
+        await EnsureAddHymnCatalogAsync();
+
+        var resolved = await ResolveAddHymnSelectionAsync();
+        if (resolved == null)
+            return;
+
+        var ok = await AddHymnToListAsync(
+            resolved.Value.Number,
+            addHymnNotes?.Trim() ?? "",
+            firstLine: resolved.Value.Line,
+            panelError: true);
+        if (ok)
+            CloseAddHymn();
+    }
+
+    async Task<(string Number, string? Line)?> ResolveAddHymnSelectionAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(addHymnPickedNumber))
+            return (addHymnPickedNumber!.Trim(), addHymnPickedLine);
+
+        var query = (addHymnQuery ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            addHymnError = "Enter a hymn number or line.";
+            return null;
+        }
+
+        if (IsNumberQuery(query))
+        {
+            var prefix = ExtractNumberPrefix(query);
+            if (!string.IsNullOrEmpty(prefix))
+            {
+                var exact = addHymnCatalog.FirstOrDefault(h =>
+                    string.Equals(h.Number, prefix, StringComparison.OrdinalIgnoreCase));
+                if (exact != null)
+                    return (exact.Number, exact.FirstLine ?? exact.Title);
+
+                var matches = BuildNumberSuggestions(query, addHymnCatalog, maxCount: 2);
+                if (matches.Count == 1)
+                    return (matches[0].Number, matches[0].Line);
+            }
+
+            addHymnError = "Hymn not found.";
+            return null;
+        }
+
+        try
+        {
+            var hits = await Lyrics.SearchLyricsAsync(query);
+            if (hits.Count == 1)
+                return (hits[0].Number, hits[0].Line);
+            if (hits.Count == 0)
+            {
+                addHymnError = "No matching hymn. Pick one from the list or refine your search.";
+                return null;
+            }
+        }
+        catch
+        {
+            var fallback = BuildCatalogLineSuggestions(query, addHymnCatalog, maxCount: 2);
+            if (fallback.Count == 1)
+                return (fallback[0].Number, fallback[0].Line);
+        }
+
+        addHymnError = "No matching hymn. Pick one from the list or refine your search.";
+        return null;
+    }
+
+    static List<BoardHymnSuggestion> BuildNumberSuggestions(
+        string query,
+        IReadOnlyList<HymnCatalogEntry> hymns,
+        int maxCount = 8)
+    {
+        if (hymns == null || hymns.Count == 0 || string.IsNullOrWhiteSpace(query))
+            return new();
+
+        var prefix = ExtractNumberPrefix(query.Trim());
+        if (string.IsNullOrEmpty(prefix))
+            return new();
+
+        return hymns
+            .Where(h => !string.IsNullOrEmpty(h.Number) &&
+                h.Number.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(h => HymnNumberSortKey(h.Number))
+            .Select(h => new BoardHymnSuggestion
+            {
+                Number = h.Number,
+                Line = h.FirstLine ?? h.Title ?? "",
+                LineFirst = false,
+            })
+            .Take(maxCount)
+            .ToList();
+    }
+
+    static List<BoardHymnSuggestion> BuildCatalogLineSuggestions(
+        string query,
+        IReadOnlyList<HymnCatalogEntry> hymns,
+        int maxCount = 8)
+    {
+        if (hymns == null || hymns.Count == 0 || string.IsNullOrWhiteSpace(query))
+            return new();
+
+        var stripped = NormalizeSuggestionText(query.Trim());
+        if (stripped.Length < 2)
+            return new();
+
+        return hymns
+            .Select(h =>
+            {
+                var line = !string.IsNullOrWhiteSpace(h.FirstLine) ? h.FirstLine!.Trim()
+                    : !string.IsNullOrWhiteSpace(h.Title) ? h.Title!.Trim()
+                    : "";
+                return (Entry: h, Line: line);
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Line)
+                && NormalizeSuggestionText(x.Line).Contains(stripped, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => NormalizeSuggestionText(x.Line), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => HymnNumberSortKey(x.Entry.Number))
+            .GroupBy(x => (
+                Line: NormalizeSuggestionText(x.Line).ToLowerInvariant(),
+                Number: (x.Entry.Number ?? "").ToLowerInvariant()))
+            .Select(g => g.First())
+            .Take(maxCount)
+            .Select(x => new BoardHymnSuggestion
+            {
+                Number = x.Entry.Number,
+                Line = x.Line,
+                LineFirst = true,
+            })
+            .ToList();
+    }
+
+    static bool IsNumberQuery(string query) =>
+        !string.IsNullOrWhiteSpace(query) && char.IsDigit(query.Trim()[0]);
+
+    static string ExtractNumberPrefix(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return "";
+
+        var match = System.Text.RegularExpressions.Regex.Match(
+            text.Trim(),
+            @"^(\d+)([fst]?)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!match.Success || string.IsNullOrEmpty(match.Groups[1].Value))
+            return "";
+
+        return (match.Groups[1].Value + match.Groups[2].Value).ToLowerInvariant();
+    }
+
+    static string NormalizeSuggestionText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return "";
+        var chars = text.Where(c => !char.IsPunctuation(c)).ToArray();
+        return System.Text.RegularExpressions.Regex.Replace(new string(chars).Trim(), @"\s+", " ");
+    }
+
+    static double HymnNumberSortKey(string number)
+    {
+        if (string.IsNullOrWhiteSpace(number))
+            return double.MaxValue;
+
+        var normalized = number
+            .Replace("f", ".4", StringComparison.OrdinalIgnoreCase)
+            .Replace("s", ".2", StringComparison.OrdinalIgnoreCase)
+            .Replace("t", ".3", StringComparison.OrdinalIgnoreCase);
+        return double.TryParse(normalized, out var value) ? value : double.MaxValue;
+    }
+
+    sealed class BoardHymnSuggestion
+    {
+        public string Number { get; set; } = "";
+        public string Line { get; set; } = "";
+        public bool LineFirst { get; set; }
+    }
+
+    async Task ConfirmAddSection()
+    {
+        if (ActiveGroup == null || ActiveList == null)
+            return;
+
+        var name = (addSectionName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            addSectionError = "Enter a section name.";
+            return;
+        }
+
+        if (ActiveList.Hymns.Any(h =>
+                h.IsSection &&
+                string.Equals(h.SectionName?.Trim(), name, StringComparison.OrdinalIgnoreCase)))
+        {
+            addSectionError = "A section with that name already exists.";
+            return;
+        }
+
+        Busy = true;
+        addSectionError = null;
+        Error = null;
+        try
+        {
+            await Profiles.RefreshCurrentProfileAsync();
+            var actor = ActorDisplayName();
+            var next = (ActiveList.Hymns.Count == 0 ? 0 : ActiveList.Hymns.Max(h => h.SortOrder)) + 1;
+            ActiveList.Hymns.Add(new BoardHymnDoc
+            {
+                Id = Guid.NewGuid().ToString("N")[..10],
+                IsSection = true,
+                SectionName = name,
+                SortOrder = next,
+                AddedBy = Auth.CurrentUserId,
+                AddedByName = actor,
+                UpdatedAt = DateTimeOffset.UtcNow
+            });
+            await BoardService.UpdateListAsync(ActiveGroup.Id, ActiveList);
+
+            if (!addSectionThisListOnly)
+            {
+                await BoardService.SaveSectionToTemplateAsync(ActiveGroup.Id, ActiveList.Id, name);
+                savedSectionNames.Add(name);
+                State.ShowToast("/lottie/done.gif", "Section saved for all dates.");
+            }
+            else
+            {
+                State.ShowToast("/lottie/done.gif", "Section added.");
+            }
+
+            RebuildBoardDisplayRows();
+            CloseAddSection();
+        }
+        catch (Exception ex)
+        {
+            addSectionError = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    string ActorDisplayName()
+    {
+        var profile = Profiles.CurrentProfile;
+        if (!string.IsNullOrWhiteSpace(profile?.Nickname))
+            return profile!.Nickname.Trim();
+        if (!string.IsNullOrWhiteSpace(profile?.DisplayName))
+            return profile!.DisplayName.Trim();
+        return Auth.CurrentEmail ?? "";
+    }
+
+    async Task<bool> AddHymnToListAsync(string number, string notes, string? firstLine, bool panelError = false)
+    {
+        if (ActiveGroup == null || ActiveList == null)
+            return false;
+
+        if (ActiveList.Hymns.Any(h =>
+                !h.IsSection &&
+                string.Equals(h.HymnNumber, number, StringComparison.OrdinalIgnoreCase)))
+        {
+            var msg = $"Hymn #{number} is already on this list.";
+            if (panelError)
+                addHymnError = msg;
+            else
+                Status = msg;
+            return false;
+        }
+
+        Busy = true;
+        Status = null;
+        Error = null;
+        try
+        {
+            // Soft-validate against catalog when possible.
+            try
+            {
+                var found = await Lyrics.GetHymnAsync(number);
+                if (string.IsNullOrWhiteSpace(firstLine) && !string.IsNullOrWhiteSpace(found.FirstLine))
+                    firstLine = found.FirstLine;
+                if (!string.IsNullOrWhiteSpace(found.Number))
+                    number = found.Number.Trim();
+            }
+            catch (ArgumentException)
+            {
+                var msg = "Invalid hymn number.";
+                if (panelError)
+                    addHymnError = msg;
+                else
+                    Error = msg;
+                return false;
+            }
+            catch
+            {
+                if (panelError && string.IsNullOrWhiteSpace(firstLine))
+                {
+                    addHymnError = "Hymn not found.";
+                    return false;
+                }
+                // Offline / already-known active hymn — still allow add by number.
+            }
+
+            await Profiles.RefreshCurrentProfileAsync();
+            var actor = ActorDisplayName();
+
+            // Place new hymns before the first section (MAUI parity).
+            var firstSectionIndex = ActiveList.Hymns.FindIndex(h => h.IsSection);
+            var entry = new BoardHymnDoc
+            {
+                Id = Guid.NewGuid().ToString("N")[..10],
+                HymnNumber = number,
+                Notes = notes,
+                SortOrder = 0,
+                AddedBy = Auth.CurrentUserId,
+                AddedByName = actor,
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
+            if (firstSectionIndex < 0)
+                ActiveList.Hymns.Add(entry);
+            else
+                ActiveList.Hymns.Insert(firstSectionIndex, entry);
+
+            RenumberBoard();
+            if (!string.IsNullOrWhiteSpace(firstLine))
+                firstLineCache[number] = firstLine.Trim();
+
+            await BoardService.UpdateListAsync(ActiveGroup.Id, ActiveList);
+            RebuildBoardDisplayRows();
+            State.ShowToast("/lottie/done.gif", "Added to board.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (panelError)
+                addHymnError = ex.Message;
+            else
+                Error = ex.Message;
+            return false;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    async Task OpenHymn(string? number)
+    {
+        if (string.IsNullOrWhiteSpace(number)) return;
+        var hymn = await State.OpenHymnAsync(number);
+        if (hymn != null)
+        {
+            await Close();
+            Nav.NavigateTo($"read/{Uri.EscapeDataString(hymn.Number)}");
+        }
+    }
+
+    void OnAuth(object? s, EventArgs e) =>
+        _ = InvokeAsync(async () =>
+        {
+            if (!show) return;
+            ResetNav();
+            if (Auth.IsSignedIn)
+                await LoadGroupsAsync();
+            else
+                StateHasChanged();
+        });
+
+    void OnStateChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Auth.AuthStateChanged -= OnAuth;
+        State.Changed -= OnStateChanged;
+        BoardUi.UnreadChanged -= OnUnreadChanged;
+        BoardUi.OpenRequested -= OnOpenRequested;
+        listSub?.Dispose();
+        addHymnSuggestCts?.Cancel();
+        addHymnSuggestCts?.Dispose();
+        addHymnSuggestCts = null;
+        try { _ = Js.InvokeVoidAsync("mobihymnBoardDrag.cancel"); } catch { /* ignore */ }
+        dragDotNetRef?.Dispose();
+        dragDotNetRef = null;
+    }
+}

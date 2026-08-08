@@ -1,0 +1,26 @@
+@inject IJSRuntime Js
+@inject AppState State
+@implements IDisposable
+
+@code {
+    protected override void OnInitialized()
+    {
+        State.Changed += OnChanged;
+        _ = SyncBodyClass();
+    }
+
+    void OnChanged() => _ = SyncBodyClass();
+
+    async Task SyncBodyClass()
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("eval", State.DarkMode
+                ? "document.body.classList.add('dark')"
+                : "document.body.classList.remove('dark')");
+        }
+        catch { }
+    }
+
+    public void Dispose() => State.Changed -= OnChanged;
+}

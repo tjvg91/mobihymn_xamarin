@@ -11,7 +11,7 @@
     <LangVersion>latest</LangVersion>
 
     <ApplicationTitle>MobiHymn</ApplicationTitle>
-    <ApplicationId>com.tjapps.mobihymn</ApplicationId>
+    <ApplicationId>com.mobihymn</ApplicationId>
     <ApplicationDisplayVersion>0.9.0</ApplicationDisplayVersion>
     <ApplicationVersion>5</ApplicationVersion>
 
@@ -38,7 +38,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <MauiIcon Include="Resources\AppIcon\appicon.png" />
+    <MauiIcon Include="Resources\AppIcon\appicon.png" Color="#000000" ForegroundScale="0.775" />
     <MauiSplashScreen Include="Resources\Splash\splash.png" Color="#2D2D2D" BaseSize="432,432" />
     <MauiFont Include="Resources\Fonts\*.ttf" />
     <MauiAsset Include="Resources\GIF\*.gif" LogicalName="%(Filename)%(Extension)" />

@@ -1,0 +1,148 @@
+@inject IAppPreferences Prefs
+@inject IntroUiState IntroUi
+@implements IDisposable
+
+@if (show)
+{
+    <div class="intro-slider-host" role="dialog" aria-modal="true" aria-label="Features tour">
+        <div class="intro-slider">
+            <div class="intro-slider-stage">
+                <div class="intro-slide" @key="index"
+                     @ontouchstart="OnTouchStart"
+                     @ontouchend="OnTouchEnd">
+                    @if (Current.UseGif)
+                    {
+                        <img class="intro-slide-media" src="@Current.MediaSrc" alt="" />
+                    }
+                    else
+                    {
+                        <lottie-player class="intro-slide-media"
+                                       src="@Current.MediaSrc"
+                                       background="transparent"
+                                       speed="1"
+                                       loop
+                                       autoplay
+                                       @key="@($"intro-{index}-{Current.MediaSrc}")">
+                        </lottie-player>
+                    }
+                    <h2 class="intro-slide-title">@Current.Title</h2>
+                    <p class="intro-slide-sub">@Current.Subtitle</p>
+                </div>
+
+                <div class="intro-slider-dots" role="tablist" aria-label="Slides">
+                    @for (var i = 0; i < slides.Count; i++)
+                    {
+                        var dot = i;
+                        <button type="button"
+                                class="intro-slider-dot @(dot == index ? "is-active" : null)"
+                                aria-label="@($"Slide {dot + 1}")"
+                                aria-current="@(dot == index ? "true" : null)"
+                                @onclick="() => GoTo(dot)"></button>
+                    }
+                </div>
+            </div>
+
+            <div class="intro-slider-actions">
+                @if (!IsLast)
+                {
+                    <button type="button" class="intro-slider-btn intro-slider-btn-skip"
+                            @onclick="Dismiss" @onclick:stopPropagation="true">Skip</button>
+                }
+                else
+                {
+                    <span></span>
+                }
+                <button type="button" class="intro-slider-btn intro-slider-btn-next"
+                        @onclick="NextOrDone" @onclick:stopPropagation="true">
+                    @(IsLast ? "Done" : "Next")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    bool show;
+    int index;
+    double touchStartX;
+    List<Slide> slides = new();
+
+    sealed record Slide(string Title, string Subtitle, string MediaSrc, bool UseGif);
+
+    Slide Current => slides[Math.Clamp(index, 0, Math.Max(0, slides.Count - 1))];
+    bool IsLast => slides.Count > 0 && index >= slides.Count - 1;
+
+    protected override void OnInitialized()
+    {
+        IntroUi.ReplayRequested += OnReplay;
+        var isNew = Prefs.GetBool(PrefKeys.IsNew, true);
+        if (isNew)
+            Open(includeAllSet: true);
+    }
+
+    void OnReplay() => InvokeAsync(() =>
+    {
+        Open(includeAllSet: Prefs.GetBool(PrefKeys.IsNew, true));
+        StateHasChanged();
+    });
+
+    void Open(bool includeAllSet)
+    {
+        BuildSlides(includeAllSet);
+        index = 0;
+        show = true;
+    }
+
+    void BuildSlides(bool includeAllSet)
+    {
+        slides = new List<Slide>
+        {
+            new("Welcome", "Browsing a hymn is now a few taps away.", "/lottie/welcome-2.gif", true),
+            new("Read", "Read & play a hymn anytime, anywhere", "/lottie/read-play.json", false),
+            new("Save", "Bookmark your favorite hymns now.", "/lottie/save-music.json", false),
+        };
+        // Match MAUI: "All Set!" only on first-run (isNew). Replay from About uses 3 slides.
+        if (includeAllSet)
+            slides.Add(new("All Set!", "Let's go!", "/lottie/done.json", false));
+    }
+
+    void GoTo(int i)
+    {
+        if (i < 0 || i >= slides.Count) return;
+        index = i;
+    }
+
+    void OnTouchStart(TouchEventArgs e)
+    {
+        if (e.Touches.Length > 0)
+            touchStartX = e.Touches[0].ClientX;
+    }
+
+    void OnTouchEnd(TouchEventArgs e)
+    {
+        if (e.ChangedTouches.Length == 0) return;
+        var dx = e.ChangedTouches[0].ClientX - touchStartX;
+        if (Math.Abs(dx) < 48) return;
+        if (dx < 0 && index < slides.Count - 1) index++;
+        else if (dx > 0 && index > 0) index--;
+    }
+
+    void NextOrDone()
+    {
+        if (!IsLast)
+        {
+            index++;
+            return;
+        }
+        Dismiss();
+    }
+
+    void Dismiss()
+    {
+        try { Prefs.SetBool(PrefKeys.IsNew, false); }
+        catch { /* still dismiss UI if prefs write fails */ }
+        show = false;
+    }
+
+    public void Dispose() => IntroUi.ReplayRequested -= OnReplay;
+}

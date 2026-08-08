@@ -1,0 +1,57 @@
+﻿@inject IJSRuntime Js
+
+@* Block the reader until the PWA gate allows access (installed / localhost). *@
+@if (allowApp)
+{
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+            <FocusOnNavigate RouteData="@routeData" Selector="main" />
+        </Found>
+        <NotFound>
+            <LayoutView Layout="@typeof(MainLayout)">
+                <h1>Not found</h1>
+                <p class="muted">That page does not exist. <a href="">Go home</a>.</p>
+            </LayoutView>
+        </NotFound>
+    </Router>
+}
+else if (gateReady)
+{
+    <PwaAccessGate ModeChanged="OnGateModeChanged" />
+}
+
+@code {
+    bool gateReady;
+    bool allowApp;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        try
+        {
+            var mode = await Js.InvokeAsync<string>("mobihymnPwa.getGateMode");
+            allowApp = string.Equals(mode, "none", StringComparison.Ordinal);
+            try { await Js.InvokeVoidAsync("mobihymnPwa.applyAccessGate"); }
+            catch { /* ignore */ }
+        }
+        catch
+        {
+            allowApp = true;
+        }
+
+        gateReady = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    void OnGateModeChanged(string mode)
+    {
+        var next = string.Equals(mode, "none", StringComparison.Ordinal);
+        if (next == allowApp)
+            return;
+        allowApp = next;
+        StateHasChanged();
+    }
+}

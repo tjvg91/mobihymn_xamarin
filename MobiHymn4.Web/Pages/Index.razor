@@ -1,0 +1,15 @@
+@page "/"
+@inject AppState State
+@inject NavigationManager Nav
+@inject IAppPreferences Prefs
+
+@code {
+    protected override void OnInitialized()
+    {
+        var n = State.ActiveHymn?.Number
+            ?? State.Settings.LastHymnNumber
+            ?? Prefs.Get(PrefKeys.LastHymnNumber, "1");
+        if (string.IsNullOrWhiteSpace(n)) n = "1";
+        Nav.NavigateTo($"/read/{Uri.EscapeDataString(n.Trim())}", replace: true);
+    }
+}

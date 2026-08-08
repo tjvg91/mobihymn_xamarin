@@ -1,0 +1,406 @@
+@page "/search"
+@inject IAgentApi AgentApi
+@inject IHymnLyricsSource Lyrics
+@inject AppState State
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+
+<PageTitle>Search</PageTitle>
+
+<div class="search-page">
+    <div class="search-bar-wrap">
+        <div class="search-bar">
+            <i class="fa-solid fa-magnifying-glass search-bar-icon" aria-hidden="true"></i>
+            <input class="search-bar-input"
+                   @bind="Query"
+                   @bind:event="oninput"
+                   placeholder="@Placeholder"
+                   disabled="@Busy"
+                   @onkeydown="OnKey"
+                   aria-label="Search hymns" />
+            @if (!string.IsNullOrEmpty(Query))
+            {
+                <button type="button"
+                        class="search-bar-clear"
+                        title="Clear"
+                        aria-label="Clear search"
+                        disabled="@Busy"
+                        @onclick="ClearQuery">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            }
+            <button type="button"
+                    class="search-bar-mic @(Listening ? "listening" : "")"
+                    title="Voice search"
+                    aria-label="Voice search"
+                    disabled="@Busy"
+                    @onclick="ToggleVoice">
+                <i class="fa-solid fa-microphone"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="search-chip-row" role="tablist" aria-label="Search type">
+        @foreach (var t in Types)
+        {
+            <button type="button"
+                    class="search-chip @(SearchType == t.Id ? "active" : "")"
+                    role="tab"
+                    aria-selected="@(SearchType == t.Id)"
+                    @onclick="@(() => OnSelectTypeAsync(t.Id))">
+                @t.Label
+            </button>
+        }
+    </div>
+
+    <div class="search-results board-cascade @(resultsEnterAnim ? "is-entering" : null) @(Busy || Listening ? "is-busy" : null)">
+        @if (Listening)
+        {
+            <div class="search-listen" @onclick="StopVoice">
+                <div class="search-listen-mic" aria-hidden="true">
+                    <div class="search-listen-pulse"></div>
+                    <div class="search-listen-btn"><i class="fa-solid fa-microphone"></i></div>
+                </div>
+                <p class="search-listen-title">Listening for search text…</p>
+                <p class="search-listen-hint">Tap to cancel</p>
+            </div>
+        }
+        else if (Busy)
+        {
+            <div class="search-busy">
+                <lottie-player class="search-lottie"
+                               src="@(State.DarkMode ? "lottie/search-dark.json" : "lottie/search-light.json")"
+                               background="transparent"
+                               speed="3"
+                               loop
+                               autoplay>
+                </lottie-player>
+            </div>
+        }
+        else if (Searched)
+        {
+            @if (ResultCount > 0)
+            {
+                <div class="search-count">@CountLabel</div>
+            }
+
+            @if (!string.IsNullOrEmpty(Error) && ResultCount == 0)
+            {
+                <p class="search-empty">@Error</p>
+            }
+            else if (IsGroupedType)
+            {
+                @foreach (var group in Groups)
+                {
+                    var expanded = ExpandedKeys.Contains(GroupKey(group));
+                    var enterIdx = resultsEnterAnim ? Groups.IndexOf(group) : -1;
+                    <div class="search-group board-cascade-item @(expanded ? "expanded" : "")"
+                         style="@EnterDelayStyle(enterIdx)">
+                        <button type="button"
+                                class="search-group-header"
+                                aria-expanded="@expanded"
+                                @onclick="() => ToggleGroup(group)">
+                            <span class="search-group-text">
+                                <span class="search-group-title">@group.Title</span>
+                                <span class="search-group-sub">@group.SubtitleText</span>
+                            </span>
+                            <i class="fa-solid fa-chevron-down search-group-chevron"
+                               aria-hidden="true"></i>
+                        </button>
+                        <div class="search-group-body">
+                            <div class="search-group-body-inner">
+                                <div class="search-group-divider" aria-hidden="true"></div>
+                                <div class="search-group-hymns">
+                                    @foreach (var hymn in group.Hymns)
+                                    {
+                                        <button type="button" class="search-group-hymn" @onclick="() => Open(hymn)">
+                                            <span class="search-group-hymn-num">#@hymn.Number</span>
+                                            <span class="search-group-hymn-line">@hymn.Line</span>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+            else
+            {
+                @foreach (var item in Results)
+                {
+                    var enterIdx = resultsEnterAnim ? Results.IndexOf(item) : -1;
+                    <button type="button"
+                            class="search-hit board-cascade-item"
+                            style="@EnterDelayStyle(enterIdx)"
+                            @onclick="() => Open(item)">
+                        <span class="search-hit-top">
+                            <span class="search-hit-line">@item.Line</span>
+                            <span class="search-hit-badge">#@item.Number</span>
+                        </span>
+                        @if (!string.IsNullOrWhiteSpace(item.Reason))
+                        {
+                            <span class="search-hit-reason">@item.Reason</span>
+                        }
+                    </button>
+                }
+            }
+        }
+    </div>
+</div>
+
+@code {
+    sealed record TypeOpt(string Id, string Label);
+
+    static readonly TypeOpt[] Types =
+    {
+        new("ai", "AI"),
+        new("lyrics", "Lyrics"),
+        new("author", "Author / Composer"),
+        new("metre", "Metre"),
+        new("key", "Key"),
+        new("verse", "Verse"),
+    };
+
+    string Query = "";
+    string SearchType = "lyrics";
+    bool Busy;
+    bool Searched;
+    bool Listening;
+    bool resultsEnterAnim;
+    int resultsEnterAnimToken;
+    string? Error;
+    List<HymnSearchHit> Results = new();
+    List<HymnSearchGroup> Groups = new();
+    HashSet<string> ExpandedKeys = new(StringComparer.OrdinalIgnoreCase);
+
+    int Limit => State.Settings.AgentChatLimit > 0 ? State.Settings.AgentChatLimit : 10;
+
+    bool IsGroupedType => SearchType is "author" or "metre" or "key" or "verse";
+
+    int ResultCount => IsGroupedType ? Groups.Count : Results.Count;
+
+    string Placeholder => SearchType switch
+    {
+        "author" => "e.g. Charles Wesley",
+        "metre" => "e.g. 8.7.8.7",
+        "key" => "e.g. E flat, Eb, or C#",
+        "verse" => "e.g. Genesis 1 or Gen 1",
+        "ai" => "Describe what you’re looking for…",
+        _ => "e.g. amazing grace"
+    };
+
+    string CountLabel =>
+        $"{ResultCount} result{(ResultCount == 1 ? "" : "s")} found";
+
+    static string GroupKey(HymnSearchGroup g) => $"{g.Category}\0{g.Title}";
+
+    protected override void OnInitialized()
+    {
+        // Prefetch catalog so the first Lyrics/metadata search isn't cold
+        _ = Lyrics.WarmSearchIndexAsync();
+    }
+
+    async Task OnSelectTypeAsync(string id)
+    {
+        if (string.Equals(SearchType, id, StringComparison.Ordinal))
+            return;
+
+        // Capture before changing type — only re-query if user already ran a search.
+        var shouldRerun = Searched && !string.IsNullOrWhiteSpace(Query);
+
+        SearchType = id;
+        Error = null;
+
+        if (!shouldRerun)
+            return;
+
+        // Drop previous type's hits immediately so they can't linger during the new query.
+        Results = new();
+        Groups = new();
+        ExpandedKeys = new(StringComparer.OrdinalIgnoreCase);
+        await InvokeAsync(StateHasChanged);
+        await RunSearch();
+    }
+
+    void ClearQuery()
+    {
+        Query = "";
+        Results = new();
+        Groups = new();
+        ExpandedKeys = new(StringComparer.OrdinalIgnoreCase);
+        Searched = false;
+        Error = null;
+    }
+
+    void ToggleGroup(HymnSearchGroup group)
+    {
+        var key = GroupKey(group);
+        if (!ExpandedKeys.Add(key))
+            ExpandedKeys.Remove(key);
+    }
+
+    async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await RunSearch();
+    }
+
+    async Task RunSearch()
+    {
+        if (string.IsNullOrWhiteSpace(Query)) return;
+        Busy = true;
+        Searched = false;
+        Error = null;
+        Results = new();
+        Groups = new();
+        ExpandedKeys = new(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var q = Query.Trim();
+            if (SearchType == "ai")
+            {
+                var r = await AgentApi.SearchAsync(q, Limit, null);
+                Results = (r.Results ?? new())
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Number))
+                    .Select(x => new HymnSearchHit
+                    {
+                        Number = x.Number!.Trim(),
+                        Line = string.IsNullOrWhiteSpace(x.FirstLine)
+                            ? (x.Title ?? $"Hymn #{x.Number}")
+                            : x.FirstLine!,
+                        Reason = x.Reason
+                    })
+                    .ToList();
+                if (Results.Count == 0)
+                    Error = r.Message ?? "No results.";
+            }
+            else if (SearchType == "lyrics")
+            {
+                Results = (await Lyrics.SearchLyricsAsync(q)).ToList();
+                if (Results.Count == 0)
+                    Error = "No results.";
+            }
+            else if (IsGroupedType)
+            {
+                Groups = (await Lyrics.SearchMetadataGroupsAsync(q, SearchType)).ToList();
+                if (Groups.Count == 0)
+                    Error = "No results.";
+            }
+            else
+            {
+                Results = (await Lyrics.SearchMetadataAsync(q, SearchType)).ToList();
+                if (Results.Count == 0)
+                    Error = "No results.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+            Results = new();
+            Groups = new();
+        }
+        finally
+        {
+            Busy = false;
+            Searched = true;
+            TriggerResultsEnterAnim();
+        }
+    }
+
+    void TriggerResultsEnterAnim()
+    {
+        resultsEnterAnimToken++;
+        var token = resultsEnterAnimToken;
+        resultsEnterAnim = ResultCount > 0;
+        if (!resultsEnterAnim)
+            return;
+        _ = ClearResultsEnterAnimAsync(token, ResultCount);
+    }
+
+    async Task ClearResultsEnterAnimAsync(int token, int itemCount)
+    {
+        var wait = 320 + Math.Min(Math.Max(itemCount, 1), 24) * 45;
+        await Task.Delay(wait);
+        if (token != resultsEnterAnimToken)
+            return;
+        resultsEnterAnim = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    static string EnterDelayStyle(int index)
+    {
+        if (index < 0)
+            return "";
+        var ms = index * 45;
+        return $"--enter-delay:{ms.ToString(System.Globalization.CultureInfo.InvariantCulture)}ms";
+    }
+
+    async Task Open(HymnSearchHit item)
+    {
+        if (string.IsNullOrWhiteSpace(item.Number)) return;
+        var hymn = await State.OpenHymnAsync(item.Number);
+        if (hymn != null)
+            Nav.NavigateTo($"read/{Uri.EscapeDataString(hymn.Number)}");
+        else
+            Error = State.StatusMessage;
+    }
+
+    async Task ToggleVoice()
+    {
+        if (Listening)
+        {
+            await StopVoice();
+            return;
+        }
+
+        if (Busy) return;
+
+        Listening = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var text = await Js.InvokeAsync<string>("eval", @"
+                (async () => {
+                    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+                    if (!SR) return '';
+                    return await new Promise((resolve) => {
+                        const r = new SR();
+                        window.__mhSpeech = r;
+                        let done = false;
+                        const finish = (v) => { if (done) return; done = true; resolve(v || ''); };
+                        r.lang = 'en-US';
+                        r.interimResults = false;
+                        r.onresult = (e) => finish(e.results[0][0].transcript || '');
+                        r.onerror = () => finish('');
+                        r.onend = () => finish('');
+                        try { r.start(); } catch (e) { finish(''); }
+                    });
+                })()");
+
+            Listening = false;
+            await InvokeAsync(StateHasChanged);
+
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                Query = text.Trim();
+                await RunSearch();
+            }
+        }
+        catch
+        {
+            Listening = false;
+        }
+    }
+
+    async Task StopVoice()
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("eval",
+                "try{window.__mhSpeech&&window.__mhSpeech.stop()}catch(e){} window.__mhSpeech=null;");
+        }
+        catch { /* ignore */ }
+        Listening = false;
+    }
+}

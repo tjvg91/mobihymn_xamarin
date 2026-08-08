@@ -54,6 +54,12 @@ public static class MauiProgram
                         platformView.SetTextColor(color.ToPlatform());
                         platformView.BackgroundTintList =
                             Android.Content.Res.ColorStateList.ValueOf(Android.Graphics.Color.Transparent);
+                        // Display-only: value comes from the Material date picker, not typing.
+                        platformView.InputType = Android.Text.InputTypes.Null;
+                        platformView.KeyListener = null;
+                        platformView.SetCursorVisible(false);
+                        platformView.LongClickable = false;
+                        platformView.SetTextIsSelectable(false);
                     });
 #endif
             })

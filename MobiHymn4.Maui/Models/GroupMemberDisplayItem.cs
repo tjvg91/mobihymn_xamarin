@@ -1,16 +1,18 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using MobiHymn4.Utils;
 using Microsoft.Maui.Graphics;
 
 namespace MobiHymn4.Models;
 
-public class GroupMemberDisplayItem
+public class GroupMemberDisplayItem : INotifyPropertyChanged
 {
     public GroupMember Member { get; init; }
 
-    public string DisplayName => Member?.DisplayName ?? string.Empty;
+    public string DisplayName { get; init; } = string.Empty;
 
     public string Initials => Member?.GetInitials() ?? "?";
 
@@ -28,14 +30,55 @@ public class GroupMemberDisplayItem
 
     public bool ShowRoleSummary => ShowVisibleRoles && HasVisibleRoles;
 
-    public static GroupMemberDisplayItem FromMember(GroupMember member, bool showRoles = true)
+    public bool ShowMemberMenu { get; init; }
+
+    double cascadeOpacity = 1;
+    public double CascadeOpacity
+    {
+        get => cascadeOpacity;
+        set
+        {
+            if (Math.Abs(cascadeOpacity - value) < 0.001)
+                return;
+            cascadeOpacity = value;
+            OnPropertyChanged();
+        }
+    }
+
+    double cascadeTranslateY;
+    public double CascadeTranslateY
+    {
+        get => cascadeTranslateY;
+        set
+        {
+            if (Math.Abs(cascadeTranslateY - value) < 0.001)
+                return;
+            cascadeTranslateY = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public event PropertyChangedEventHandler PropertyChanged;
+
+    void OnPropertyChanged([CallerMemberName] string propertyName = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+    public static GroupMemberDisplayItem FromMember(
+        GroupMember member,
+        bool showRoles = true,
+        string currentUserId = null,
+        bool currentUserIsAdmin = false)
     {
         var tint = RoleAvatarHelper.GetTintColor(member?.Roles);
+        var isYou = !string.IsNullOrEmpty(currentUserId)
+            && string.Equals(member?.Uid, currentUserId, StringComparison.Ordinal);
         return new()
         {
             Member = member,
+            DisplayName = isYou ? "You" : (member?.DisplayName ?? string.Empty),
             VisibleRolesSummary = member?.FormatVisibleRoles() ?? string.Empty,
             ShowVisibleRoles = showRoles,
+            ShowMemberMenu = currentUserIsAdmin && !isYou,
             AvatarTintColor = tint,
             AvatarBackgroundColor = tint.WithAlpha(0.15f),
         };
@@ -68,6 +111,8 @@ public static class GroupMemberRoleExtensions
     public static string FormatVisibleRoles(this GroupMember member)
     {
         var roles = member.GetVisibleRoles().Select(r => r.ToDisplayName()).ToList();
+        if (member?.IsAdmin == true)
+            roles.Insert(0, "Admin");
         return roles.Count == 0 ? string.Empty : string.Join(", ", roles);
     }
 

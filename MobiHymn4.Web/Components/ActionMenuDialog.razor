@@ -1,0 +1,88 @@
+@namespace MobiHymn4.Web.Components
+
+@if (show)
+{
+    <div class="action-menu-host @(animOpen ? "is-open" : null)" aria-live="polite">
+        <div class="action-menu-overlay" @onclick="Dismiss"></div>
+        <div class="action-menu" @onclick:stopPropagation="true" role="dialog" aria-labelledby="action-menu-title">
+            <h2 id="action-menu-title" class="action-menu-title">@Title</h2>
+            <div class="action-menu-options">
+                @foreach (var option in Options)
+                {
+                    var label = option;
+                    <button type="button"
+                            class="action-menu-option @(IsDestructive(label) ? "is-danger" : null)"
+                            @onclick="() => Pick(label)">
+                        @label
+                    </button>
+                }
+            </div>
+            <div class="action-menu-actions">
+                <button type="button" class="action-menu-cancel" @onclick="Dismiss">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    const int CloseMs = 200;
+
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public IReadOnlyList<string> Options { get; set; } = Array.Empty<string>();
+    [Parameter] public EventCallback<string> OnSelected { get; set; }
+
+    bool show;
+    bool animOpen;
+    bool closing;
+
+    static bool IsDestructive(string label) =>
+        label.Equals("Leave group", StringComparison.OrdinalIgnoreCase)
+        || label.Equals("Remove member", StringComparison.OrdinalIgnoreCase)
+        || label.Equals("Remove as Admin", StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnParametersSet()
+    {
+        if (Visible && !show && !closing)
+        {
+            show = true;
+            animOpen = false;
+            _ = EnterAsync();
+        }
+        else if (!Visible && show && !closing)
+        {
+            _ = ExitAsync(notifyParent: false);
+        }
+    }
+
+    async Task EnterAsync()
+    {
+        await Task.Delay(20);
+        if (!show || closing) return;
+        animOpen = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task ExitAsync(bool notifyParent)
+    {
+        if (closing) return;
+        closing = true;
+        animOpen = false;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(CloseMs);
+        show = false;
+        closing = false;
+        if (notifyParent || Visible)
+            await VisibleChanged.InvokeAsync(false);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task Pick(string option)
+    {
+        await OnSelected.InvokeAsync(option);
+        await ExitAsync(notifyParent: true);
+    }
+
+    Task Dismiss() => ExitAsync(notifyParent: true);
+}

@@ -1,0 +1,709 @@
+@page "/read"
+@page "/read/{Number}"
+@inject AppState State
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+@implements IDisposable
+
+<PageTitle>@(State.ActiveHymn != null ? $"#{State.ActiveHymn.Number} — {State.ActiveHymn.FirstLine}" : "Read")</PageTitle>
+
+@if (State.IsBusy)
+{
+    <div class="read-loader">
+        <div class="pulse-ring"></div>
+        <div class="pulse-logo" aria-hidden="true">
+            <img class="pulse-logo-img" src="logo-mark.svg" width="64" height="48" alt="" />
+        </div>
+    </div>
+}
+else if (State.ActiveHymn == null)
+{
+    <div class="empty">
+        <p>No hymn open.</p>
+        <a class="btn" href="number">Open a hymn</a>
+    </div>
+}
+else
+{
+    var h = State.ActiveHymn;
+
+    <div class="read-shell @(State.IsReadView ? null : "read-chrome-hidden")"
+         style="--reader-theme:@State.ReaderTheme;background:@State.ReaderTheme"
+         @onclick="OnReadShellClick">
+        <div class="read-body"
+             @ref="readBodyRef"
+             style="--reader-font:@State.ReaderFont;
+                    --reader-letter-spacing:@(State.ReaderLetterSpacing.ToString(System.Globalization.CultureInfo.InvariantCulture))px;
+                    --reader-theme:@State.ReaderTheme;
+                    font-family:@State.ReaderFont;
+                    font-size:@(State.ReaderFontSize.ToString(System.Globalization.CultureInfo.InvariantCulture))px;
+                    line-height:@State.ReaderLineSpacing.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    letter-spacing: var(--reader-letter-spacing);
+                    text-align:@State.ReaderTextAlign;
+                    background:@State.ReaderTheme;
+                    color:@LyricsColor">
+
+            <button type="button" class="read-title-row" @onclick="OpenHymnInfo" @onclick:stopPropagation="true" title="Hymn info">
+                <span class="read-title-text">Hymn #@h.Number</span>
+                <i class="fa-solid fa-circle-info read-title-info" aria-hidden="true"></i>
+            </button>
+            <div class="read-lyrics">@((MarkupString)(h.Lyrics ?? ""))</div>
+        </div>
+
+        @if (ShowPlayer)
+        {
+            <div class="read-player @(UsesLightPlayerBar ? "read-player-on-dark-theme" : null)"
+                 style="@PlayerBarStyle"
+                 @onclick:stopPropagation="true">
+                <div class="read-player-bar">
+                    <button type="button" class="player-play" @onclick="TogglePlay" title="@(IsPlaying ? "Pause" : "Play")" aria-label="@(IsPlaying ? "Pause" : "Play")" disabled="@AudioLoading">
+                        @if (AudioLoading)
+                        {
+                            <span class="spinner player-spinner"></span>
+                        }
+                        else if (IsPlaying)
+                        {
+                            <i class="fa-solid fa-pause"></i>
+                        }
+                        else
+                        {
+                            <i class="fa-solid fa-play"></i>
+                        }
+                    </button>
+                    <span class="player-time">@FormatTime(CurrentTime)</span>
+                    <div class="player-seek-wrap" style="--seek-pct:@SeekPct.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)%">
+                        <div class="player-seek-ui" aria-hidden="true">
+                            <div class="player-seek-track"></div>
+                            <div class="player-seek-knob"></div>
+                        </div>
+                        <input class="player-seek" type="range" min="0" max="@SeekMax" step="0.1"
+                               value="@CurrentTime"
+                               disabled="@(Duration <= 0)"
+                               aria-label="Seek"
+                               @oninput="OnSeekInput" />
+                    </div>
+                    <span class="player-time">@FormatTime(Duration)</span>
+                    @if (AudioMode == "midi")
+                    {
+                        <button type="button"
+                                class="player-midi-toggle @(MidiPanelOpen ? "is-open" : null)"
+                                @onclick="ToggleMidiPanel"
+                                title="MIDI controls"
+                                aria-label="MIDI controls"
+                                aria-expanded="@MidiPanelOpen">
+                            <i class="fa-solid fa-sliders"></i>
+                        </button>
+                    }
+                    @if (AudioMode == "mp3" && !string.IsNullOrEmpty(AudioUrl))
+                    {
+                        <audio @ref="audioRef"
+                               src="@AudioUrl"
+                               preload="metadata"
+                               @onloadedmetadata="OnAudioMeta"
+                               @ontimeupdate="OnAudioTime"
+                               @onplay="OnAudioPlay"
+                               @onpause="OnAudioPause"
+                               @onended="OnAudioEnded"
+                               @onwaiting="OnAudioWaiting"
+                               @onplaying="OnAudioPlaying"
+                               @onerror="OnMp3Error"></audio>
+                    }
+                </div>
+
+                @if (AudioMode == "midi")
+                {
+                    <div class="read-midi-panel @(MidiPanelOpen ? "is-open" : null)"
+                         aria-hidden="@(!MidiPanelOpen)">
+                        <div class="read-midi-panel-inner">
+                            @if (MidiChannels.Count > 0)
+                            {
+                                <div class="midi-control-row midi-channels-row">
+                                    <span class="midi-control-label">Channel</span>
+                                    <div class="midi-channel-chips">
+                                        @foreach (var ch in MidiChannels)
+                                        {
+                                            var muted = MidiMuted.Contains(ch);
+                                            <button type="button"
+                                                    class="midi-channel-chip @(muted ? "is-muted" : null)"
+                                                    @onclick="() => ToggleChannel(ch)"
+                                                    title="@(muted ? $"Unmute channel {ch + 1}" : $"Mute channel {ch + 1}")"
+                                                    aria-pressed="@muted"
+                                                    tabindex="@(MidiPanelOpen ? 0 : -1)">
+                                                @(ch + 1)
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                            <div class="midi-control-row">
+                                <span class="midi-control-label">Tempo</span>
+                                <button type="button" class="midi-step" @onclick="() => NudgeTempo(-0.05)" aria-label="Slower" tabindex="@(MidiPanelOpen ? 0 : -1)">−</button>
+                                <input class="midi-range" type="range" min="0.5" max="1.5" step="0.05"
+                                       value="@MidiTempoScale.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                       @oninput="OnTempoInput"
+                                       aria-label="Tempo"
+                                       tabindex="@(MidiPanelOpen ? 0 : -1)" />
+                                <button type="button" class="midi-step" @onclick="() => NudgeTempo(0.05)" aria-label="Faster" tabindex="@(MidiPanelOpen ? 0 : -1)">+</button>
+                                <span class="midi-control-value">@MidiTempoBpmLabel</span>
+                                <button type="button"
+                                        class="midi-reset"
+                                        @onclick="ResetTempo"
+                                        disabled="@MidiTempoIsDefault"
+                                        title="Reset tempo"
+                                        aria-label="Reset tempo"
+                                        tabindex="@(MidiPanelOpen ? 0 : -1)">
+                                    <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div class="midi-control-row">
+                                <span class="midi-control-label">Key</span>
+                                <button type="button" class="midi-step" @onclick="() => NudgeKey(-1)" aria-label="Down a semitone" tabindex="@(MidiPanelOpen ? 0 : -1)">−</button>
+                                <input class="midi-range" type="range" min="-12" max="12" step="1"
+                                       value="@MidiTranspose"
+                                       @oninput="OnTransposeInput"
+                                       aria-label="Transpose"
+                                       tabindex="@(MidiPanelOpen ? 0 : -1)" />
+                                <button type="button" class="midi-step" @onclick="() => NudgeKey(1)" aria-label="Up a semitone" tabindex="@(MidiPanelOpen ? 0 : -1)">+</button>
+                                <span class="midi-control-value">@MidiKeyName</span>
+                                <button type="button"
+                                        class="midi-reset"
+                                        @onclick="ResetKey"
+                                        disabled="@MidiKeyIsDefault"
+                                        title="Reset key"
+                                        aria-label="Reset key"
+                                        tabindex="@(MidiPanelOpen ? 0 : -1)">
+                                    <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        @* Three FABs like MAUI ReadPage — visibility follows HymnInputType + IsReadView *@
+        <button class="read-fab @(State.HymnInputType == 0 ? "" : "read-fab-hidden") @(State.IsReadView ? null : "read-fab-chrome-out") @(ShowPlayer ? null : "read-fab-no-player") @(ShowPlayer && MidiPanelOpen ? "read-fab-above-midi" : null)"
+                @onclick='() => Nav.NavigateTo("/number")'
+                @onclick:stopPropagation="true"
+                title="Enter hymn number (grid)"
+                aria-hidden="@(State.HymnInputType != 0 || !State.IsReadView)">
+            <i class="fa-solid fa-grip-vertical"></i>
+        </button>
+        <button class="read-fab @(State.HymnInputType == 1 ? "" : "read-fab-hidden") @(State.IsReadView ? null : "read-fab-chrome-out") @(ShowPlayer ? null : "read-fab-no-player") @(ShowPlayer && MidiPanelOpen ? "read-fab-above-midi" : null)"
+                @onclick='() => Nav.NavigateTo("/number")'
+                @onclick:stopPropagation="true"
+                title="Enter hymn number (keyboard)"
+                aria-hidden="@(State.HymnInputType != 1 || !State.IsReadView)">
+            <i class="fa-solid fa-keyboard"></i>
+        </button>
+        <button class="read-fab @(State.HymnInputType == 2 ? "" : "read-fab-hidden") @(State.IsReadView ? null : "read-fab-chrome-out") @(ShowPlayer ? null : "read-fab-no-player") @(ShowPlayer && MidiPanelOpen ? "read-fab-above-midi" : null)"
+                @onclick='() => Nav.NavigateTo("/number")'
+                @onclick:stopPropagation="true"
+                title="Enter hymn number (voice)"
+                aria-hidden="@(State.HymnInputType != 2 || !State.IsReadView)">
+            <i class="fa-solid fa-microphone"></i>
+        </button>
+    </div>
+}
+
+<HymnInfoPopup @bind-Visible="showHymnInfo" Hymn="State.ActiveHymn" />
+
+@code {
+    [Parameter] public string? Number { get; set; }
+    bool showHymnInfo;
+    ElementReference readBodyRef;
+    DotNetObjectReference<Read>? pinchRef;
+    bool suppressChromeToggle;
+
+    ElementReference audioRef;
+    bool IsPlaying;
+    bool AudioLoading;
+    bool ShowPlayer;
+    bool seeking;
+    bool MidiPanelOpen;
+    string AudioMode = "none";
+    string? AudioUrl;
+    string? resolvedForNumber;
+    int resolveGeneration;
+    CancellationTokenSource? midiPollCts;
+    double CurrentTime;
+    double Duration;
+    double MidiTempoScale = 1;
+    int MidiTranspose;
+    int MidiTempoBpm = 120;
+    string MidiKeyName = "C Major";
+    List<int> MidiChannels = new();
+    HashSet<int> MidiMuted = new();
+    double SeekMax => Duration > 0 ? Duration : 1;
+    double SeekPct => Duration > 0 ? Math.Clamp(CurrentTime / Duration * 100, 0, 100) : 0;
+    string MidiTempoBpmLabel => $"{MidiTempoBpm} BPM";
+    bool MidiTempoIsDefault => Math.Abs(MidiTempoScale - 1) < 0.001;
+    bool MidiKeyIsDefault => MidiTranspose == 0;
+
+    void OnReadShellClick()
+    {
+        if (suppressChromeToggle)
+        {
+            suppressChromeToggle = false;
+            return;
+        }
+        State.ToggleReadView();
+    }
+
+    [JSInvokable]
+    public Task OnReadPinchFontSize(double size)
+    {
+        suppressChromeToggle = true;
+        return State.SetReaderFontSizeAsync(size, persist: false);
+    }
+
+    [JSInvokable]
+    public Task OnReadPinchFontSizeEnd(double size)
+    {
+        suppressChromeToggle = true;
+        return State.SetReaderFontSizeAsync(size, persist: true);
+    }
+
+    void OpenHymnInfo() => showHymnInfo = true;
+
+    string LyricsColor => IsDarkBg(State.ReaderTheme) ? "#ffffff" : "#2D2D2D";
+
+    bool UsesLightPlayerBar => IsExactTheme(State.ReaderTheme, "2d2d2d");
+
+    string PlayerBarStyle => UsesLightPlayerBar
+        ? "background:#464646;background-color:#464646"
+        : "background:#2D2D2D;background-color:#2D2D2D";
+
+    /// <summary>MAUI: only PrimaryText (#2D2D2D) elevates the player to Gray (#464646).</summary>
+    static bool IsExactTheme(string? theme, string hex6)
+    {
+        var hex = NormalizeHex(theme);
+        if (hex.Length > 6) hex = hex[..6];
+        return string.Equals(hex, hex6, StringComparison.OrdinalIgnoreCase);
+    }
+
+    static string NormalizeHex(string? c)
+    {
+        if (string.IsNullOrWhiteSpace(c)) return "";
+        var s = c.Trim();
+        if (s.StartsWith('#')) s = s[1..];
+        if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) s = s[2..];
+        return s.ToLowerInvariant();
+    }
+
+    static bool IsDarkBg(string? c)
+    {
+        var hex = NormalizeHex(c);
+        if (hex.Length > 6) hex = hex[..6];
+        if (hex.Length != 6) return false;
+        if (!int.TryParse(hex[..2], System.Globalization.NumberStyles.HexNumber, null, out var r)
+            || !int.TryParse(hex[2..4], System.Globalization.NumberStyles.HexNumber, null, out var g)
+            || !int.TryParse(hex[4..6], System.Globalization.NumberStyles.HexNumber, null, out var b))
+            return false;
+        // Relative luminance threshold — light themes keep dark lyrics text.
+        var luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0;
+        return luminance < 0.45;
+    }
+
+    static string FormatTime(double seconds)
+    {
+        if (double.IsNaN(seconds) || seconds < 0) seconds = 0;
+        var t = TimeSpan.FromSeconds(seconds);
+        return t.TotalHours >= 1
+            ? $"{(int)t.TotalHours}:{t.Minutes:D2}:{t.Seconds:D2}"
+            : $"{(int)t.TotalMinutes}:{t.Seconds:D2}";
+    }
+
+    async Task TogglePlay()
+    {
+        if (IsPlaying)
+        {
+            await Js.InvokeVoidAsync("mobihymnAudio.pause", audioRef);
+            IsPlaying = false;
+            AudioLoading = false;
+            StopMidiPoll();
+            return;
+        }
+
+        AudioLoading = true;
+        try
+        {
+            var started = await Js.InvokeAsync<bool>("mobihymnAudio.play", audioRef);
+            if (AudioMode == "midi")
+            {
+                IsPlaying = true;
+                AudioLoading = false;
+                StartMidiPoll();
+                return;
+            }
+
+            // MP3: don't depend only on DOM play events (can miss after JS play / re-bind).
+            try
+            {
+                var state = await Js.InvokeAsync<AudioStateDto>("mobihymnAudio.getState", audioRef);
+                IsPlaying = started || !state.Paused;
+                if (state.Duration > 0) Duration = state.Duration;
+                if (!seeking) CurrentTime = state.Current;
+            }
+            catch
+            {
+                IsPlaying = started;
+            }
+        }
+        catch
+        {
+            IsPlaying = false;
+        }
+        finally
+        {
+            AudioLoading = false;
+        }
+    }
+
+    async Task OnSeekInput(ChangeEventArgs e)
+    {
+        if (!double.TryParse(e.Value?.ToString(), out var t)) return;
+        seeking = true;
+        CurrentTime = t;
+        await Js.InvokeVoidAsync("mobihymnAudio.seek", audioRef, t);
+        seeking = false;
+    }
+
+    async Task SyncFromElement()
+    {
+        try
+        {
+            var state = await Js.InvokeAsync<AudioStateDto>("mobihymnAudio.getState", audioRef);
+            if (!seeking) CurrentTime = state.Current;
+            if (state.Duration > 0) Duration = state.Duration;
+            IsPlaying = !state.Paused;
+            if (AudioMode == "midi" && state.Paused)
+                StopMidiPoll();
+        }
+        catch { /* element may not be ready */ }
+    }
+
+    async Task OnAudioMeta() => await SyncFromElement();
+    async Task OnAudioTime() => await SyncFromElement();
+    void OnAudioPlay() { IsPlaying = true; AudioLoading = false; }
+    void OnAudioPause() { IsPlaying = false; AudioLoading = false; }
+    void OnAudioEnded() { IsPlaying = false; AudioLoading = false; CurrentTime = 0; }
+    void OnAudioWaiting() => AudioLoading = true;
+    void OnAudioPlaying() { IsPlaying = true; AudioLoading = false; }
+
+    async Task OnMp3Error()
+    {
+        IsPlaying = false;
+        AudioLoading = false;
+        // MP3 failed after resolve — hide player rather than leaving a dead control.
+        ShowPlayer = false;
+        AudioMode = "none";
+        AudioUrl = null;
+        MidiPanelOpen = false;
+        await Js.InvokeVoidAsync("mobihymnAudio.stop");
+    }
+
+    void ToggleMidiPanel() => MidiPanelOpen = !MidiPanelOpen;
+
+    void ApplyMidiControls(MidiControlsDto? c)
+    {
+        if (c == null) return;
+        MidiTempoScale = c.TempoScale > 0 ? c.TempoScale : 1;
+        MidiTranspose = c.Transpose;
+        MidiTempoBpm = c.TempoBpm > 0 ? c.TempoBpm : (int)Math.Round(120 * MidiTempoScale);
+        MidiKeyName = string.IsNullOrWhiteSpace(c.KeyName) ? "C Major" : c.KeyName;
+        MidiChannels = c.Channels?.ToList() ?? new List<int>();
+        MidiMuted = c.Muted != null ? new HashSet<int>(c.Muted) : new HashSet<int>();
+    }
+
+    async Task RefreshMidiControlsAsync()
+    {
+        try
+        {
+            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.getMidiControls");
+            ApplyMidiControls(c);
+            var state = await Js.InvokeAsync<AudioStateDto>("mobihymnAudio.getState", (object?)null);
+            if (state.Duration > 0) Duration = state.Duration;
+        }
+        catch { /* ignore */ }
+    }
+
+    async Task OnTempoInput(ChangeEventArgs e)
+    {
+        if (!double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var scale))
+            return;
+        try
+        {
+            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.setTempoScale", scale);
+            ApplyMidiControls(c);
+            var state = await Js.InvokeAsync<AudioStateDto>("mobihymnAudio.getState", (object?)null);
+            if (state.Duration > 0) Duration = state.Duration;
+        }
+        catch { /* ignore */ }
+    }
+
+    async Task NudgeTempo(double delta)
+    {
+        var next = Math.Clamp(MidiTempoScale + delta, 0.5, 1.5);
+        try
+        {
+            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.setTempoScale", next);
+            ApplyMidiControls(c);
+            var state = await Js.InvokeAsync<AudioStateDto>("mobihymnAudio.getState", (object?)null);
+            if (state.Duration > 0) Duration = state.Duration;
+        }
+        catch { /* ignore */ }
+    }
+
+    async Task OnTransposeInput(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var semis)) return;
+        try
+        {
+            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.setTranspose", semis);
+            ApplyMidiControls(c);
+        }
+        catch { /* ignore */ }
+    }
+
+    async Task NudgeKey(int delta)
+    {
+        var next = Math.Clamp(MidiTranspose + delta, -12, 12);
+        try
+        {
+            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.setTranspose", next);
+            ApplyMidiControls(c);
+        }
+        catch { /* ignore */ }
+    }
+
+    async Task ResetTempo()
+    {
+        if (MidiTempoIsDefault) return;
+        try
+        {
+            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.setTempoScale", 1);
+            ApplyMidiControls(c);
+            var state = await Js.InvokeAsync<AudioStateDto>("mobihymnAudio.getState", (object?)null);
+            if (state.Duration > 0) Duration = state.Duration;
+        }
+        catch { /* ignore */ }
+    }
+
+    async Task ResetKey()
+    {
+        if (MidiKeyIsDefault) return;
+        try
+        {
+            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.setTranspose", 0);
+            ApplyMidiControls(c);
+        }
+        catch { /* ignore */ }
+    }
+
+    async Task ToggleChannel(int channel)
+    {
+        try
+        {
+            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.toggleChannelMute", channel);
+            ApplyMidiControls(c);
+        }
+        catch { /* ignore */ }
+    }
+
+    void StartMidiPoll()
+    {
+        StopMidiPoll();
+        midiPollCts = new CancellationTokenSource();
+        var token = midiPollCts.Token;
+        _ = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(250, token);
+                    await InvokeAsync(SyncFromElement);
+                }
+                catch (OperationCanceledException) { break; }
+                catch { /* ignore */ }
+            }
+        }, token);
+    }
+
+    void StopMidiPoll()
+    {
+        try { midiPollCts?.Cancel(); } catch { /* ignore */ }
+        midiPollCts?.Dispose();
+        midiPollCts = null;
+    }
+
+    async Task ResolveAudioAsync(string number)
+    {
+        var gen = Interlocked.Increment(ref resolveGeneration);
+        ShowPlayer = false;
+        AudioMode = "none";
+        AudioUrl = null;
+        IsPlaying = false;
+        AudioLoading = false;
+        CurrentTime = 0;
+        Duration = 0;
+        MidiPanelOpen = false;
+        MidiTempoScale = 1;
+        MidiTranspose = 0;
+        MidiTempoBpm = 120;
+        MidiKeyName = "C Major";
+        MidiChannels = new();
+        MidiMuted = new();
+        StopMidiPoll();
+        resolvedForNumber = number;
+
+        try
+        {
+            var mp3Urls = Mp3Candidates(number).ToArray();
+            var tuneKey = State.ActiveHymn?.TuneKey;
+            var result = await Js.InvokeAsync<AudioResolveDto>("mobihymnAudio.resolve", number, mp3Urls, tuneKey);
+            if (gen != resolveGeneration) return;
+
+            var mode = result?.Mode?.Trim().ToLowerInvariant() ?? "none";
+            if (result == null || mode is "none")
+            {
+                ShowPlayer = false;
+                AudioMode = "none";
+                AudioUrl = null;
+                return;
+            }
+
+            // MIDI has no playable URL (bytes already loaded in JS). MP3 needs a URL.
+            if (mode == "mp3" && string.IsNullOrWhiteSpace(result.Url))
+            {
+                ShowPlayer = false;
+                AudioMode = "none";
+                AudioUrl = null;
+                return;
+            }
+
+            AudioMode = mode;
+            AudioUrl = result.Url;
+            ShowPlayer = mode is "midi" or "mp3";
+
+            if (AudioMode == "midi")
+            {
+                await RefreshMidiControlsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ResolveAudio failed: {ex.Message}");
+            if (gen == resolveGeneration)
+            {
+                ShowPlayer = false;
+                AudioMode = "none";
+                AudioUrl = null;
+            }
+        }
+    }
+
+    static IEnumerable<string> Mp3Candidates(string number)
+    {
+        var n = number?.Trim() ?? "";
+        if (n.Length == 0) yield break;
+        yield return HymnApiPaths.ClientAudioUrl(n);
+        var baseNumber = System.Text.RegularExpressions.Regex.Replace(n, "[stfSTF]+$", "");
+        if (!string.IsNullOrEmpty(baseNumber) &&
+            !string.Equals(baseNumber, n, StringComparison.OrdinalIgnoreCase))
+            yield return HymnApiPaths.ClientAudioUrl(baseNumber);
+    }
+
+    sealed class AudioStateDto
+    {
+        public double Current { get; set; }
+        public double Duration { get; set; }
+        public bool Paused { get; set; }
+        public string? Mode { get; set; }
+    }
+
+    sealed class AudioResolveDto
+    {
+        public string Mode { get; set; } = "none";
+        public string? Url { get; set; }
+    }
+
+    sealed class MidiControlsDto
+    {
+        public string? Mode { get; set; }
+        public List<int>? Channels { get; set; }
+        public List<int>? Muted { get; set; }
+        public int Transpose { get; set; }
+        public double TempoScale { get; set; } = 1;
+        public int TempoBpm { get; set; }
+        public string? KeyName { get; set; }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var number = Number;
+        if (string.IsNullOrWhiteSpace(number))
+            number = State.Settings.LastHymnNumber;
+        if (string.IsNullOrWhiteSpace(number))
+            number = "1";
+
+        var hymnChanged = State.ActiveHymn == null ||
+            !string.Equals(State.ActiveHymn.Number, number, StringComparison.OrdinalIgnoreCase);
+
+        if (hymnChanged)
+        {
+            IsPlaying = false;
+            CurrentTime = 0;
+            Duration = 0;
+            await State.OpenHymnAsync(number);
+        }
+
+        if (State.ActiveHymn != null
+            && !string.Equals(resolvedForNumber, State.ActiveHymn.Number, StringComparison.OrdinalIgnoreCase))
+        {
+            await ResolveAudioAsync(State.ActiveHymn.Number);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (ShowPlayer && AudioMode == "mp3" && !string.IsNullOrEmpty(AudioUrl))
+        {
+            try
+            {
+                await Js.InvokeVoidAsync("mobihymnAudio.bindMp3", audioRef, AudioUrl);
+            }
+            catch { /* ref may not be ready on first paint */ }
+        }
+
+        if (State.ActiveHymn != null)
+        {
+            try
+            {
+                pinchRef ??= DotNetObjectReference.Create(this);
+                await Js.InvokeVoidAsync(
+                    "mobihymnReadPinch.attach",
+                    readBodyRef,
+                    pinchRef,
+                    State.ReaderFontSize);
+            }
+            catch { /* element may not be in DOM yet */ }
+        }
+    }
+
+    protected override void OnInitialized() => State.Changed += OnChanged;
+    void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        State.Changed -= OnChanged;
+        StopMidiPoll();
+        try { _ = Js.InvokeVoidAsync("mobihymnReadPinch.detach", readBodyRef); }
+        catch { /* ignore */ }
+        pinchRef?.Dispose();
+        pinchRef = null;
+        _ = Js.InvokeVoidAsync("mobihymnAudio.stop");
+    }
+}

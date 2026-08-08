@@ -1,0 +1,579 @@
+﻿@page "/number"
+@using System.Net.Http
+@using System.Text.RegularExpressions
+@using MobiHymn4.Shared
+@using MobiHymn4.Shared.Models
+@using MobiHymn4.Shared.Services
+@inject AppState State
+@inject NavigationManager Nav
+@inject IAppPreferences Prefs
+@inject IHymnLyricsSource Lyrics
+@inject IJSRuntime Js
+@implements IAsyncDisposable
+
+<PageTitle>Enter hymn number</PageTitle>
+
+<div class="input-page">
+    <!-- Mode switcher: Grid | Keyboard | Voice — mirrors NumSearchPage -->
+    <div class="mode-switcher">
+        <button type="button" class="mode-btn @(Mode=="grid"?"active":"")" @onclick='() => SetMode("grid")' title="Grid">
+            <i class="fa-solid fa-grip"></i>
+        </button>
+        <button type="button" class="mode-btn @(Mode=="numpad"?"active":"")" @onclick='() => SetMode("numpad")' title="Keyboard">
+            <i class="fa-solid fa-keyboard"></i>
+        </button>
+        <button type="button" class="mode-btn @(Mode=="voice"?"active":"")" @onclick='() => SetMode("voice")' title="Voice">
+            <i class="fa-solid fa-microphone"></i>
+        </button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <p class="error" style="text-align:center;margin:8px 0 0">@Error</p>
+    }
+
+    @if (Mode == "numpad")
+    {
+        <div class="numpad-shell">
+            <div class="numpad-display" @onclick="StartNewInput" title="Start new number">
+                <span class="numpad-num">@(string.IsNullOrEmpty(HymnNum) ? "" : HymnNum)</span>
+            </div>
+
+            @* 3×5 grid pinned to bottom: 1–9, s t f, ⌫ 0 ✓ *@
+            <div class="numpad-grid">
+                <button type="button" class="numpad-key" @onclick='() => Press("1")'>1</button>
+                <button type="button" class="numpad-key" @onclick='() => Press("2")'>2</button>
+                <button type="button" class="numpad-key" @onclick='() => Press("3")'>3</button>
+
+                <button type="button" class="numpad-key" @onclick='() => Press("4")'>4</button>
+                <button type="button" class="numpad-key" @onclick='() => Press("5")'>5</button>
+                <button type="button" class="numpad-key" @onclick='() => Press("6")'>6</button>
+
+                <button type="button" class="numpad-key" @onclick='() => Press("7")'>7</button>
+                <button type="button" class="numpad-key" @onclick='() => Press("8")'>8</button>
+                <button type="button" class="numpad-key" @onclick='() => Press("9")'>9</button>
+
+                <button type="button" class="numpad-key" @onclick='() => Press("s")'>s</button>
+                <button type="button" class="numpad-key" @onclick='() => Press("t")'>t</button>
+                <button type="button" class="numpad-key" @onclick='() => Press("f")'>f</button>
+
+                <button type="button" class="numpad-key" @onclick='() => Press("⌫")' title="Backspace" aria-label="Backspace">
+                    <i class="fa-solid fa-delete-left"></i>
+                </button>
+                <button type="button" class="numpad-key" @onclick='() => Press("0")'>0</button>
+                <button type="button" class="numpad-key" disabled="@(string.IsNullOrEmpty(HymnNum) || Busy)" @onclick="Go" title="Open" aria-label="Open">
+                    @if (Busy)
+                    {
+                        <span class="spinner" style="width:18px;height:18px;border-width:2px"></span>
+                    }
+                    else
+                    {
+                        <i class="fa-solid fa-check"></i>
+                    }
+                </button>
+            </div>
+        </div>
+    }
+    else if (Mode == "grid")
+    {
+        <div class="grid-shell">
+            @if (GridLoading)
+            {
+                <div class="empty" style="padding:40px 16px">
+                    <span class="spinner"></span>
+                    <p class="muted" style="margin-top:12px">Loading hymn list…</p>
+                </div>
+            }
+            else
+            {
+                <div class="grid-picker">
+                    <div class="grid-col">
+                        @foreach (var h in HundredsList)
+                        {
+                            <button type="button"
+                                    class="grid-key"
+                                    @onclick="() => SelectHundred(h.Index)">@h.Text</button>
+                        }
+                    </div>
+                    <div class="grid-col">
+                        @foreach (var t in TensList)
+                        {
+                            <button type="button"
+                                    class="grid-key"
+                                    @onclick="() => SelectTen(t.Index)">@t.Text</button>
+                        }
+                    </div>
+                    <div class="grid-col">
+                        @foreach (var o in OnesList)
+                        {
+                            <button type="button"
+                                    class="grid-key"
+                                    disabled="@Busy"
+                                    @onclick="() => SelectOne(o.Number)">@o.Number</button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="voice-panel">
+            <div class="voice-mic @(VoiceListening ? "is-listening" : null)">
+                @if (VoiceListening)
+                {
+                    <div class="voice-pulse" aria-hidden="true"></div>
+                }
+                <button type="button"
+                        class="voice-mic-btn"
+                        disabled="@(!VoiceSupported || Busy)"
+                        title="@(VoiceListening ? "Stop listening" : "Start listening")"
+                        aria-label="@(VoiceListening ? "Stop listening" : "Start listening")"
+                        @onclick="ToggleVoice">
+                    <i class="fa-solid fa-microphone"></i>
+                </button>
+            </div>
+            <p class="voice-title">@(VoiceListening ? "Listening…" : "Voice input")</p>
+            @if (!VoiceSupported)
+            {
+                <p class="muted" style="text-align:center;max-width:280px;margin:0 auto">
+                    Speech recognition isn’t supported in this browser. Try Chrome or Edge, or use Keyboard / Grid.
+                </p>
+            }
+            else
+            {
+                <p class="muted" style="text-align:center;max-width:280px;margin:0 auto">
+                    @(string.IsNullOrEmpty(VoiceHint)
+                        ? "Say a hymn number like “seventy seven second tune”. Tap the mic to stop."
+                        : VoiceHint)
+                </p>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    static readonly Regex SuffixRegex = new("[fst]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    string Mode = "numpad";
+    string HymnNum = "";
+    bool Busy;
+    string? Error;
+    /// <summary>Next digit replaces the seeded hymn (mirrors MAUI isNewInput).</summary>
+    bool ReplaceNextDigit = true;
+    string? SeededHymnNum;
+
+    bool GridLoading;
+    bool GridReady;
+    int MaxNum = 811;
+    List<HymnCatalogEntry> Catalog = new();
+
+    int ActiveHundreds = -1;
+    int ActiveTens = -1;
+    string? ActiveOnes;
+
+    List<GridRange> HundredsList = new();
+    List<GridRange> TensList = new();
+    List<OnesItem> OnesList = new();
+
+    bool VoiceSupported = true;
+    bool VoiceListening;
+    string? VoiceHint;
+    CancellationTokenSource? voiceCts;
+    int voiceSession;
+
+    sealed class GridRange
+    {
+        public string Text { get; init; } = "";
+        public int Index { get; init; }
+    }
+
+    sealed class OnesItem
+    {
+        public string Number { get; init; } = "";
+    }
+
+    protected override void OnInitialized()
+    {
+        State.Changed += OnStateChanged;
+        SyncModeFromState();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        SyncModeFromState();
+        var last = Prefs.Get(PrefKeys.LastHymnNumber, State.Settings.LastHymnNumber);
+        HymnNum = HasValidStart(last) ? last.Trim() : "1";
+        ArmReplaceNext();
+        if (Mode == "grid")
+            await EnsureGridAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        try
+        {
+            VoiceSupported = await Js.InvokeAsync<bool>("mobihymnSpeech.isSupported");
+        }
+        catch
+        {
+            VoiceSupported = false;
+        }
+
+        if (Mode == "voice" && VoiceSupported)
+            StartVoiceListening();
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    void OnStateChanged() => InvokeAsync(async () =>
+    {
+        var prev = Mode;
+        SyncModeFromState();
+        if (Mode == "voice" && prev != "voice")
+            StartVoiceListening();
+        else if (Mode != "voice" && prev == "voice")
+            await StopVoiceListeningAsync();
+        StateHasChanged();
+    });
+
+    void SyncModeFromState() => Mode = ModeFromInt(State.HymnInputType);
+
+    void ArmReplaceNext()
+    {
+        if (!HasValidStart(HymnNum))
+            HymnNum = "1";
+        ReplaceNextDigit = true;
+        SeededHymnNum = HymnNum;
+    }
+
+    static bool HasValidStart(string? n) =>
+        !string.IsNullOrEmpty(n) && n[0] is >= '1' and <= '9';
+
+    static bool IsDigitKey(string k) => k.Length == 1 && k[0] is >= '0' and <= '9';
+    static bool IsSuffixKey(string k) => k is "s" or "t" or "f";
+    static bool IsStartDigitKey(string k) => k.Length == 1 && k[0] is >= '1' and <= '9';
+
+    /// <summary>True when the next key would become the first character of the number.</summary>
+    bool IsAtNumberStart =>
+        ReplaceNextDigit
+        || string.IsNullOrEmpty(HymnNum)
+        || !HasValidStart(HymnNum)
+        || (SeededHymnNum is not null && HymnNum == SeededHymnNum);
+
+    string ModeFromInt(int value) => value switch
+    {
+        0 => "grid",
+        2 => "voice",
+        _ => "numpad"
+    };
+
+    static int ModeToInt(string mode) => mode switch
+    {
+        "grid" => 0,
+        "voice" => 2,
+        _ => 1
+    };
+
+    async Task SetMode(string mode)
+    {
+        var prev = Mode;
+        Mode = mode;
+        await State.SetHymnInputTypeAsync(ModeToInt(mode));
+        SyncModeFromState();
+        if (mode == "numpad")
+            ArmReplaceNext();
+        if (mode == "grid")
+            await EnsureGridAsync();
+        if (mode == "voice")
+            StartVoiceListening();
+        else if (prev == "voice")
+            await StopVoiceListeningAsync();
+    }
+
+    async Task ToggleVoice()
+    {
+        if (!VoiceSupported || Busy)
+            return;
+        if (VoiceListening)
+            await StopVoiceListeningAsync();
+        else
+            StartVoiceListening();
+    }
+
+    void StartVoiceListening()
+    {
+        if (!VoiceSupported || Mode != "voice" || Busy || voiceCts != null)
+            return;
+
+        Error = null;
+        VoiceHint = null;
+        voiceCts = new CancellationTokenSource();
+        VoiceListening = true;
+        var session = ++voiceSession;
+        var token = voiceCts.Token;
+        _ = RunVoiceListenLoopAsync(session, token);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    async Task StopVoiceListeningAsync()
+    {
+        var cts = voiceCts;
+        voiceCts = null;
+        VoiceListening = false;
+        voiceSession++;
+        if (cts != null)
+        {
+            try { cts.Cancel(); }
+            catch { /* ignore */ }
+            cts.Dispose();
+        }
+
+        try { await Js.InvokeVoidAsync("mobihymnSpeech.stop"); }
+        catch { /* ignore */ }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task RunVoiceListenLoopAsync(int session, CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested
+                   && session == voiceSession
+                   && Mode == "voice"
+                   && !Busy)
+            {
+                string text;
+                try
+                {
+                    text = await Js.InvokeAsync<string>("mobihymnSpeech.listenOnce", "en-US");
+                }
+                catch
+                {
+                    text = "";
+                }
+
+                if (token.IsCancellationRequested || session != voiceSession || Mode != "voice")
+                    break;
+
+                if (string.IsNullOrWhiteSpace(text))
+                    continue;
+
+                if (!VoiceHymnParser.TryParseHymnNumber(text, out var hymnNumber))
+                {
+                    VoiceHint = $"Couldn't find a hymn number in “{text.Trim()}”. Try again.";
+                    await InvokeAsync(StateHasChanged);
+                    continue;
+                }
+
+                HymnNum = hymnNumber;
+                VoiceHint = $"Opening hymn #{hymnNumber}…";
+                await InvokeAsync(StateHasChanged);
+                await Go();
+                break;
+            }
+        }
+        finally
+        {
+            if (session == voiceSession)
+            {
+                VoiceListening = false;
+                voiceCts?.Dispose();
+                voiceCts = null;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    async Task EnsureGridAsync()
+    {
+        if (GridReady || GridLoading) return;
+        GridLoading = true;
+        Error = null;
+        try
+        {
+            var meta = await Lyrics.GetCatalogMetaAsync();
+            Catalog = meta.Hymns?
+                .Where(h => !string.IsNullOrWhiteSpace(h.Number))
+                .ToList() ?? new();
+
+            if (Catalog.Count > 0)
+            {
+                MaxNum = ParseNumericBase(Catalog[^1].Number);
+                if (MaxNum < 1) MaxNum = 1;
+            }
+
+            var totalHundreds = MaxNum / 100 + 1;
+            HundredsList = Enumerable.Range(0, totalHundreds)
+                .Select(i => new GridRange
+                {
+                    Index = i,
+                    Text = $"{100 * i + 1}-{Math.Min(100 * (i + 1), MaxNum)}"
+                })
+                .ToList();
+            TensList = new();
+            OnesList = new();
+            ActiveHundreds = -1;
+            ActiveTens = -1;
+            ActiveOnes = null;
+            GridReady = true;
+        }
+        catch (Exception ex)
+        {
+            Error = IsLikelyOfflineFailure(ex)
+                ? "Can't load the hymn list offline. Download the library in Settings (installed app), then try again."
+                : ex.Message;
+        }
+        finally
+        {
+            GridLoading = false;
+        }
+    }
+
+    void SelectHundred(int index)
+    {
+        ActiveHundreds = index;
+        ActiveTens = -1;
+        ActiveOnes = null;
+        OnesList = new();
+
+        var totalTens = (Math.Min(100 * (index + 1), MaxNum) - (100 * index + 1)) / 10 + 1;
+        TensList = Enumerable.Range(0, totalTens)
+            .Select(i => new GridRange
+            {
+                Index = i,
+                Text = $"{100 * index + i * 10 + 1}-{Math.Min(100 * index + 10 * (i + 1), MaxNum)}"
+            })
+            .ToList();
+    }
+
+    void SelectTen(int index)
+    {
+        if (ActiveHundreds < 0) return;
+        ActiveTens = index;
+        ActiveOnes = null;
+
+        var rangeStart = ActiveHundreds * 100 + index * 10 + 1;
+        var rangeEnd = Math.Min(ActiveHundreds * 100 + (index + 1) * 10, MaxNum);
+
+        OnesList = Catalog
+            .Where(h =>
+            {
+                var n = ParseNumericBase(h.Number);
+                return n >= rangeStart && n <= rangeEnd;
+            })
+            .Select(h => new OnesItem { Number = h.Number })
+            .ToList();
+    }
+
+    async Task SelectOne(string number)
+    {
+        ActiveOnes = number;
+        HymnNum = number;
+        await Go();
+    }
+
+    static int ParseNumericBase(string? number)
+    {
+        if (string.IsNullOrWhiteSpace(number)) return -1;
+        var digits = SuffixRegex.Replace(number, "");
+        return int.TryParse(digits, out var v) ? v : -1;
+    }
+
+    static bool IsLikelyOfflineFailure(Exception ex)
+    {
+        for (var e = ex; e != null; e = e.InnerException!)
+        {
+            var msg = e.Message ?? "";
+            if (e is HttpRequestException
+                || e is TaskCanceledException
+                || msg.Contains("Failed to fetch", StringComparison.OrdinalIgnoreCase)
+                || msg.Contains("network", StringComparison.OrdinalIgnoreCase)
+                || msg.Contains("offline", StringComparison.OrdinalIgnoreCase)
+                || msg.Contains("ERR_INTERNET", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    void StartNewInput() => ArmReplaceNext();
+
+    void Press(string k)
+    {
+        Error = null;
+        if (k == "⌫")
+        {
+            if (string.IsNullOrEmpty(HymnNum) || HymnNum.Length == 1)
+            {
+                HymnNum = "1";
+                ArmReplaceNext();
+                return;
+            }
+
+            HymnNum = HymnNum[..^1];
+            if (!HasValidStart(HymnNum))
+            {
+                HymnNum = "1";
+                ArmReplaceNext();
+            }
+            return;
+        }
+
+        // Cannot start a number with 0 / s / t / f.
+        if (IsAtNumberStart)
+        {
+            if (!IsStartDigitKey(k))
+                return;
+            HymnNum = k;
+            ReplaceNextDigit = false;
+            SeededHymnNum = null;
+            return;
+        }
+
+        if (IsSuffixKey(k))
+        {
+            if (HymnNum.Length >= 4) return;
+            if (IsSuffixKey(HymnNum[^1].ToString())) return;
+            HymnNum += k;
+            return;
+        }
+
+        if (!IsDigitKey(k)) return;
+        if (HymnNum.Length >= 4) return;
+        HymnNum += k;
+    }
+
+    async Task Go()
+    {
+        if (string.IsNullOrWhiteSpace(HymnNum)) return;
+        Error = null; Busy = true;
+        await StopVoiceListeningAsync();
+        try
+        {
+            var hymn = await State.OpenHymnAsync(HymnNum);
+            if (hymn == null)
+            {
+                Error = State.StatusMessage ?? "Hymn not found.";
+                ArmReplaceNext();
+                if (Mode == "voice")
+                {
+                    VoiceHint = Error;
+                    StartVoiceListening();
+                }
+                return;
+            }
+            Nav.NavigateTo($"/read/{Uri.EscapeDataString(hymn.Number)}");
+        }
+        finally { Busy = false; }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        State.Changed -= OnStateChanged;
+        await StopVoiceListeningAsync();
+    }
+}

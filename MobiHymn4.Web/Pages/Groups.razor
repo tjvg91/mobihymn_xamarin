@@ -1,0 +1,237 @@
+@page "/groups"
+@inject IAuthService Auth
+@inject IGroupService GroupService
+@inject AuthNavigation AuthNav
+@inject NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>Worship groups</PageTitle>
+
+<div class="groups-page">
+@if (!Auth.IsSignedIn)
+{
+    <div class="groups-hero">
+        <lottie-player class="groups-lottie"
+                       src="/lottie/group.json"
+                       background="transparent"
+                       speed="1"
+                       loop
+                       autoplay>
+        </lottie-player>
+        <h1 class="groups-hero-title">Join your worship community</h1>
+        <p class="groups-hero-copy">
+            Plan hymns with your team, share boards, and stay in sync.
+            Sign in to create or join a group.
+        </p>
+        <a class="btn groups-cta" href="@AuthNav.LoginUrl("groups")">Log in</a>
+    </div>
+}
+else
+{
+    <div class="groups-toolbar">
+        <div class="groups-toolbar-copy">
+            <div class="groups-toolbar-title">Your groups</div>
+            <div class="groups-toolbar-sub">Create a group or join with an invite code.</div>
+        </div>
+        <div class="groups-toolbar-actions">
+            <button type="button" class="btn" @onclick="() => showCreate = true">Create</button>
+            <button type="button" class="btn secondary" @onclick="() => showJoin = true">Join</button>
+            <button type="button" class="btn secondary groups-refresh" disabled="@Busy" @onclick="Load" title="Refresh" aria-label="Refresh">
+                <i class="fa-solid fa-arrows-rotate"></i>
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <p class="groups-error">@Error</p>
+    }
+
+    @if (Busy && Items.Count == 0)
+    {
+        <div class="groups-empty">
+            <span class="spinner groups-spinner" aria-hidden="true"></span>
+            <p class="groups-empty-copy">Loading groups…</p>
+        </div>
+    }
+    else if (Items.Count == 0)
+    {
+        <div class="groups-hero groups-hero-compact">
+            <lottie-player class="groups-lottie"
+                           src="/lottie/group.json"
+                           background="transparent"
+                           speed="1"
+                           loop
+                           autoplay>
+            </lottie-player>
+            <h2 class="groups-hero-title">No groups yet</h2>
+            <p class="groups-hero-copy">
+                Create a worship group for your church, or join with an invite code from a teammate.
+            </p>
+            <div class="groups-hero-actions">
+                <button type="button" class="btn" @onclick="() => showCreate = true">Create group</button>
+                <button type="button" class="btn secondary" @onclick="() => showJoin = true">Join with code</button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="groups-list">
+            @foreach (var g in Items)
+            {
+                <a class="groups-card" href="@($"groups/{g.Id}")">
+                    <div class="groups-card-body">
+                        <div class="groups-card-name">@g.Name</div>
+                        <div class="groups-card-meta">Join code <span>@g.JoinCode</span></div>
+                    </div>
+                    <i class="fa-solid fa-chevron-right groups-card-chevron" aria-hidden="true"></i>
+                </a>
+            }
+        </div>
+    }
+}
+</div>
+
+@if (showCreate)
+{
+    <div class="modal-backdrop" @onclick="() => showCreate = false">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h2>Create group</h2>
+            <div class="field">
+                <label>Name</label>
+                <input @bind="newName" placeholder="e.g. Sunday worship team" />
+            </div>
+            <div class="actions">
+                <button class="btn secondary" @onclick="() => showCreate = false">Cancel</button>
+                <button class="btn" disabled="@Busy" @onclick="Create">Create</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showJoin)
+{
+    <div class="modal-backdrop" @onclick="() => showJoin = false">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h2>Join group</h2>
+            <div class="field">
+                <label>Join code</label>
+                <input @bind="joinCode" placeholder="Enter invite code" class="groups-code-input" />
+            </div>
+            <div class="actions">
+                <button class="btn secondary" @onclick="() => showJoin = false">Cancel</button>
+                <button class="btn" disabled="@Busy" @onclick="Join">Join</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "code")]
+    public string? InviteCode { get; set; }
+
+    List<WorshipGroupDoc> Items = new();
+    bool Busy;
+    string? Error;
+    bool showCreate;
+    bool showJoin;
+    string newName = "";
+    string joinCode = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Auth.AuthStateChanged += OnAuth;
+        ApplyInviteQuery();
+        if (Auth.IsSignedIn)
+            await Load();
+        else if (!string.IsNullOrWhiteSpace(InviteCode))
+            Nav.NavigateTo(AuthNav.LoginUrl($"groups?code={InviteCode.Trim()}"));
+    }
+
+    protected override void OnParametersSet() => ApplyInviteQuery();
+
+    void ApplyInviteQuery()
+    {
+        if (string.IsNullOrWhiteSpace(InviteCode)) return;
+        joinCode = InviteCode.Trim();
+        if (Auth.IsSignedIn)
+            showJoin = true;
+    }
+
+    void OnAuth(object? s, EventArgs e) =>
+        _ = InvokeAsync(async () =>
+        {
+            if (Auth.IsSignedIn)
+                await Load();
+            else
+            {
+                Items = new();
+                Error = null;
+            }
+            StateHasChanged();
+        });
+
+    async Task Load()
+    {
+        Busy = true;
+        Error = null;
+        try
+        {
+            Items = (await GroupService.GetMyGroupsAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    async Task Create()
+    {
+        if (string.IsNullOrWhiteSpace(newName)) return;
+        Busy = true;
+        Error = null;
+        try
+        {
+            var g = await GroupService.CreateGroupAsync(newName);
+            showCreate = false;
+            newName = "";
+            Nav.NavigateTo($"groups/{g.Id}");
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    async Task Join()
+    {
+        if (string.IsNullOrWhiteSpace(joinCode)) return;
+        Busy = true;
+        Error = null;
+        try
+        {
+            var g = await GroupService.JoinGroupAsync(joinCode);
+            showJoin = false;
+            joinCode = "";
+            Nav.NavigateTo($"groups/{g.Id}");
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    public void Dispose() => Auth.AuthStateChanged -= OnAuth;
+}

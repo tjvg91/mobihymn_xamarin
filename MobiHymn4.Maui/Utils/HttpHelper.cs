@@ -253,8 +253,8 @@ namespace MobiHymn4.Utils
                 }
 
                 if (cts.IsCancellationRequested && !receivedDone)
-                {
-                    progress?.Report(message);
+                        {
+                            progress?.Report(message);
                     if (trackCheckpoint)
                         await PersistDownloadProgress(hymnList, Math.Max(1, processed), forceSync, skipExisting).ConfigureAwait(false);
                     return hymnList;

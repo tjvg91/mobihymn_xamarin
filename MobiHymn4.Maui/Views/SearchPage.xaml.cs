@@ -30,14 +30,35 @@ namespace MobiHymn4.Views
         Globals globalInstance = Globals.Instance;
         readonly IAddToBoardService addToBoardService = ServiceHelper.Get<IAddToBoardService>();
         CancellationTokenSource voiceListenCts;
+        bool searchCascadeArmed;
+        int searchCascadeIndex;
+        int searchCascadeToken;
 
         public SearchPage ()
         {
             InitializeComponent();
 
             model = ((SearchViewModel)this.BindingContext);
+            model.OnSearchFinished += OnSearchFinished;
 
             layoutSearching.HeightRequest = (DeviceDisplay.MainDisplayInfo.Height / DeviceDisplay.MainDisplayInfo.Density) - 200;
+        }
+
+        void OnSearchFinished(object sender, EventArgs e)
+        {
+            searchCascadeToken++;
+            var token = searchCascadeToken;
+            searchCascadeArmed = true;
+            searchCascadeIndex = 0;
+            _ = DisarmSearchCascadeAsync(token);
+        }
+
+        async Task DisarmSearchCascadeAsync(int token)
+        {
+            await Task.Delay(320 + 24 * 45);
+            if (token != searchCascadeToken)
+                return;
+            searchCascadeArmed = false;
         }
 
         async void root_Appearing(System.Object sender, System.EventArgs e)
@@ -79,12 +100,33 @@ namespace MobiHymn4.Views
             Navigation.ShowPopup(new AgentChatSettingsPopup());
         }
 
-        async void MyListView_ChildAdded(System.Object sender, Microsoft.Maui.Controls.ElementEventArgs e)
+        async void SearchResults_ChildAdded(System.Object sender, Microsoft.Maui.Controls.ElementEventArgs e)
         {
-            if (e.Element is VisualElement item)
+            if (e.Element is not VisualElement item)
+                return;
+
+            if (!searchCascadeArmed)
             {
-                item.Opacity = 0;
-                await item.FadeTo(1, globalInstance.Duration);
+                item.Opacity = 1;
+                item.TranslationY = 0;
+                return;
+            }
+
+            var idx = searchCascadeIndex++;
+            item.Opacity = 0;
+            item.TranslationY = -12;
+            try
+            {
+                if (idx > 0)
+                    await Task.Delay(Math.Min(idx, 24) * 45);
+                await Task.WhenAll(
+                    item.FadeTo(1, 280, Easing.CubicOut),
+                    item.TranslateTo(0, 0, 280, Easing.CubicOut));
+            }
+            catch
+            {
+                item.Opacity = 1;
+                item.TranslationY = 0;
             }
         }
 
