@@ -7,7 +7,7 @@
 
 <PageTitle>Worship groups</PageTitle>
 
-<div class="groups-page">
+<div class="groups-page @(IsCenteredState ? "groups-page--centered" : null)">
 @if (!Auth.IsSignedIn)
 {
     <div class="groups-hero">
@@ -18,7 +18,7 @@
                        loop
                        autoplay>
         </lottie-player>
-        <h1 class="groups-hero-title">Join your worship community</h1>
+        <div class="groups-hero-title">Join your worship community</div>
         <p class="groups-hero-copy">
             Plan hymns with your team, share boards, and stay in sync.
             Sign in to create or join a group.
@@ -26,21 +26,35 @@
         <a class="btn groups-cta" href="@AuthNav.LoginUrl("groups")">Log in</a>
     </div>
 }
+else if (!Auth.IsEmailVerified)
+{
+    <div class="groups-hero">
+        <lottie-player class="groups-lottie"
+                       src="/lottie/group.json"
+                       background="transparent"
+                       speed="1"
+                       loop
+                       autoplay>
+        </lottie-player>
+        <div class="groups-hero-title">Verify your email</div>
+        <p class="groups-hero-copy">
+            Confirm your email address before creating or joining a worship group.
+        </p>
+        <a class="btn groups-cta" href="@AuthNav.VerifyUrl("groups")">Verify email</a>
+    </div>
+}
 else
 {
-    <div class="groups-toolbar">
-        <div class="groups-toolbar-copy">
-            <div class="groups-toolbar-title">Your groups</div>
-            <div class="groups-toolbar-sub">Create a group or join with an invite code.</div>
-        </div>
-        <div class="groups-toolbar-actions">
+    @if (Items.Count > 0 || Busy)
+    {
+        <div class="groups-toolbar-actions groups-toolbar-actions--solo">
             <button type="button" class="btn" @onclick="() => showCreate = true">Create</button>
             <button type="button" class="btn secondary" @onclick="() => showJoin = true">Join</button>
             <button type="button" class="btn secondary groups-refresh" disabled="@Busy" @onclick="Load" title="Refresh" aria-label="Refresh">
                 <i class="fa-solid fa-arrows-rotate"></i>
             </button>
         </div>
-    </div>
+    }
 
     @if (!string.IsNullOrEmpty(Error))
     {
@@ -64,7 +78,7 @@ else
                            loop
                            autoplay>
             </lottie-player>
-            <h2 class="groups-hero-title">No groups yet</h2>
+            <div class="groups-hero-title">No groups yet</div>
             <p class="groups-hero-copy">
                 Create a worship group for your church, or join with an invite code from a teammate.
             </p>
@@ -138,13 +152,20 @@ else
     string newName = "";
     string joinCode = "";
 
+    bool IsCenteredState =>
+        !Auth.IsSignedIn
+        || !Auth.IsEmailVerified
+        || Items.Count == 0;
+
     protected override async Task OnInitializedAsync()
     {
         Auth.AuthStateChanged += OnAuth;
         ApplyInviteQuery();
-        if (Auth.IsSignedIn)
+        if (AuthNav.CanAccessGroups)
             await Load();
-        else if (!string.IsNullOrWhiteSpace(InviteCode))
+        else if (Auth.IsSignedIn && !Auth.IsEmailVerified && !string.IsNullOrWhiteSpace(InviteCode))
+            Nav.NavigateTo(AuthNav.VerifyUrl($"groups?code={InviteCode.Trim()}"));
+        else if (!Auth.IsSignedIn && !string.IsNullOrWhiteSpace(InviteCode))
             Nav.NavigateTo(AuthNav.LoginUrl($"groups?code={InviteCode.Trim()}"));
     }
 
@@ -154,19 +175,21 @@ else
     {
         if (string.IsNullOrWhiteSpace(InviteCode)) return;
         joinCode = InviteCode.Trim();
-        if (Auth.IsSignedIn)
+        if (AuthNav.CanAccessGroups)
             showJoin = true;
     }
 
     void OnAuth(object? s, EventArgs e) =>
         _ = InvokeAsync(async () =>
         {
-            if (Auth.IsSignedIn)
+            if (AuthNav.CanAccessGroups)
                 await Load();
             else
             {
                 Items = new();
                 Error = null;
+                showCreate = false;
+                showJoin = false;
             }
             StateHasChanged();
         });

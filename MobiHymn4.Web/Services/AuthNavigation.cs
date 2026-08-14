@@ -33,6 +33,22 @@ public sealed class AuthNavigation
         return $"login?returnUrl={Uri.EscapeDataString(target)}";
     }
 
+    /// <summary>Verify-email page, optionally returning to <paramref name="returnUrl"/> after verification.</summary>
+    public string VerifyUrl(string? returnUrl = null)
+    {
+        var target = SanitizeReturnUrl(returnUrl) ?? CurrentRelativePath();
+        if (string.IsNullOrEmpty(target)
+            || target.StartsWith("login", StringComparison.OrdinalIgnoreCase)
+            || target.StartsWith("verify", StringComparison.OrdinalIgnoreCase)
+            || target.StartsWith("auth/", StringComparison.OrdinalIgnoreCase))
+            return "verify";
+
+        return $"verify?returnUrl={Uri.EscapeDataString(target)}";
+    }
+
+    /// <summary>Signed in with a verified email — required for groups / boards.</summary>
+    public bool CanAccessGroups => auth.IsSignedIn && auth.IsEmailVerified;
+
     /// <summary>
     /// After a successful password sign-in: verify → profile if needed, otherwise restore
     /// <paramref name="returnUrl"/> (seamless return to the page the user came from).

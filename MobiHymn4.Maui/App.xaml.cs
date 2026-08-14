@@ -49,6 +49,7 @@ public partial class App : Application
             MainThread.BeginInvokeOnMainThread(async () =>
             {
                 await globalInstance.EnsureSettingsLoadedAsync().ConfigureAwait(false);
+                await SyncSettingsOnAppOpenAsync().ConfigureAwait(false);
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     DeviceDisplay.KeepScreenOn = globalInstance.KeepAwake;
@@ -235,15 +236,28 @@ public partial class App : Application
 
     protected override void OnResume()
     {
-        DeviceDisplay.KeepScreenOn = globalInstance.KeepAwake;
         globalInstance.RefreshIncompleteDownloadState();
         if (DownloadPopupPresenter.IsDownloadRecoveryPending())
             DownloadPopupPresenter.ShowWithRetry();
         MainThread.BeginInvokeOnMainThread(async () =>
         {
+            await SyncSettingsOnAppOpenAsync();
+            DeviceDisplay.KeepScreenOn = globalInstance.KeepAwake;
             await RecoverUiAfterBackgroundAsync();
             await RefreshVerificationOnResumeAsync();
         });
+    }
+
+    static async Task SyncSettingsOnAppOpenAsync()
+    {
+        try
+        {
+            await ServiceHelper.Get<IUserSettingsSyncService>().SyncOnAppOpenAsync();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Settings app-open sync failed: {ex.Message}");
+        }
     }
 
     async Task RefreshVerificationOnResumeAsync()

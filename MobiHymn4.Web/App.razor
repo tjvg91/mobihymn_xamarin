@@ -1,6 +1,8 @@
 ﻿@inject IJSRuntime Js
+@inject NavigationManager Nav
+@implements IDisposable
 
-@* Block the reader until the PWA gate allows access (installed / localhost). *@
+@* Block the reader until the PWA gate allows access (installed / localhost /dashboard). *@
 @if (allowApp)
 {
     <Router AppAssembly="@typeof(App).Assembly">
@@ -24,11 +26,59 @@ else if (gateReady)
 @code {
     bool gateReady;
     bool allowApp;
+    bool navWired;
+    /// <summary>Installed PWA/TWA — never re-apply browser gate on navigation.</summary>
+    bool installedShell;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender)
             return;
+
+        try
+        {
+            installedShell = await Js.InvokeAsync<bool>("mobihymnPwa.isStandalone");
+        }
+        catch
+        {
+            installedShell = false;
+        }
+
+        if (!navWired)
+        {
+            Nav.LocationChanged += OnLocationChanged;
+            navWired = true;
+        }
+
+        await RefreshGateAsync();
+        gateReady = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        // Installed app: ignore path changes — gate is browser-only.
+        if (installedShell)
+            return;
+
+        _ = InvokeAsync(async () =>
+        {
+            var prev = allowApp;
+            await RefreshGateAsync();
+            if (prev != allowApp)
+                StateHasChanged();
+        });
+    }
+
+    async Task RefreshGateAsync()
+    {
+        if (installedShell)
+        {
+            allowApp = true;
+            try { await Js.InvokeVoidAsync("mobihymnPwa.applyAccessGate"); }
+            catch { /* ignore */ }
+            return;
+        }
 
         try
         {
@@ -41,17 +91,22 @@ else if (gateReady)
         {
             allowApp = true;
         }
-
-        gateReady = true;
-        await InvokeAsync(StateHasChanged);
     }
 
     void OnGateModeChanged(string mode)
     {
+        if (installedShell)
+            return;
         var next = string.Equals(mode, "none", StringComparison.Ordinal);
         if (next == allowApp)
             return;
         allowApp = next;
         StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        if (navWired)
+            Nav.LocationChanged -= OnLocationChanged;
     }
 }

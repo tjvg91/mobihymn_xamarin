@@ -1,0 +1,140 @@
+@inject IAuthService Auth
+@inject IAppPreferences Prefs
+@inject AuthNavigation AuthNav
+@inject CatalogUpdateService Catalog
+@inject NavigationManager Nav
+@implements IDisposable
+
+@if (show)
+{
+    <div class="community-signin-host is-open" role="dialog" aria-modal="true" aria-labelledby="community-signin-title">
+        <div class="community-signin-overlay" aria-hidden="true"></div>
+        <div class="community-signin-card" @onclick:stopPropagation="true">
+            <img class="community-signin-media" src="/lottie/group.gif" alt="" width="160" height="160" />
+            <h2 id="community-signin-title" class="community-signin-title">Join Your Worship Community</h2>
+            <p class="community-signin-copy">
+                Create a free account to plan hymns with your group, share boards, and invite your team.
+                Reading hymns still works without signing in.
+            </p>
+            <div class="community-signin-actions">
+                <button type="button" class="btn secondary" @onclick="DismissLater">Maybe Later</button>
+                <button type="button" class="btn" @onclick="SignUp">Sign Up</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    bool show;
+    bool scheduled;
+    CancellationTokenSource? cts;
+
+    protected override void OnInitialized()
+    {
+        Auth.AuthStateChanged += OnAuth;
+        Catalog.Changed += OnCatalog;
+        Schedule();
+    }
+
+    void OnAuth(object? sender, EventArgs e) => InvokeAsync(() =>
+    {
+        if (Auth.IsSignedIn)
+            show = false;
+        else
+            Schedule();
+        StateHasChanged();
+    });
+
+    void OnCatalog() => InvokeAsync(() =>
+    {
+        Schedule();
+        StateHasChanged();
+    });
+
+    void Schedule()
+    {
+        if (show || scheduled || !ShouldShow())
+            return;
+
+        scheduled = true;
+        cts?.Cancel();
+        cts = new CancellationTokenSource();
+        var token = cts.Token;
+        _ = WaitAndShowAsync(token);
+    }
+
+    async Task WaitAndShowAsync(CancellationToken token)
+    {
+        try
+        {
+            // Match MAUI: wait out intro + library download before prompting.
+            for (var i = 0; i < 180; i++)
+            {
+                if (token.IsCancellationRequested)
+                    return;
+                if (Auth.IsSignedIn || Prefs.GetBool(PrefKeys.CommunityPromptDismissed, false))
+                    return;
+                if (IsAuthRoute())
+                {
+                    await Task.Delay(500, token);
+                    continue;
+                }
+                if (Prefs.GetBool(PrefKeys.IsNew, true) || Catalog.NeedsLibraryDownload || Catalog.IsDownloadingLibrary)
+                {
+                    await Task.Delay(500, token);
+                    continue;
+                }
+
+                show = true;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // replaced schedule
+        }
+        finally
+        {
+            scheduled = false;
+        }
+    }
+
+    bool ShouldShow() =>
+        !Auth.IsSignedIn
+        && !Prefs.GetBool(PrefKeys.CommunityPromptDismissed, false)
+        && !IsAuthRoute();
+
+    bool IsAuthRoute()
+    {
+        var path = new Uri(Nav.Uri).AbsolutePath.Trim('/').ToLowerInvariant();
+        return path.StartsWith("login", StringComparison.Ordinal)
+            || path.StartsWith("verify", StringComparison.Ordinal)
+            || path.StartsWith("auth/", StringComparison.Ordinal)
+            || path.StartsWith("profile", StringComparison.Ordinal);
+    }
+
+    void DismissLater()
+    {
+        Prefs.SetBool(PrefKeys.CommunityPromptDismissed, true);
+        show = false;
+    }
+
+    void SignUp()
+    {
+        Prefs.SetBool(PrefKeys.CommunityPromptDismissed, true);
+        show = false;
+        var login = AuthNav.LoginUrl();
+        Nav.NavigateTo(login.Contains('?', StringComparison.Ordinal)
+            ? login + "&mode=signup"
+            : login + "?mode=signup");
+    }
+
+    public void Dispose()
+    {
+        Auth.AuthStateChanged -= OnAuth;
+        Catalog.Changed -= OnCatalog;
+        cts?.Cancel();
+        cts?.Dispose();
+    }
+}

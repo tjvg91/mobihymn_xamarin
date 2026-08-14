@@ -2,6 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using MobiHymn4.Models;
@@ -15,11 +19,17 @@ public sealed class BoardService : IBoardService
 {
     public const int DefaultBoardListPageSize = BoardListsPage.DefaultPageSize;
 
+    const string BoardUpdateListFunctionUrl = "https://us-central1-mobihymn.cloudfunctions.net/boardUpdateList";
+    static readonly HttpClient functionsHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+    static readonly TimeSpan AdminCacheTtl = TimeSpan.FromSeconds(30);
+
     readonly IFirebaseFirestoreAccessor firebase;
     readonly IAuthService auth;
     readonly IProfileService profileService;
+    readonly IGroupService groupService;
     readonly Dictionary<string, (DateTime LoadedAt, BoardListsPage Page)> summaryCache = new(StringComparer.Ordinal);
     readonly Dictionary<string, (DateTime LoadedAt, BoardSectionTemplate Template)> templateCache = new(StringComparer.Ordinal);
+    readonly Dictionary<string, (DateTime LoadedAt, bool IsAdmin)> adminCache = new(StringComparer.Ordinal);
     string cachedListGroupId;
     string cachedListId;
     GroupHymnList cachedList;
@@ -30,11 +40,16 @@ public sealed class BoardService : IBoardService
     static readonly TimeSpan HymnListFetchTimeout = TimeSpan.FromSeconds(10);
     static readonly TimeSpan HymnListInitialDefaultTimeout = TimeSpan.FromSeconds(4);
 
-    public BoardService(IFirebaseFirestoreAccessor firebase, IAuthService auth, IProfileService profileService)
+    public BoardService(
+        IFirebaseFirestoreAccessor firebase,
+        IAuthService auth,
+        IProfileService profileService,
+        IGroupService groupService)
     {
         this.firebase = firebase;
         this.auth = auth;
         this.profileService = profileService;
+        this.groupService = groupService;
     }
 
     public event EventHandler<GroupHymnList> HymnListChanged;
@@ -831,7 +846,7 @@ public sealed class BoardService : IBoardService
         if (existing == null)
             return;
 
-        EnsureCanEditEntry(existing);
+        await EnsureCanEditEntryAsync(groupId, existing);
         list.Hymns = list.Hymns.Where(h => h.Id != entryId).ToList();
         Renumber(list.Hymns);
         await SaveHymnListAsync(groupId, list);
@@ -844,7 +859,7 @@ public sealed class BoardService : IBoardService
         if (sectionIndex < 0)
             return;
 
-        EnsureCanEditEntry(list.Hymns[sectionIndex]);
+        await EnsureCanEditEntryAsync(groupId, list.Hymns[sectionIndex]);
 
         var idsToRemove = new HashSet<string> { sectionId };
         if (deleteHymnsInSection)
@@ -870,7 +885,7 @@ public sealed class BoardService : IBoardService
         if (index < 0)
             throw new InvalidOperationException("Hymn entry not found.");
 
-        EnsureCanEditEntry(list.Hymns[index]);
+        await EnsureCanEditEntryAsync(groupId, list.Hymns[index]);
 
         var original = list.Hymns[index];
         entry.IsSection = original.IsSection;
@@ -884,16 +899,36 @@ public sealed class BoardService : IBoardService
 
     public async Task ReorderHymnsAsync(string groupId, string listId, IList<BoardHymnEntry> hymns)
     {
-        EnsureCanEdit();
+        EnsureSignedInVerified();
         var list = await GetHymnListAsync(groupId, listId);
-        list.Hymns = hymns?.ToList() ?? new List<BoardHymnEntry>();
+        var newHymns = hymns?.ToList() ?? new List<BoardHymnEntry>();
+
+        // Only the entry(ies) that actually changed relative order need ownership —
+        // everything else just shifted position as a side effect (e.g. of another
+        // entry moving past it), which isn't "dragging someone else's hymn".
+        if (!await IsGroupAdminAsync(groupId))
+        {
+            var oldById = list.Hymns.ToDictionary(h => h.Id, StringComparer.Ordinal);
+            var newIdSet = new HashSet<string>(newHymns.Select(h => h.Id), StringComparer.Ordinal);
+            var oldSeq = list.Hymns.Select(h => h.Id).Where(newIdSet.Contains).ToList();
+            var newSeq = newHymns.Select(h => h.Id).Where(oldById.ContainsKey).ToList();
+            var movedIds = ComputeMovedIds(oldSeq, newSeq);
+
+            foreach (var id in movedIds)
+            {
+                if (oldById.TryGetValue(id, out var moved) && !IsOwner(moved))
+                    throw new InvalidOperationException("Only the group admin or the person who added it can move this.");
+            }
+        }
+
+        list.Hymns = newHymns;
         Renumber(list.Hymns);
         await SaveHymnListAsync(groupId, list);
     }
 
     public async Task ClearAllSectionsInListAsync(string groupId, string listId)
     {
-        EnsureCanEdit();
+        await EnsureIsAdminAsync(groupId);
         var list = await GetHymnListAsync(groupId, listId);
         list.Hymns = list.Hymns.Where(h => !h.IsSection).ToList();
         Renumber(list.Hymns);
@@ -902,7 +937,7 @@ public sealed class BoardService : IBoardService
 
     public async Task ClearAllSectionsAsync(string groupId, string listId)
     {
-        EnsureCanEdit();
+        await EnsureIsAdminAsync(groupId);
         var template = await GetSectionTemplateAsync(groupId);
         template.SectionNames = new List<string>();
         template.AutoApply = false;
@@ -912,7 +947,7 @@ public sealed class BoardService : IBoardService
 
     public async Task ClearAllHymnsAsync(string groupId, string listId)
     {
-        EnsureCanEdit();
+        await EnsureIsAdminAsync(groupId);
         var template = await GetSectionTemplateAsync(groupId);
         var savedNames = template.SectionNames
             .Where(n => !string.IsNullOrWhiteSpace(n))
@@ -1046,7 +1081,7 @@ public sealed class BoardService : IBoardService
 
     public async Task<BoardSectionTemplate> SetSectionSortAsync(string groupId, string listId, SectionSortMode sort)
     {
-        EnsureCanEdit();
+        await EnsureIsAdminAsync(groupId);
         var template = await GetSectionTemplateAsync(groupId);
         template.SectionSort = sort;
         await SaveSectionTemplateAsync(groupId, template);
@@ -1208,18 +1243,86 @@ public sealed class BoardService : IBoardService
             UpdatedAt = DateTime.UtcNow,
         };
 
+    /// <summary>
+    /// The ONLY place that writes board list content. Routes through the
+    /// <c>boardUpdateList</c> Cloud Function instead of a direct Firestore write —
+    /// Firestore rules deny client create/update on this path — because per-entry
+    /// "admin or original adder" ownership can only be enforced server-side by
+    /// diffing against the previous document (rules alone can't do that). The
+    /// function also re-stamps addedBy/addedByName from the caller's verified
+    /// identity, so a client can never spoof authorship. Mirrors the Web
+    /// implementation in FirebaseBoardService.WriteListDocAsync.
+    /// </summary>
     async Task SaveHymnListAsync(string groupId, GroupHymnList list)
     {
         list.UpdatedAt = DateTime.UtcNow;
         list.UpdatedBy = auth.CurrentUserId;
-        var doc = FirestoreMappers.ToFirestore(list);
-        await firebase.Firestore
-            .GetCollection(FirestorePaths.Groups)
-            .GetDocument(groupId)
-            .GetCollection(FirestorePaths.Boards)
-            .GetDocument(list.Id)
-            .SetDataAsync(doc);
+        await CallBoardUpdateListFunctionAsync(groupId, list);
         InvalidateBoardCache(groupId);
+    }
+
+    async Task CallBoardUpdateListFunctionAsync(string groupId, GroupHymnList list)
+    {
+        var createdMs = list.CreatedAt == default
+            ? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            : new DateTimeOffset(list.CreatedAt, TimeSpan.Zero).ToUnixTimeMilliseconds();
+
+        var payload = new
+        {
+            data = new
+            {
+                groupId,
+                listId = list.Id,
+                name = list.Name ?? string.Empty,
+                createdAt = createdMs,
+                createdBy = list.CreatedBy ?? string.Empty,
+                hymns = (list.Hymns ?? new List<BoardHymnEntry>()).Select(h => new
+                {
+                    id = h.Id,
+                    isSection = h.IsSection,
+                    sectionName = h.SectionName,
+                    hymnNumber = h.HymnNumber,
+                    sortOrder = h.SortOrder,
+                    notes = h.Notes,
+                    updatedAt = h.UpdatedAt == default
+                        ? (long?)null
+                        : new DateTimeOffset(h.UpdatedAt, TimeSpan.Zero).ToUnixTimeMilliseconds(),
+                }),
+            },
+        };
+
+        var idToken = await auth.GetIdTokenAsync();
+        if (string.IsNullOrEmpty(idToken))
+            throw new InvalidOperationException("Sign in to edit the board.");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, BoardUpdateListFunctionUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", idToken);
+        request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        string body;
+        try
+        {
+            using var response = await functionsHttp.SendAsync(request);
+            body = await response.Content.ReadAsStringAsync();
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Could not reach the server. Check your connection.", ex);
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var err))
+            {
+                var message = err.TryGetProperty("message", out var m) ? m.GetString() : null;
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(message) ? "Board update was rejected." : message);
+            }
+        }
+        catch (JsonException)
+        {
+            throw new InvalidOperationException("Board update failed — unexpected server response.");
+        }
     }
 
     bool TryGetCachedSummaries(string groupId, out BoardListsPage page)
@@ -1314,13 +1417,50 @@ public sealed class BoardService : IBoardService
             throw new InvalidOperationException("Your role cannot edit the board.");
     }
 
-    void EnsureCanEditEntry(BoardHymnEntry entry)
+    /// <summary>Gate for bulk, non-per-entry actions (clear hymns/sections, sort
+    /// sections) — group admins only, mirrors the Web BoardPane.razor policy.</summary>
+    async Task EnsureIsAdminAsync(string groupId)
     {
         EnsureSignedInVerified();
-        if (IsLeader() || IsOwner(entry))
+        if (!await IsGroupAdminAsync(groupId))
+            throw new InvalidOperationException("Only the group admin can do that.");
+    }
+
+    /// <summary>Group admins may manage anyone's entries; everyone else may only
+    /// touch what they personally added.</summary>
+    async Task EnsureCanEditEntryAsync(string groupId, BoardHymnEntry entry)
+    {
+        EnsureSignedInVerified();
+        if (IsOwner(entry) || await IsGroupAdminAsync(groupId))
             return;
 
-        throw new InvalidOperationException("You can only edit hymns you added.");
+        throw new InvalidOperationException("Only the group admin or the person who added it can change this.");
+    }
+
+    async Task<bool> IsGroupAdminAsync(string groupId)
+    {
+        if (string.IsNullOrWhiteSpace(groupId))
+            return false;
+
+        if (adminCache.TryGetValue(groupId, out var cached) && DateTime.UtcNow - cached.LoadedAt < AdminCacheTtl)
+            return cached.IsAdmin;
+
+        var uid = auth.CurrentUserId;
+        bool isAdmin;
+        try
+        {
+            var members = await groupService.GetMembersAsync(groupId);
+            isAdmin = !string.IsNullOrEmpty(uid)
+                && members.Any(m => string.Equals(m.Uid, uid, StringComparison.Ordinal) && m.IsAdmin);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"IsGroupAdminAsync failed: {ex.Message}");
+            isAdmin = false; // fail closed — matches the "admin only" intent when membership can't be verified
+        }
+
+        adminCache[groupId] = (DateTime.UtcNow, isAdmin);
+        return isAdmin;
     }
 
     void EnsureSignedInVerified()
@@ -1339,5 +1479,57 @@ public sealed class BoardService : IBoardService
         return entry != null
             && !string.IsNullOrEmpty(uid)
             && string.Equals(entry.AddedBy, uid, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Longest-common-subsequence of two id sequences (same set of ids in each, in
+    /// their respective orders). Ids NOT part of the LCS are the ones whose relative
+    /// order changed — i.e. they were actually dragged, as opposed to merely shifting
+    /// position because something else was added/removed elsewhere in the list.
+    /// Mirrors computeMovedIds in firebase/functions/index.js.
+    /// </summary>
+    static HashSet<string> ComputeMovedIds(IReadOnlyList<string> oldSeq, IReadOnlyList<string> newSeq)
+    {
+        var n = oldSeq.Count;
+        var m = newSeq.Count;
+        var dp = new int[n + 1, m + 1];
+        for (var i = 1; i <= n; i++)
+        {
+            for (var j = 1; j <= m; j++)
+            {
+                dp[i, j] = string.Equals(oldSeq[i - 1], newSeq[j - 1], StringComparison.Ordinal)
+                    ? dp[i - 1, j - 1] + 1
+                    : Math.Max(dp[i - 1, j], dp[i, j - 1]);
+            }
+        }
+
+        var inLcs = new HashSet<string>(StringComparer.Ordinal);
+        var a = n;
+        var b = m;
+        while (a > 0 && b > 0)
+        {
+            if (string.Equals(oldSeq[a - 1], newSeq[b - 1], StringComparison.Ordinal))
+            {
+                inLcs.Add(oldSeq[a - 1]);
+                a--;
+                b--;
+            }
+            else if (dp[a - 1, b] >= dp[a, b - 1])
+            {
+                a--;
+            }
+            else
+            {
+                b--;
+            }
+        }
+
+        var moved = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var id in oldSeq)
+        {
+            if (!inLcs.Contains(id))
+                moved.Add(id);
+        }
+        return moved;
     }
 }

@@ -32,6 +32,10 @@ else if (ready && mode == "install")
                 {
                     <text>Add MobiHymn to your Home Screen to continue. This browser view isn’t available until the app is installed.</text>
                 }
+                else if (!showButton)
+                {
+                    <text>This browser doesn’t offer a one-tap install button. Use the menu steps below, then open MobiHymn from your home screen.</text>
+                }
                 else
                 {
                     <text>Install the app to continue. The browser reader isn’t available — open MobiHymn from your home screen after installing.</text>
@@ -58,6 +62,15 @@ else if (ready && mode == "install")
             else if (isIos && installed)
             {
                 <p class="pwa-gate-status">Open <strong>MobiHymn</strong> from your Home Screen to continue.</p>
+            }
+            else if (!installed && !showButton)
+            {
+                @* Firefox / browsers without beforeinstallprompt — no one-tap Install button. *@
+                <ol class="pwa-gate-steps">
+                    <li>Open the browser menu (⋮).</li>
+                    <li>Choose <strong>Install</strong> or <strong>Add to Home screen</strong>.</li>
+                    <li>Open <strong>MobiHymn</strong> from your home screen.</li>
+                </ol>
             }
 
             @if (!string.IsNullOrEmpty(status))

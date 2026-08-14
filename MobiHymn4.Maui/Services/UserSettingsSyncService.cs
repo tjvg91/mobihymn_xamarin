@@ -19,6 +19,8 @@ public sealed class UserSettingsSyncService : IUserSettingsSyncService
     CancellationTokenSource debounceCts;
     int syncGeneration;
     int connectivityFlushInFlight;
+    int appOpenSyncInFlight;
+    DateTimeOffset lastAppOpenSyncStarted;
 
     public UserSettingsSyncService(IFirebaseFirestoreAccessor firebase, IAuthService auth)
     {
@@ -86,6 +88,36 @@ public sealed class UserSettingsSyncService : IUserSettingsSyncService
 
     public Task SyncNowAsync(CancellationToken cancellationToken = default) =>
         PullAndMergeAsync(cancellationToken);
+
+    public async Task SyncOnAppOpenAsync(CancellationToken cancellationToken = default)
+    {
+        if (!auth.IsSignedIn
+            || string.IsNullOrWhiteSpace(auth.CurrentUserId)
+            || !IsOnline())
+            return;
+
+        var now = DateTimeOffset.UtcNow;
+        if (now - lastAppOpenSyncStarted < TimeSpan.FromSeconds(10)
+            || Interlocked.CompareExchange(ref appOpenSyncInFlight, 1, 0) != 0)
+            return;
+
+        lastAppOpenSyncStarted = now;
+        try
+        {
+            // OnStart can run before settings.json hydration completes.
+            for (var i = 0; i < 20 && !Globals.Instance.SettingsHydrated; i++)
+                await Task.Delay(250, cancellationToken);
+
+            await PullAndMergeAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            Interlocked.Exchange(ref appOpenSyncInFlight, 0);
+        }
+    }
 
     public async Task PushAsync(CancellationToken cancellationToken = default)
     {

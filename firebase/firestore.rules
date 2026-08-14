@@ -14,7 +14,10 @@ service cloud.firestore {
     }
 
     function hasLeadershipRole(uid) {
-      return userDoc(uid).roles.hasAny(['pastor', 'worshipLeader', 'projector', 'accompaniment']);
+      return exists(/databases/$(database)/documents/users/$(uid))
+        && userDoc(uid).keys().hasAll(['roles'])
+        && userDoc(uid).roles is list
+        && userDoc(uid).roles.hasAny(['pastor', 'worshipLeader', 'projector', 'accompaniment', 'preacher']);
     }
 
     match /users/{userId} {
@@ -44,7 +47,7 @@ service cloud.firestore {
 
     function memberHasLeadershipRole(groupId) {
       return get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.roles
-        .hasAny(['pastor', 'worshipLeader', 'projector', 'accompaniment']);
+        .hasAny(['pastor', 'worshipLeader', 'projector', 'accompaniment', 'preacher']);
     }
 
     function memberDoc(groupId, uid) {
@@ -86,7 +89,8 @@ service cloud.firestore {
         // profile.groupIds is empty/stale (same pattern as the PWA).
         allow read: if isGroupMember(groupId)
           || (isSignedIn() && request.auth.uid == memberId);
-        allow create: if isVerified();
+        // Join: verified users may only create their own membership doc.
+        allow create: if isVerified() && request.auth.uid == memberId;
         // Self may update own membership (e.g. mute). Admins may update others (promote).
         allow update: if canManageMembers(groupId)
           || (isVerified() && request.auth.uid == memberId);
@@ -97,7 +101,12 @@ service cloud.firestore {
 
       match /boards/{dateKey} {
         allow read: if isGroupMember(groupId);
-        allow write: if canEditGroup(groupId);
+        // Content writes (add/edit/remove/reorder hymns & sections) must go through the
+        // boardUpdateList Cloud Function: per-entry "admin or original adder" ownership
+        // can't be expressed in rules alone (they can't diff array elements against the
+        // caller's identity), so the function is the only place that can enforce it.
+        allow create, update: if false;
+        allow delete: if canEditGroup(groupId);
       }
 
       match /sectionTemplate/{docId} {
@@ -110,6 +119,11 @@ service cloud.firestore {
       allow read: if isVerified();
       allow create: if isVerified() && hasLeadershipRole(request.auth.uid);
       allow update: if isVerified();
+    }
+
+    // Install / device census — Admin SDK (Cloud Functions) only.
+    match /devices/{deviceId} {
+      allow read, write: if false;
     }
   }
 }

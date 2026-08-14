@@ -12,4 +12,5 @@ public static class FirestorePaths
     public const string FcmTokens = "fcmTokens";
     public const string AppData = "appData";
     public const string SettingsDoc = "settings";
+    public const string Devices = "devices";
 }

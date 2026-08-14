@@ -2,6 +2,7 @@
 @inject AppState State
 @inject BookmarksUiState Chrome
 @inject NavigationManager Nav
+@inject BoardNavigationContext BoardNav
 @implements IDisposable
 
 <PageTitle>@DecodedGroup</PageTitle>
@@ -229,6 +230,7 @@ else
 
     async Task Open(string number)
     {
+        BoardNav.Clear();
         var hymn = await State.OpenHymnAsync(number);
         if (hymn != null) Nav.NavigateTo($"read/{Uri.EscapeDataString(hymn.Number)}");
     }

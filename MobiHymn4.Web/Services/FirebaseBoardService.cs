@@ -20,14 +20,14 @@ public sealed class FirebaseBoardService : IBoardService
 
     public async Task<IReadOnlyList<BoardListDoc>> GetListsAsync(string groupId)
     {
-        await firebase.EnsureReadyAsync();
+        await EnsureReadyVerifiedAsync();
         var rows = await firebase.QueryCollectionAsync($"{FirestorePaths.Groups}/{groupId}/{FirestorePaths.Boards}");
         return rows.Select(r => MapList(r)).OrderByDescending(l => l.CreatedAt).ToList();
     }
 
     public async Task<BoardListDoc?> GetListAsync(string groupId, string listId)
     {
-        await firebase.EnsureReadyAsync();
+        await EnsureReadyVerifiedAsync();
         var doc = await firebase.GetDocAsync($"{FirestorePaths.Groups}/{groupId}/{FirestorePaths.Boards}/{listId}");
         if (doc == null || doc.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
             return null;
@@ -36,7 +36,7 @@ public sealed class FirebaseBoardService : IBoardService
 
     public async Task<BoardListDoc> CreateListAsync(string groupId, string name)
     {
-        await firebase.EnsureReadyAsync();
+        await EnsureReadyVerifiedAsync();
         var uid = auth.CurrentUserId;
         var trimmed = name.Trim();
         // Match MAUI: list id is yyyy-MM-dd when the name is a calendar date.
@@ -85,7 +85,7 @@ public sealed class FirebaseBoardService : IBoardService
 
     public async Task<BoardListDoc> UpdateListDateAsync(string groupId, string listId, DateTime date)
     {
-        await firebase.EnsureReadyAsync();
+        await EnsureReadyVerifiedAsync();
         var list = await GetListAsync(groupId, listId)
             ?? throw new InvalidOperationException("Hymn list not found.");
 
@@ -123,23 +123,32 @@ public sealed class FirebaseBoardService : IBoardService
 
     public async Task UpdateListAsync(string groupId, BoardListDoc list)
     {
-        await firebase.EnsureReadyAsync();
+        await EnsureReadyVerifiedAsync();
         await WriteListDocAsync(groupId, list);
     }
 
+    /// <summary>
+    /// The ONLY place that writes board list content. Routes through the
+    /// <c>boardUpdateList</c> Cloud Function instead of a direct Firestore write —
+    /// Firestore rules deny client create/update on this path — because per-entry
+    /// "admin or original adder" ownership can only be enforced server-side by
+    /// diffing against the previous document (rules alone can't do that).
+    /// The function also re-stamps addedBy/addedByName from the caller's verified
+    /// identity, so a client can never spoof authorship.
+    /// </summary>
     async Task WriteListDocAsync(string groupId, BoardListDoc list)
     {
-        var uid = auth.CurrentUserId;
+        await EnsureReadyVerifiedAsync();
         var createdMs = list.CreatedAt == default
             ? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             : list.CreatedAt.ToUnixTimeMilliseconds();
-        await firebase.SetDocAsync($"{FirestorePaths.Groups}/{groupId}/{FirestorePaths.Boards}/{list.Id}", new
+        await firebase.CallFunctionAsync("boardUpdateList", new
         {
+            groupId,
+            listId = list.Id,
             name = list.Name,
             createdAt = createdMs,
             createdBy = list.CreatedBy,
-            updatedBy = uid,
-            updatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             hymns = list.Hymns.Select(h => new
             {
                 id = h.Id,
@@ -148,18 +157,14 @@ public sealed class FirebaseBoardService : IBoardService
                 hymnNumber = h.HymnNumber,
                 sortOrder = h.SortOrder,
                 notes = h.Notes,
-                addedBy = h.AddedBy,
-                addedByName = h.AddedByName,
                 updatedAt = h.UpdatedAt == default ? (long?)null : h.UpdatedAt.ToUnixTimeMilliseconds()
-            }).ToArray(),
-            hymnCount = list.Hymns.Count(h => !h.IsSection),
-            entryCount = list.Hymns.Count
+            }).ToArray()
         });
     }
 
     public async Task DeleteListAsync(string groupId, string listId)
     {
-        await firebase.EnsureReadyAsync();
+        await EnsureReadyVerifiedAsync();
         await firebase.DeleteDocAsync($"{FirestorePaths.Groups}/{groupId}/{FirestorePaths.Boards}/{listId}");
     }
 
@@ -187,7 +192,7 @@ public sealed class FirebaseBoardService : IBoardService
 
     public async Task ClearAllSavedSectionsAsync(string groupId, string listId)
     {
-        await firebase.EnsureReadyAsync();
+        await EnsureReadyVerifiedAsync();
         await firebase.SetDocAsync(
             $"{FirestorePaths.Groups}/{groupId}/{FirestorePaths.SectionTemplate}/default",
             new { sectionNames = Array.Empty<string>(), autoApply = false });
@@ -215,7 +220,7 @@ public sealed class FirebaseBoardService : IBoardService
         saved.Add(trimmed);
         var sectionNames = listSections.Where(n => saved.Contains(n)).ToList();
 
-        await firebase.EnsureReadyAsync();
+        await EnsureReadyVerifiedAsync();
         await firebase.SetDocAsync(
             $"{FirestorePaths.Groups}/{groupId}/{FirestorePaths.SectionTemplate}/default",
             new { sectionNames, autoApply = true });
@@ -232,7 +237,7 @@ public sealed class FirebaseBoardService : IBoardService
         saved.Remove(trimmed);
         var sectionNames = saved.ToList();
 
-        await firebase.EnsureReadyAsync();
+        await EnsureReadyVerifiedAsync();
         await firebase.SetDocAsync(
             $"{FirestorePaths.Groups}/{groupId}/{FirestorePaths.SectionTemplate}/default",
             new { sectionNames, autoApply = sectionNames.Count > 0 });
@@ -288,7 +293,7 @@ public sealed class FirebaseBoardService : IBoardService
         {
             try
             {
-                await firebase.EnsureReadyAsync();
+                await EnsureReadyVerifiedAsync();
                 var path = $"{FirestorePaths.Groups}/{groupId}/{FirestorePaths.Boards}/{listId}";
                 var subId = await firebase.SubscribeDocAsync(path, bridge.Ref);
                 if (!string.IsNullOrEmpty(subId))
@@ -441,7 +446,7 @@ public sealed class FirebaseBoardService : IBoardService
     {
         try
         {
-            await firebase.EnsureReadyAsync();
+            await EnsureReadyVerifiedAsync();
             var doc = await firebase.GetDocAsync(
                 $"{FirestorePaths.Groups}/{groupId}/{FirestorePaths.SectionTemplate}/default");
             if (doc == null || doc.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
@@ -572,5 +577,14 @@ public sealed class FirebaseBoardService : IBoardService
         }
 
         return result;
+    }
+
+    async Task EnsureReadyVerifiedAsync()
+    {
+        if (!auth.IsSignedIn)
+            throw new InvalidOperationException("Sign in to continue.");
+        if (!auth.IsEmailVerified)
+            throw new InvalidOperationException("Verify your email to continue.");
+        await firebase.EnsureReadyAsync();
     }
 }

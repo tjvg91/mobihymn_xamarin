@@ -1,0 +1,235 @@
+@page "/dashboard"
+@using System.Text.Json
+@inject FirebaseJs Firebase
+@inject IAuthService Auth
+@inject NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>Dashboard</PageTitle>
+
+<div class="dash-page">
+    <header class="dash-header">
+        <div>
+            <p class="dash-eyebrow">MobiHymn</p>
+            <h1 class="dash-title">Dashboard</h1>
+        </div>
+        <button type="button" class="btn secondary" disabled="@busy" @onclick="LoadAsync">
+            @(busy ? "Refreshing…" : "Refresh")
+        </button>
+    </header>
+
+    @if (!Auth.IsSignedIn)
+    {
+        <div class="dash-card dash-card--notice">
+            <p>Sign in with an admin account to view installs and users.</p>
+            <a class="btn" href="@($"login?returnUrl={Uri.EscapeDataString("dashboard")}")">Log in</a>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(error))
+    {
+        <div class="dash-card dash-card--error">
+            <p>@error</p>
+            <button type="button" class="btn secondary" @onclick="LoadAsync">Try again</button>
+        </div>
+    }
+    else if (busy && stats == null)
+    {
+        <div class="dash-loading">
+            <span class="spinner" aria-hidden="true"></span>
+            <p>Loading stats…</p>
+        </div>
+    }
+    else if (stats != null)
+    {
+        <p class="dash-updated">Updated @FormatWhen(stats.GeneratedAt)</p>
+
+        <div class="dash-grid">
+            <div class="dash-card">
+                <div class="dash-metric-label">Installs</div>
+                <div class="dash-metric-value">@stats.Installs.Total</div>
+                <div class="dash-metric-sub">PWA / TWA / native devices that registered as installed</div>
+                <ul class="dash-breakdown">
+                    <li><span>PWA</span><strong>@stats.Installs.ByPlatform.Pwa</strong></li>
+                    <li><span>TWA</span><strong>@stats.Installs.ByPlatform.Twa</strong></li>
+                    <li><span>Android</span><strong>@stats.Installs.ByPlatform.Android</strong></li>
+                    <li><span>iOS</span><strong>@stats.Installs.ByPlatform.Ios</strong></li>
+                    <li><span>Web</span><strong>@stats.Installs.ByPlatform.Web</strong></li>
+                </ul>
+            </div>
+
+            <div class="dash-card">
+                <div class="dash-metric-label">With accounts</div>
+                <div class="dash-metric-value">@stats.Accounts.Total</div>
+                <div class="dash-metric-sub">Firebase Auth users</div>
+                <ul class="dash-breakdown">
+                    <li><span>Email verified</span><strong>@stats.Accounts.Verified</strong></li>
+                    <li><span>Profile saved</span><strong>@stats.Accounts.WithProfile</strong></li>
+                </ul>
+            </div>
+
+            <div class="dash-card">
+                <div class="dash-metric-label">Without accounts</div>
+                <div class="dash-metric-value">@stats.WithoutAccounts</div>
+                <div class="dash-metric-sub">Installed devices not linked to a signed-in user</div>
+            </div>
+        </div>
+
+        <p class="dash-footnote">
+            Devices tracked (incl. non-install browser pings): @stats.DevicesTracked.
+            Install counts grow as apps call <code>registerDevice</code> after install or standalone launch.
+        </p>
+    }
+</div>
+
+@code {
+    bool busy;
+    string? error;
+    DashboardStats? stats;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Auth.AuthStateChanged += OnAuth;
+        if (Auth.IsSignedIn)
+            await LoadAsync();
+    }
+
+    void OnAuth(object? sender, EventArgs e) =>
+        _ = InvokeAsync(async () =>
+        {
+            if (Auth.IsSignedIn)
+                await LoadAsync();
+            else
+            {
+                stats = null;
+                error = null;
+                StateHasChanged();
+            }
+        });
+
+    async Task LoadAsync()
+    {
+        if (!Auth.IsSignedIn)
+        {
+            stats = null;
+            error = null;
+            return;
+        }
+
+        busy = true;
+        error = null;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var raw = await Firebase.CallFunctionResultAsync("adminGetDashboardStats", new { });
+            if (raw == null || raw.Value.ValueKind != JsonValueKind.Object)
+                throw new InvalidOperationException("No dashboard data returned.");
+            stats = DashboardStats.FromJson(raw.Value);
+        }
+        catch (Exception ex)
+        {
+            stats = null;
+            error = CleanError(ex.Message);
+        }
+        finally
+        {
+            busy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    static string CleanError(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return "Could not load dashboard.";
+        var m = message.Trim();
+        const string prefix = "FirebaseError: ";
+        if (m.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            m = m[prefix.Length..].Trim();
+        return m;
+    }
+
+    static string FormatWhen(DateTimeOffset? at)
+    {
+        if (at == null) return "just now";
+        return at.Value.ToLocalTime().ToString("g");
+    }
+
+    public void Dispose() => Auth.AuthStateChanged -= OnAuth;
+
+    sealed class DashboardStats
+    {
+        public DateTimeOffset? GeneratedAt { get; init; }
+        public AccountStats Accounts { get; init; } = new();
+        public InstallStats Installs { get; init; } = new();
+        public int WithoutAccounts { get; init; }
+        public int DevicesTracked { get; init; }
+
+        public static DashboardStats FromJson(JsonElement root)
+        {
+            DateTimeOffset? generated = null;
+            if (root.TryGetProperty("generatedAt", out var g) && g.ValueKind == JsonValueKind.String
+                && DateTimeOffset.TryParse(g.GetString(), out var parsed))
+                generated = parsed;
+
+            var accounts = root.TryGetProperty("accounts", out var a) ? a : default;
+            var installs = root.TryGetProperty("installs", out var i) ? i : default;
+            var by = installs.ValueKind == JsonValueKind.Object && installs.TryGetProperty("byPlatform", out var bp)
+                ? bp
+                : default;
+
+            return new DashboardStats
+            {
+                GeneratedAt = generated,
+                Accounts = new AccountStats
+                {
+                    Total = IntProp(accounts, "total"),
+                    Verified = IntProp(accounts, "verified"),
+                    WithProfile = IntProp(accounts, "withProfile"),
+                },
+                Installs = new InstallStats
+                {
+                    Total = IntProp(installs, "total"),
+                    ByPlatform = new PlatformStats
+                    {
+                        Pwa = IntProp(by, "pwa"),
+                        Twa = IntProp(by, "twa"),
+                        Android = IntProp(by, "android"),
+                        Ios = IntProp(by, "ios"),
+                        Web = IntProp(by, "web"),
+                    }
+                },
+                WithoutAccounts = IntProp(root, "withoutAccounts"),
+                DevicesTracked = IntProp(root, "devicesTracked"),
+            };
+        }
+
+        static int IntProp(JsonElement el, string name)
+        {
+            if (el.ValueKind != JsonValueKind.Object || !el.TryGetProperty(name, out var p))
+                return 0;
+            return p.ValueKind == JsonValueKind.Number && p.TryGetInt32(out var n) ? n : 0;
+        }
+    }
+
+    sealed class AccountStats
+    {
+        public int Total { get; init; }
+        public int Verified { get; init; }
+        public int WithProfile { get; init; }
+    }
+
+    sealed class InstallStats
+    {
+        public int Total { get; init; }
+        public PlatformStats ByPlatform { get; init; } = new();
+    }
+
+    sealed class PlatformStats
+    {
+        public int Pwa { get; init; }
+        public int Twa { get; init; }
+        public int Android { get; init; }
+        public int Ios { get; init; }
+        public int Web { get; init; }
+    }
+}

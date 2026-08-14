@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>MobiHymn — App Preview (30s)</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" />
+  <style>
+    :root {
+      --primary: #F5D200;
+      --primary-text: #2D2D2D;
+      --charcoal: #2D2D2D;
+      --bg: #ffffff;
+      --fg: #2D2D2D;
+      --subtitle: #464646;
+      --gray-light: #d0d0d0;
+      --cream: #FAFAF7;
+      --sepia: #F3E5C8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      background: #0c0c0c;
+      color: #fff;
+      font-family: -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    .stage-wrap {
+      height: 100%;
+      display: grid;
+      place-items: center;
+      gap: 14px;
+      padding: 12px;
+    }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
+      color: #aaa;
+      font-size: 13px;
+    }
+    .toolbar button {
+      border: 0;
+      border-radius: 999px;
+      padding: 8px 14px;
+      background: var(--primary);
+      color: var(--primary-text);
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .toolbar button.ghost {
+      background: #1c1c1c;
+      color: #eee;
+      border: 1px solid #333;
+    }
+    .toolbar .timecode { font-variant-numeric: tabular-nums; min-width: 7ch; }
+
+    /* Device frame */
+    .phone {
+      position: relative;
+      width: min(390px, calc((100vh - 96px) * 9 / 16));
+      aspect-ratio: 9 / 16;
+      border-radius: 36px;
+      overflow: hidden;
+      background: var(--bg);
+      box-shadow:
+        0 0 0 10px #1a1a1a,
+        0 0 0 12px #2a2a2a,
+        0 24px 70px rgba(0,0,0,.55);
+    }
+    .status {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      z-index: 40;
+      height: 28px;
+      padding: 8px 18px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--primary-text);
+      pointer-events: none;
+    }
+    .status.is-light { color: #fff; }
+    .status .pills { display: flex; gap: 5px; align-items: center; font-size: 10px; }
+
+    .topbar {
+      flex-shrink: 0;
+      height: 52px;
+      margin-top: 28px;
+      padding: 0 8px 0 4px;
+      background: var(--primary);
+      color: var(--primary-text);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: opacity .25s, transform .25s;
+    }
+    .topbar .hamburger,
+    .topbar .tb {
+      width: 40px; height: 40px;
+      border: 0; background: transparent;
+      color: inherit;
+      display: grid; place-items: center;
+      font-size: 1.05rem;
+      border-radius: 8px;
+    }
+    .topbar .brand {
+      flex: 1;
+      font-weight: 800;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+      padding-left: 4px;
+    }
+    .topbar .brand span { opacity: .55; font-weight: 700; }
+    .topbar .title {
+      flex: 1;
+      font-weight: 700;
+      font-size: 1rem;
+      text-align: center;
+    }
+    .topbar.is-hidden {
+      opacity: 0;
+      transform: translateY(-100%);
+      pointer-events: none;
+    }
+
+    .scene {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .32s ease;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    .scene.is-on { opacity: 1; }
+
+    .caption {
+      position: absolute;
+      left: 16px; right: 16px;
+      bottom: 48px;
+      z-index: 50;
+      text-align: center;
+      font-weight: 800;
+      font-size: clamp(20px, 5.8vw, 26px);
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      text-shadow: 0 2px 14px rgba(0,0,0,.6);
+      color: #fff;
+      pointer-events: none;
+    }
+    .caption.brand { color: var(--primary); text-shadow: 0 2px 12px rgba(0,0,0,.75); }
+
+    /* Splash */
+    .splash {
+      background: var(--charcoal);
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+    }
+    .splash .mark {
+      width: 96px;
+      height: auto;
+      filter: brightness(0) saturate(100%) invert(86%) sepia(61%) saturate(1205%) hue-rotate(359deg) brightness(103%) contrast(103%);
+    }
+    .splash .word {
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--primary);
+      letter-spacing: -0.03em;
+    }
+
+    /* Number input (grid / voice) */
+    .input-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: #f5f5f5;
+    }
+    .mode-switcher {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      margin: 10px 16px 0;
+      background: #fff;
+      border: 1.5px solid #c8c8c8;
+      border-radius: 10px;
+      padding: 3px;
+    }
+    .mode-btn {
+      height: 40px;
+      border: 0;
+      background: transparent;
+      border-radius: 7px;
+      color: var(--primary-text);
+      font-size: 1.05rem;
+      display: grid;
+      place-items: center;
+    }
+    .mode-btn.active {
+      background: var(--primary);
+      color: var(--primary-text);
+    }
+
+    .grid-shell {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 10px 8px 16px;
+    }
+    .grid-picked {
+      text-align: center;
+      font-size: 2.4rem;
+      font-weight: 800;
+      color: var(--primary-text);
+      letter-spacing: .06em;
+      min-height: 52px;
+      margin: 4px 0 8px;
+    }
+    .grid-picker {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+    }
+    .grid-col {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .grid-key {
+      flex: 1;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: var(--fg);
+      border-bottom: 1px solid #eee;
+      opacity: .4;
+      transition: background .15s, color .15s, opacity .15s, transform .15s;
+    }
+    .grid-key:last-child { border-bottom: 0; }
+    .grid-key.pick {
+      opacity: 1;
+      background: var(--primary);
+      color: var(--primary-text);
+      transform: scale(1.02);
+    }
+
+    .voice-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      padding: 24px;
+      background: #f5f5f5;
+    }
+    .voice-mic {
+      position: relative;
+      width: 96px;
+      height: 96px;
+    }
+    .voice-pulse {
+      position: absolute;
+      inset: -10px;
+      border-radius: 50%;
+      border: 2px solid rgba(245, 210, 0, .45);
+      opacity: 0;
+    }
+    .voice-mic.is-listening .voice-pulse {
+      animation: pulse 1.2s ease-out infinite;
+      opacity: 1;
+    }
+    @keyframes pulse {
+      0% { transform: scale(.9); opacity: .85; }
+      100% { transform: scale(1.35); opacity: 0; }
+    }
+    .voice-mic-btn {
+      width: 96px;
+      height: 96px;
+      border-radius: 50%;
+      border: 0;
+      background: var(--primary);
+      color: var(--primary-text);
+      font-size: 2rem;
+      display: grid;
+      place-items: center;
+    }
+    .voice-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--fg);
+    }
+    .voice-hint {
+      font-size: .92rem;
+      color: var(--subtitle);
+      text-align: center;
+      max-width: 240px;
+    }
+    .voice-num {
+      font-size: 2.6rem;
+      font-weight: 800;
+      color: var(--primary-text);
+      min-height: 1.1em;
+      letter-spacing: .04em;
+    }
+
+    /* Reader */
+    .reader {
+      background: var(--cream);
+      color: var(--charcoal);
+    }
+    .reader.is-sepia { background: var(--sepia); }
+    .reader.is-dark { background: var(--charcoal); color: #fff; }
+    .read-body {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      padding: 12px 20px 24px;
+      transition: font-size .35s ease;
+    }
+    .read-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      background: transparent;
+      border: 0;
+      color: inherit;
+      padding: 0;
+    }
+    .read-title-text {
+      font-size: 1.15rem;
+      font-weight: 800;
+    }
+    .read-title-info { opacity: .45; font-size: .95rem; }
+    .read-lyrics {
+      font-size: 1.05rem;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      transition: font-size .35s ease;
+    }
+    .reader.is-large .read-lyrics { font-size: 1.28rem; }
+    .reader.is-immersive .topbar { opacity: 0; transform: translateY(-100%); }
+
+    .read-player {
+      flex-shrink: 0;
+      background: #2a2a2a;
+      color: #fff;
+      transition: opacity .25s, transform .25s;
+    }
+    .read-player[hidden] { display: none !important; }
+    .read-player-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px 14px 8px;
+      min-height: 56px;
+    }
+    .player-play {
+      width: 36px;
+      height: 36px;
+      border: 0;
+      background: transparent;
+      color: var(--primary);
+      font-size: 1.05rem;
+      display: grid;
+      place-items: center;
+    }
+    .player-time {
+      width: 40px;
+      text-align: center;
+      font-size: .8rem;
+      font-variant-numeric: tabular-nums;
+      color: #fff;
+    }
+    .player-seek-wrap {
+      flex: 1;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      position: relative;
+    }
+    .player-seek-track {
+      width: 100%;
+      height: 2px;
+      border-radius: 1px;
+      background: linear-gradient(
+        to right,
+        #fff 0%,
+        #fff var(--seek-pct, 0%),
+        rgba(255,255,255,.28) var(--seek-pct, 0%),
+        rgba(255,255,255,.28) 100%
+      );
+      position: relative;
+    }
+    .player-seek-knob {
+      position: absolute;
+      top: 50%;
+      left: var(--seek-pct, 0%);
+      width: 12px;
+      height: 12px;
+      margin: -6px 0 0 -6px;
+      border-radius: 50%;
+      background: var(--primary);
+    }
+
+    .read-fab {
+      position: absolute;
+      right: 16px;
+      bottom: 72px;
+      width: 56px;
+      height: 56px;
+      border-radius: 28px;
+      border: 0;
+      background: var(--primary);
+      color: var(--primary-text);
+      font-size: 1.25rem;
+      display: grid;
+      place-items: center;
+      box-shadow: 0 3px 12px rgba(0,0,0,.35);
+      z-index: 8;
+      transition: opacity .25s, bottom .25s;
+    }
+    .reader:not(.has-player) .read-fab { bottom: 16px; }
+    .reader.is-immersive .read-fab { opacity: 0; }
+
+    /* Bookmarks */
+    .bookmark-body {
+      flex: 1;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: #f7f7f7;
+    }
+    .bm-heart {
+      align-self: center;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: var(--primary-text);
+      display: grid;
+      place-items: center;
+      font-size: 1.25rem;
+      margin: 6px 0 2px;
+    }
+    .bm-copy {
+      text-align: center;
+      font-size: .92rem;
+      color: var(--subtitle);
+      margin-bottom: 4px;
+    }
+    .bm-row {
+      background: #fff;
+      border: 1px solid #e2e2e2;
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 700;
+      transition: border-color .2s, background .2s;
+    }
+    .bm-row .meta { color: var(--subtitle); font-weight: 600; font-size: .85rem; }
+    .bm-row.pick {
+      border-color: var(--primary);
+      background: #FFF8E1;
+    }
+    .bm-toast {
+      margin-top: auto;
+      text-align: center;
+      background: var(--charcoal);
+      color: var(--primary);
+      font-weight: 700;
+      border-radius: 10px;
+      padding: 12px;
+      opacity: 0;
+      transition: opacity .25s;
+    }
+    .bm-toast.show { opacity: 1; }
+
+    /* Selah */
+    .selah {
+      background: #fff;
+    }
+    .selah-messages {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 12px 12px 16px;
+    }
+    .selah-bubble {
+      max-width: calc(100% - 32px);
+      padding: 12px 14px;
+      border-radius: 14px;
+      font-size: .92rem;
+      line-height: 1.45;
+    }
+    .selah-bubble-user {
+      align-self: flex-end;
+      background: var(--primary);
+      color: var(--primary-text);
+      margin-left: 32px;
+    }
+    .selah-bubble-assistant {
+      align-self: flex-start;
+      background: #F0F0F0;
+      color: var(--fg);
+      margin-right: 32px;
+    }
+    .selah-cards { display: flex; flex-direction: column; gap: 8px; }
+    .selah-card {
+      border: 1px solid #e0e0e0;
+      border-radius: 12px;
+      padding: 12px;
+      background: #fff;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      transition: border-color .2s, transform .2s, background .2s;
+    }
+    .selah-card .line { font-weight: 700; font-size: .92rem; }
+    .selah-card .num { color: var(--subtitle); font-weight: 700; font-size: .85rem; }
+    .selah-card.pick {
+      border-color: var(--primary);
+      background: #FFF8E1;
+      transform: scale(1.02);
+    }
+    .selah-composer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px 16px;
+      border-top: 1px solid #eee;
+      background: #fff;
+    }
+    .selah-field {
+      flex: 1;
+      height: 40px;
+      border-radius: 20px;
+      border: 1px solid #ddd;
+      padding: 0 14px;
+      display: flex;
+      align-items: center;
+      color: var(--subtitle);
+      font-size: .9rem;
+      background: #fafafa;
+    }
+    .selah-send {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: 0;
+      background: var(--primary);
+      color: var(--primary-text);
+      display: grid;
+      place-items: center;
+    }
+
+    /* Board */
+    .board {
+      background: rgba(0,0,0,.35);
+    }
+    .board-pane {
+      margin-top: auto;
+      height: 78%;
+      background: #fff;
+      border-radius: 18px 18px 0 0;
+      padding: 16px 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 -8px 30px rgba(0,0,0,.2);
+    }
+    .board-eyebrow {
+      font-size: .72rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--subtitle);
+    }
+    .board-name {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: var(--fg);
+    }
+    .board-section {
+      font-size: .8rem;
+      font-weight: 700;
+      color: var(--subtitle);
+      margin-top: 4px;
+    }
+    .board-card {
+      background: #FAFAFA;
+      border: 1px solid #e4e4e4;
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .board-card .t { font-weight: 800; }
+    .board-card .m { font-size: .82rem; color: var(--subtitle); }
+
+    /* End */
+    .end {
+      background: var(--charcoal);
+      align-items: center;
+      justify-content: center;
+    }
+    .end img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .progress {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 3px;
+      background: rgba(255,255,255,.12);
+      z-index: 60;
+    }
+    .progress > i {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: var(--primary);
+    }
+  </style>
+</head>
+<body>
+  <div class="stage-wrap">
+    <div class="toolbar">
+      <button type="button" id="btnPlay">Play 30s</button>
+      <button type="button" class="ghost" id="btnTeaser">Play 15s</button>
+      <button type="button" class="ghost" id="btnRestart">Restart</button>
+      <span class="timecode" id="timecode">0:00.0</span>
+      <span>9:16 · screen-record the phone frame</span>
+    </div>
+
+    <div class="phone" id="phone" aria-label="MobiHymn preview">
+      <div class="status" id="statusBar">
+        <span>9:41</span>
+        <span class="pills"><i class="fa-solid fa-signal"></i><i class="fa-solid fa-wifi"></i><i class="fa-solid fa-battery-full"></i></span>
+      </div>
+
+      <!-- Splash -->
+      <div class="scene splash is-on" data-scene="splash">
+        <img class="mark" src="logo-mark.svg" alt="" />
+        <div class="word">MobiHymn</div>
+      </div>
+
+      <!-- Grid number entry -->
+      <div class="scene" data-scene="grid">
+        <header class="topbar">
+          <button type="button" class="hamburger" aria-hidden="true"><i class="fa-solid fa-bars"></i></button>
+          <div class="brand">Mobi<span>Hymn</span></div>
+        </header>
+        <div class="input-body">
+          <div class="mode-switcher">
+            <div class="mode-btn active"><i class="fa-solid fa-grip"></i></div>
+            <div class="mode-btn"><i class="fa-solid fa-keyboard"></i></div>
+            <div class="mode-btn"><i class="fa-solid fa-microphone"></i></div>
+          </div>
+          <div class="grid-shell">
+            <div class="grid-picked" id="gridPicked"></div>
+            <div class="grid-picker">
+              <div class="grid-col" id="colH">
+                <div class="grid-key">0</div><div class="grid-key">1</div><div class="grid-key">2</div><div class="grid-key">3</div>
+              </div>
+              <div class="grid-col" id="colT">
+                <div class="grid-key">0</div><div class="grid-key">5</div><div class="grid-key">7</div><div class="grid-key">9</div>
+              </div>
+              <div class="grid-col" id="colO">
+                <div class="grid-key">0</div><div class="grid-key">3</div><div class="grid-key">7</div><div class="grid-key">8</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Voice -->
+      <div class="scene" data-scene="voice">
+        <header class="topbar">
+          <button type="button" class="hamburger" aria-hidden="true"><i class="fa-solid fa-bars"></i></button>
+          <div class="brand">Mobi<span>Hymn</span></div>
+        </header>
+        <div class="voice-panel">
+          <div class="mode-switcher" style="width:min(100%,320px)">
+            <div class="mode-btn"><i class="fa-solid fa-grip"></i></div>
+            <div class="mode-btn"><i class="fa-solid fa-keyboard"></i></div>
+            <div class="mode-btn active"><i class="fa-solid fa-microphone"></i></div>
+          </div>
+          <div class="voice-mic is-listening" id="voiceMic">
+            <div class="voice-pulse"></div>
+            <button type="button" class="voice-mic-btn" aria-hidden="true"><i class="fa-solid fa-microphone"></i></button>
+          </div>
+          <div class="voice-title" id="voiceLine">Listening…</div>
+          <div class="voice-hint" id="voiceHint">Say a hymn number</div>
+          <div class="voice-num" id="voiceNum"></div>
+        </div>
+      </div>
+
+      <!-- Reader (+ audio) -->
+      <div class="scene reader has-player" data-scene="reader">
+        <header class="topbar" id="readerTopbar">
+          <button type="button" class="hamburger" aria-hidden="true"><i class="fa-solid fa-bars"></i></button>
+          <div class="brand">Mobi<span>Hymn</span></div>
+          <button type="button" class="tb" aria-hidden="true"><i class="fa-regular fa-heart"></i></button>
+          <button type="button" class="tb" aria-hidden="true"><i class="fa-solid fa-share-nodes"></i></button>
+        </header>
+        <div class="read-body">
+          <div class="read-title-row">
+            <span class="read-title-text">Hymn #77</span>
+            <i class="fa-solid fa-circle-info read-title-info"></i>
+          </div>
+          <div class="read-lyrics">Amazing grace! how sweet the sound
+That saved a wretch like me!
+I once was lost, but now am found,
+Was blind, but now I see.
+
+’Twas grace that taught my heart to fear,
+And grace my fears relieved;
+How precious did that grace appear
+The hour I first believed!</div>
+        </div>
+        <div class="read-player" id="playerBar" hidden>
+          <div class="read-player-bar">
+            <button class="player-play" type="button" aria-label="Play"><i class="fa-solid fa-play"></i></button>
+            <span class="player-time">0:12</span>
+            <div class="player-seek-wrap" id="seekWrap" style="--seek-pct:20%">
+              <div class="player-seek-track"></div>
+              <div class="player-seek-knob"></div>
+            </div>
+            <span class="player-time">2:41</span>
+          </div>
+        </div>
+        <button type="button" class="read-fab" aria-hidden="true"><i class="fa-solid fa-grip-vertical"></i></button>
+      </div>
+
+      <!-- Bookmarks -->
+      <div class="scene" data-scene="bookmark">
+        <header class="topbar">
+          <button type="button" class="hamburger" aria-hidden="true"><i class="fa-solid fa-bars"></i></button>
+          <div class="title">Bookmarks</div>
+          <button type="button" class="tb" aria-hidden="true"><i class="fa-solid fa-plus"></i></button>
+        </header>
+        <div class="bookmark-body">
+          <div class="bm-heart"><i class="fa-solid fa-heart"></i></div>
+          <div class="bm-copy">Save Hymn #77 to a group</div>
+          <div class="bm-row" id="gFav"><span>Favorites</span><span class="meta">12</span></div>
+          <div class="bm-row" id="gSun"><span>Sunday</span><span class="meta">4</span></div>
+          <div class="bm-toast" id="toast">Saved to Sunday</div>
+        </div>
+      </div>
+
+      <!-- Selah -->
+      <div class="scene selah" data-scene="selah">
+        <header class="topbar">
+          <button type="button" class="hamburger" aria-hidden="true"><i class="fa-solid fa-bars"></i></button>
+          <div class="title">Selah</div>
+          <button type="button" class="tb" aria-hidden="true"><i class="fa-solid fa-ellipsis"></i></button>
+        </header>
+        <div class="selah-messages">
+          <div class="selah-bubble selah-bubble-user">songs about grace</div>
+          <div class="selah-bubble selah-bubble-assistant">Here are a few that fit…</div>
+          <div class="selah-cards">
+            <div class="selah-card" id="c1"><span class="line">Amazing Grace</span><span class="num">#77</span></div>
+            <div class="selah-card" id="c2"><span class="line">Grace Greater Than Our Sin</span><span class="num">#112</span></div>
+            <div class="selah-card" id="c3"><span class="line">Wonderful Grace of Jesus</span><span class="num">#201</span></div>
+          </div>
+        </div>
+        <div class="selah-composer">
+          <div class="selah-field">Ask Selah…</div>
+          <button type="button" class="selah-send" aria-hidden="true"><i class="fa-solid fa-paper-plane"></i></button>
+        </div>
+      </div>
+
+      <!-- Board -->
+      <div class="scene board" data-scene="board">
+        <div class="board-pane">
+          <div class="board-eyebrow">Group Board</div>
+          <div class="board-name">Grace Fellowship</div>
+          <div class="board-section">Hymn Setlist · Sunday Service</div>
+          <div class="board-card"><span class="t">Opening</span><span class="m">Hymn #12</span></div>
+          <div class="board-card"><span class="t">Worship</span><span class="m">Hymn #77 · Amazing Grace</span></div>
+          <div class="board-card"><span class="t">Close</span><span class="m">Hymn #240</span></div>
+        </div>
+      </div>
+
+      <!-- End card -->
+      <div class="scene end" data-scene="end">
+        <img src="end-card.png" alt="MobiHymn — Read · Search · Sing" />
+      </div>
+
+      <div class="caption brand" id="caption">MobiHymn</div>
+      <div class="progress"><i id="progressFill"></i></div>
+    </div>
+  </div>
+
+  <script>
+    const BEATS_30 = [
+      { t0: 0,  t1: 3,  scene: "splash",   caption: "MobiHymn", brand: true },
+      { t0: 3,  t1: 7,  scene: "grid",     caption: "Find any hymn in seconds" },
+      { t0: 7,  t1: 11, scene: "voice",    caption: "Or just say it" },
+      { t0: 11, t1: 15, scene: "reader",   caption: "Read your way", mode: "reader" },
+      { t0: 15, t1: 19, scene: "reader",   caption: "Listen while you follow", mode: "audio" },
+      { t0: 19, t1: 23, scene: "bookmark", caption: "Save what matters" },
+      { t0: 23, t1: 27, scene: "selah",    caption: "Ask Selah" },
+      { t0: 27, t1: 28.4, scene: "board",  caption: "Worship, together" },
+      { t0: 28.4, t1: 30, scene: "end",    caption: "Worship, together", brand: true },
+    ];
+
+    const BEATS_15 = [
+      { t0: 0,  t1: 2,  scene: "splash", caption: "MobiHymn", brand: true },
+      { t0: 2,  t1: 6,  scene: "grid",   caption: "Find any hymn" },
+      { t0: 6,  t1: 10, scene: "reader", caption: "Read & listen", mode: "audio" },
+      { t0: 10, t1: 13, scene: "selah",  caption: "Ask Selah" },
+      { t0: 13, t1: 15, scene: "end",    caption: "Read · Search · Sing", brand: true },
+    ];
+
+    let beats = BEATS_30;
+    let duration = 30;
+    let playing = false;
+    let startPerf = 0;
+    let raf = 0;
+    let lastScene = "";
+
+    const captionEl = document.getElementById("caption");
+    const timecode = document.getElementById("timecode");
+    const progressFill = document.getElementById("progressFill");
+    const statusBar = document.getElementById("statusBar");
+    const scenes = [...document.querySelectorAll(".scene")];
+
+    function showScene(name) {
+      scenes.forEach(s => s.classList.toggle("is-on", s.dataset.scene === name));
+      const light = name === "splash" || name === "end" || name === "board";
+      statusBar.classList.toggle("is-light", light);
+      statusBar.style.display = (name === "splash" || name === "end") ? "none" : "flex";
+    }
+
+    function setCaption(text, brand) {
+      captionEl.textContent = text;
+      captionEl.classList.toggle("brand", !!brand);
+    }
+
+    function pickInCol(colId, value) {
+      const col = document.getElementById(colId);
+      [...col.querySelectorAll(".grid-key")].forEach(s => {
+        s.classList.toggle("pick", s.textContent === String(value));
+      });
+    }
+
+    function applyBeatEffects(beat, localT) {
+      const scene = beat.scene;
+      const p = localT / Math.max(0.001, beat.t1 - beat.t0);
+
+      if (scene === "grid") {
+        if (p < 0.33) {
+          pickInCol("colH", 0); pickInCol("colT", ""); pickInCol("colO", "");
+          document.getElementById("gridPicked").textContent = "0";
+        } else if (p < 0.66) {
+          pickInCol("colH", 0); pickInCol("colT", 7); pickInCol("colO", "");
+          document.getElementById("gridPicked").textContent = "07";
+        } else {
+          pickInCol("colH", 0); pickInCol("colT", 7); pickInCol("colO", 7);
+          document.getElementById("gridPicked").textContent = "077";
+        }
+      }
+
+      if (scene === "voice") {
+        document.getElementById("voiceLine").textContent = p < 0.45 ? "Listening…" : "Got it";
+        document.getElementById("voiceHint").textContent = p < 0.45 ? "Say a hymn number" : "seventy-seven…";
+        document.getElementById("voiceNum").textContent = p < 0.7 ? "" : "77";
+        document.getElementById("voiceMic").classList.toggle("is-listening", p < 0.7);
+      }
+
+      if (scene === "reader") {
+        const reader = document.querySelector('.scene[data-scene="reader"]');
+        const bar = document.getElementById("playerBar");
+        if (beat.mode === "audio") {
+          bar.hidden = false;
+          reader.classList.add("has-player", "is-dark");
+          reader.classList.remove("is-immersive", "is-large", "is-sepia");
+          document.getElementById("seekWrap").style.setProperty("--seek-pct", (15 + p * 50) + "%");
+        } else {
+          bar.hidden = true;
+          reader.classList.remove("has-player", "is-dark");
+          reader.classList.toggle("is-large", p > 0.22 && p < 0.7);
+          reader.classList.toggle("is-immersive", p > 0.42);
+          reader.classList.toggle("is-sepia", p > 0.72);
+        }
+      }
+
+      if (scene === "bookmark") {
+        document.getElementById("gSun").classList.toggle("pick", p > 0.35);
+        document.getElementById("gFav").classList.toggle("pick", false);
+        document.getElementById("toast").classList.toggle("show", p > 0.65);
+      }
+
+      if (scene === "selah") {
+        document.getElementById("c1").classList.toggle("pick", p > 0.55);
+        document.getElementById("c2").classList.toggle("pick", false);
+        document.getElementById("c3").classList.toggle("pick", false);
+      }
+    }
+
+    function tick(now) {
+      if (!playing) return;
+      const t = Math.min(duration, (now - startPerf) / 1000);
+      const beat = beats.find(b => t >= b.t0 && t < b.t1) || beats[beats.length - 1];
+      if (beat.scene !== lastScene) {
+        showScene(beat.scene);
+        setCaption(beat.caption, beat.brand);
+        lastScene = beat.scene;
+      } else {
+        setCaption(beat.caption, beat.brand);
+      }
+      applyBeatEffects(beat, t - beat.t0);
+      progressFill.style.width = (t / duration * 100) + "%";
+      timecode.textContent = formatT(t);
+      if (t >= duration) {
+        playing = false;
+        timecode.textContent = formatT(duration);
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    }
+
+    function formatT(t) {
+      const m = Math.floor(t / 60);
+      const s = (t % 60).toFixed(1).padStart(4, "0");
+      return m + ":" + s;
+    }
+
+    function start(list, dur) {
+      cancelAnimationFrame(raf);
+      beats = list;
+      duration = dur;
+      playing = true;
+      lastScene = "";
+      startPerf = performance.now();
+      raf = requestAnimationFrame(tick);
+    }
+
+    document.getElementById("btnPlay").onclick = () => start(BEATS_30, 30);
+    document.getElementById("btnTeaser").onclick = () => start(BEATS_15, 15);
+    document.getElementById("btnRestart").onclick = () => start(beats, duration);
+
+    start(BEATS_30, 30);
+  </script>
+</body>
+</html>

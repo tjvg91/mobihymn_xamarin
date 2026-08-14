@@ -22,4 +22,8 @@ public interface IAuthService
     Task SendEmailVerificationAsync();
     Task RefreshEmailVerificationStatusAsync();
     Task SignOutAsync();
+
+    /// <summary>Raw Firebase Auth ID token JWT for authenticating HTTPS Callable
+    /// Cloud Function requests. Returns null when signed out.</summary>
+    Task<string> GetIdTokenAsync(bool forceRefresh = false);
 }

@@ -6,6 +6,8 @@ public static class PrefKeys
     public const string HymnInputType = "hymnInputType";
     /// <summary>First-run intro slider (MAUI PreferencesVar.IS_NEW).</summary>
     public const string IsNew = "isNew";
+    /// <summary>Dismissed community sign-up prompt (MAUI COMMUNITY_PROMPT_DISMISSED).</summary>
+    public const string CommunityPromptDismissed = "communityPromptDismissedV2";
     public const string DarkMode = "darkMode";
     public const string ActiveFont = "activeFont";
     public const string ActiveFontSize = "activeFontSize";
@@ -15,6 +17,8 @@ public static class PrefKeys
     public const string LineSpacing = "activeLineSpacing";
     public const string AgentMode = "agentMode";
     public const string AgentChatLimit = "agentChatLimit";
+    /// <summary>Device-local Selah chat transcript + session id (not synced / not wiped on sign-out).</summary>
+    public const string SelahSessionJson = "selahSessionJson";
     public const string CloudOwnerUid = "cloudSettingsOwnerUid";
     public const string CloudPending = "cloudSettingsPending";
     public const string CloudUpdatedAt = "cloudSettingsUpdatedAt";
@@ -28,6 +32,8 @@ public static class PrefKeys
     public const string SettingsJson = "settingsJson";
     public const string GroupMutePrefix = "groupNotificationsMuted_";
     public const string FcmDeviceId = "fcm_device_id";
+    /// <summary>Persisted board setlist prev/next context (MAUI boardNavState).</summary>
+    public const string BoardNavState = "boardNavState";
 
     /// <summary>
     /// Account-scoped keys wiped on sign-out / account switch.

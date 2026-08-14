@@ -20,6 +20,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 
+import androidx.core.splashscreen.SplashScreen;
+
 
 
 public class LauncherActivity
@@ -30,6 +32,8 @@ public class LauncherActivity
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Must run before super so Android 12+ uses Theme.MobiHymn.Splash (yellow M, no black plate).
+        SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
         // Setting an orientation crashes the app due to the transparent background on Android 8.0
         // Oreo and below. We only set the orientation on Oreo and above. This only affects the

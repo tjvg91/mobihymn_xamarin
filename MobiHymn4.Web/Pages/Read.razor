@@ -3,6 +3,9 @@
 @inject AppState State
 @inject NavigationManager Nav
 @inject IJSRuntime Js
+@inject BoardDeepLinkService DeepLinks
+@inject BoardNavigationContext BoardNav
+@inject IAuthService Auth
 @implements IDisposable
 
 <PageTitle>@(State.ActiveHymn != null ? $"#{State.ActiveHymn.Number} — {State.ActiveHymn.FirstLine}" : "Read")</PageTitle>
@@ -49,6 +52,32 @@ else
             </button>
             <div class="read-lyrics">@((MarkupString)(h.Lyrics ?? ""))</div>
         </div>
+
+        @if (ShowBoardNav)
+        {
+            @if (BoardNav.CanGoPrev)
+            {
+                <button type="button"
+                        class="board-nav-btn board-nav-btn--prev @(State.IsReadView ? null : "is-chrome-out")"
+                        title="Previous board hymn"
+                        aria-label="Previous board hymn"
+                        @onclick="GoBoardPrev"
+                        @onclick:stopPropagation="true">
+                    <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                </button>
+            }
+            @if (BoardNav.CanGoNext)
+            {
+                <button type="button"
+                        class="board-nav-btn board-nav-btn--next @(State.IsReadView ? null : "is-chrome-out")"
+                        title="Next board hymn"
+                        aria-label="Next board hymn"
+                        @onclick="GoBoardNext"
+                        @onclick:stopPropagation="true">
+                    <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                </button>
+            }
+        }
 
         @if (ShowPlayer)
         {
@@ -210,6 +239,14 @@ else
 
 @code {
     [Parameter] public string? Number { get; set; }
+
+    [SupplyParameterFromQuery(Name = "groupId")]
+    public string? BoardGroupId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "listId")]
+    public string? BoardListId { get; set; }
+
+    string? lastBoardQueryKey;
     bool showHymnInfo;
     ElementReference readBodyRef;
     DotNetObjectReference<Read>? pinchRef;
@@ -219,6 +256,7 @@ else
     bool IsPlaying;
     bool AudioLoading;
     bool ShowPlayer;
+    bool IsOnline = true;
     bool seeking;
     bool MidiPanelOpen;
     string AudioMode = "none";
@@ -226,19 +264,22 @@ else
     string? resolvedForNumber;
     int resolveGeneration;
     CancellationTokenSource? midiPollCts;
+    DotNetObjectReference<Read>? netRef;
+    IJSObjectReference? netSub;
     double CurrentTime;
     double Duration;
     double MidiTempoScale = 1;
     int MidiTranspose;
     int MidiTempoBpm = 120;
-    string MidiKeyName = "C Major";
+    string MidiKeyName = "C";
     List<int> MidiChannels = new();
     HashSet<int> MidiMuted = new();
     double SeekMax => Duration > 0 ? Duration : 1;
     double SeekPct => Duration > 0 ? Math.Clamp(CurrentTime / Duration * 100, 0, 100) : 0;
-    string MidiTempoBpmLabel => $"{MidiTempoBpm} BPM";
+    string MidiTempoBpmLabel => MidiTempoBpm.ToString(System.Globalization.CultureInfo.InvariantCulture);
     bool MidiTempoIsDefault => Math.Abs(MidiTempoScale - 1) < 0.001;
     bool MidiKeyIsDefault => MidiTranspose == 0;
+    bool ShowBoardNav => Auth.IsSignedIn && BoardNav.IsActive && State.ActiveHymn != null;
 
     void OnReadShellClick()
     {
@@ -265,6 +306,26 @@ else
     }
 
     void OpenHymnInfo() => showHymnInfo = true;
+
+    Task GoBoardPrev() => NavigateBoardHymnAsync(-1);
+
+    Task GoBoardNext() => NavigateBoardHymnAsync(1);
+
+    async Task NavigateBoardHymnAsync(int delta)
+    {
+        if (!BoardNav.IsActive)
+            return;
+
+        var nextIndex = BoardNav.CurrentIndex + delta;
+        var number = BoardNav.TryGetNumberAt(nextIndex);
+        if (string.IsNullOrWhiteSpace(number))
+            return;
+
+        BoardNav.SetCurrentIndex(nextIndex);
+        var hymn = await State.OpenHymnAsync(number);
+        if (hymn != null)
+            Nav.NavigateTo($"read/{Uri.EscapeDataString(hymn.Number)}");
+    }
 
     string LyricsColor => IsDarkBg(State.ReaderTheme) ? "#ffffff" : "#2D2D2D";
 
@@ -325,6 +386,25 @@ else
             return;
         }
 
+        if (!await EnsureOnlineForAudioAsync())
+            return;
+
+        // Offline resolve left the chrome visible with no loaded source — try again now that we're online.
+        if (AudioMode is "none" && State.ActiveHymn != null)
+        {
+            AudioLoading = true;
+            try
+            {
+                await ResolveAudioAsync(State.ActiveHymn.Number);
+            }
+            finally
+            {
+                AudioLoading = false;
+            }
+            if (AudioMode is "none")
+                return;
+        }
+
         AudioLoading = true;
         try
         {
@@ -358,6 +438,27 @@ else
         {
             AudioLoading = false;
         }
+    }
+
+    async Task<bool> EnsureOnlineForAudioAsync()
+    {
+        try
+        {
+            IsOnline = await Js.InvokeAsync<bool>("mobihymnNet.isOnline");
+        }
+        catch
+        {
+            IsOnline = true;
+        }
+
+        if (IsOnline)
+            return true;
+
+        var lottie = State.DarkMode
+            ? "/lottie/no-internet-dark.gif"
+            : "/lottie/no-internet-light.gif";
+        State.ShowToast(lottie, "Internet required to play audio.", 2200);
+        return false;
     }
 
     async Task OnSeekInput(ChangeEventArgs e)
@@ -395,6 +496,21 @@ else
     {
         IsPlaying = false;
         AudioLoading = false;
+        var online = true;
+        try { online = await Js.InvokeAsync<bool>("mobihymnNet.isOnline"); }
+        catch { /* assume online */ }
+        IsOnline = online;
+        if (!online)
+        {
+            // Keep the player chrome; play will toast until connectivity returns.
+            AudioMode = "none";
+            AudioUrl = null;
+            MidiPanelOpen = false;
+            ShowPlayer = true;
+            try { await Js.InvokeVoidAsync("mobihymnAudio.stop"); } catch { /* ignore */ }
+            return;
+        }
+
         // MP3 failed after resolve — hide player rather than leaving a dead control.
         ShowPlayer = false;
         AudioMode = "none";
@@ -411,7 +527,7 @@ else
         MidiTempoScale = c.TempoScale > 0 ? c.TempoScale : 1;
         MidiTranspose = c.Transpose;
         MidiTempoBpm = c.TempoBpm > 0 ? c.TempoBpm : (int)Math.Round(120 * MidiTempoScale);
-        MidiKeyName = string.IsNullOrWhiteSpace(c.KeyName) ? "C Major" : c.KeyName;
+        MidiKeyName = FormatMidiKeyLabel(c.KeyName);
         MidiChannels = c.Channels?.ToList() ?? new List<int>();
         MidiMuted = c.Muted != null ? new HashSet<int>(c.Muted) : new HashSet<int>();
     }
@@ -523,8 +639,13 @@ else
             {
                 try
                 {
-                    await Task.Delay(250, token);
-                    await InvokeAsync(SyncFromElement);
+                    await Task.Delay(200, token);
+                    await InvokeAsync(async () =>
+                    {
+                        await SyncFromElement();
+                        // Poll is not an event handler — must request a render or the seek thumb stays put.
+                        StateHasChanged();
+                    });
                 }
                 catch (OperationCanceledException) { break; }
                 catch { /* ignore */ }
@@ -553,7 +674,7 @@ else
         MidiTempoScale = 1;
         MidiTranspose = 0;
         MidiTempoBpm = 120;
-        MidiKeyName = "C Major";
+        MidiKeyName = "C";
         MidiChannels = new();
         MidiMuted = new();
         StopMidiPoll();
@@ -561,6 +682,18 @@ else
 
         try
         {
+            try { IsOnline = await Js.InvokeAsync<bool>("mobihymnNet.isOnline"); }
+            catch { IsOnline = true; }
+
+            if (!IsOnline)
+            {
+                // Keep player chrome offline (MAUI parity: play requires internet).
+                ShowPlayer = true;
+                AudioMode = "none";
+                AudioUrl = null;
+                return;
+            }
+
             var mp3Urls = Mp3Candidates(number).ToArray();
             var tuneKey = State.ActiveHymn?.TuneKey;
             var result = await Js.InvokeAsync<AudioResolveDto>("mobihymnAudio.resolve", number, mp3Urls, tuneKey);
@@ -596,7 +729,19 @@ else
         catch (Exception ex)
         {
             Console.WriteLine($"ResolveAudio failed: {ex.Message}");
-            if (gen == resolveGeneration)
+            if (gen != resolveGeneration)
+                return;
+
+            try { IsOnline = await Js.InvokeAsync<bool>("mobihymnNet.isOnline"); }
+            catch { IsOnline = true; }
+
+            if (!IsOnline)
+            {
+                ShowPlayer = true;
+                AudioMode = "none";
+                AudioUrl = null;
+            }
+            else
             {
                 ShowPlayer = false;
                 AudioMode = "none";
@@ -614,6 +759,24 @@ else
         if (!string.IsNullOrEmpty(baseNumber) &&
             !string.Equals(baseNumber, n, StringComparison.OrdinalIgnoreCase))
             yield return HymnApiPaths.ClientAudioUrl(baseNumber);
+    }
+
+    static string FormatMidiKeyLabel(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "C";
+
+        var s = name.Trim();
+        // Already compact ("Am", "Eb", "F#").
+        if (!s.Contains(' ', StringComparison.Ordinal))
+            return s;
+
+        var parts = s.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var root = parts[0];
+        if (parts.Length > 1
+            && parts[1].StartsWith("Min", StringComparison.OrdinalIgnoreCase))
+            return root + "m";
+        return root;
     }
 
     sealed class AudioStateDto
@@ -660,15 +823,54 @@ else
             await State.OpenHymnAsync(number);
         }
 
+        BoardNav.SyncFromHymnNumber(State.ActiveHymn?.Number);
+
         if (State.ActiveHymn != null
             && !string.Equals(resolvedForNumber, State.ActiveHymn.Number, StringComparison.OrdinalIgnoreCase))
         {
             await ResolveAudioAsync(State.ActiveHymn.Number);
         }
+
+        await OpenBoardFromQueryAsync();
+    }
+
+    async Task OpenBoardFromQueryAsync()
+    {
+        // Keep lastBoardQueryKey across transient null query flashes during navigation.
+        if (string.IsNullOrWhiteSpace(BoardGroupId))
+            return;
+
+        var key = $"{BoardGroupId.Trim()}|{(BoardListId ?? "").Trim()}";
+        if (string.Equals(key, lastBoardQueryKey, StringComparison.Ordinal))
+            return;
+        lastBoardQueryKey = key;
+
+        var result = await DeepLinks.TryOpenAsync(BoardGroupId, BoardListId);
+        if (result == "redirect")
+            return;
+        if (!string.IsNullOrEmpty(result))
+        {
+            lastBoardQueryKey = null;
+            State.ShowToast("/lottie/done.gif", result);
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            try
+            {
+                IsOnline = await Js.InvokeAsync<bool>("mobihymnNet.isOnline");
+                netRef = DotNetObjectReference.Create(this);
+                netSub = await Js.InvokeAsync<IJSObjectReference>("mobihymnNet.subscribe", netRef);
+            }
+            catch
+            {
+                IsOnline = true;
+            }
+        }
+
         if (ShowPlayer && AudioMode == "mp3" && !string.IsNullOrEmpty(AudioUrl))
         {
             try
@@ -693,17 +895,54 @@ else
         }
     }
 
-    protected override void OnInitialized() => State.Changed += OnChanged;
+    [JSInvokable]
+    public void OnConnectivityChanged(bool online)
+    {
+        if (IsOnline == online)
+            return;
+        IsOnline = online;
+        if (online && State.ActiveHymn != null && ShowPlayer && AudioMode is "none")
+            _ = ResolveAudioAsync(State.ActiveHymn.Number);
+        else if (!online && ShowPlayer && IsPlaying)
+        {
+            IsPlaying = false;
+            AudioLoading = false;
+            StopMidiPoll();
+            _ = Js.InvokeVoidAsync("mobihymnAudio.pause", audioRef);
+        }
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    protected override void OnInitialized()
+    {
+        State.Changed += OnChanged;
+        BoardNav.Changed += OnBoardNavChanged;
+        Auth.AuthStateChanged += OnAuthChanged;
+    }
+
     void OnChanged() => InvokeAsync(StateHasChanged);
+    void OnBoardNavChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+    void OnAuthChanged(object? sender, EventArgs e)
+    {
+        if (!Auth.IsSignedIn)
+            BoardNav.Clear();
+        _ = InvokeAsync(StateHasChanged);
+    }
 
     public void Dispose()
     {
         State.Changed -= OnChanged;
+        BoardNav.Changed -= OnBoardNavChanged;
+        Auth.AuthStateChanged -= OnAuthChanged;
         StopMidiPoll();
         try { _ = Js.InvokeVoidAsync("mobihymnReadPinch.detach", readBodyRef); }
         catch { /* ignore */ }
         pinchRef?.Dispose();
         pinchRef = null;
+        try { _ = netSub?.InvokeVoidAsync("dispose"); } catch { /* ignore */ }
+        netSub = null;
+        netRef?.Dispose();
+        netRef = null;
         _ = Js.InvokeVoidAsync("mobihymnAudio.stop");
     }
 }

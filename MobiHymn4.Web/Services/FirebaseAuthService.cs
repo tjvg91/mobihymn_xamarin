@@ -44,6 +44,12 @@ public sealed class FirebaseJs
     public Task ReloadUserAsync() =>
         js.InvokeVoidAsync("mobihymnFirebase.reloadUser").AsTask();
 
+    public Task RefreshIdTokenAsync(bool force = true) =>
+        js.InvokeVoidAsync("mobihymnFirebase.refreshIdToken", force).AsTask();
+
+    public Task ApplyActionCodeAsync(string oobCode) =>
+        js.InvokeVoidAsync("mobihymnFirebase.applyActionCode", oobCode).AsTask();
+
     public Task<JsonElement?> GetDocAsync(string path) =>
         InvokeJsonOrNullAsync("mobihymnFirebase.getDocAsJson", path);
 
@@ -59,6 +65,34 @@ public sealed class FirebaseJs
     public Task DeleteDocAsync(string path) =>
         js.InvokeVoidAsync("mobihymnFirebase.deleteDoc", path).AsTask();
 
+    /// <summary>Invokes an HTTPS Callable Cloud Function. Throws with the function's
+    /// own error message (e.g. a permission-denied reason) on failure.</summary>
+    public async Task CallFunctionAsync(string name, object data)
+    {
+        try
+        {
+            await js.InvokeVoidAsync("mobihymnFirebase.callFunction", name, data);
+        }
+        catch (JSException ex)
+        {
+            throw new InvalidOperationException(ex.Message, ex);
+        }
+    }
+
+    /// <summary>Callable that returns JSON payload from the function.</summary>
+    public async Task<JsonElement?> CallFunctionResultAsync(string name, object data)
+    {
+        try
+        {
+            await EnsureReadyAsync();
+            return await InvokeJsonOrNullAsync("mobihymnFirebase.callFunctionAsJson", name, data);
+        }
+        catch (JSException ex)
+        {
+            throw new InvalidOperationException(ex.Message, ex);
+        }
+    }
+
     public Task<string?> SubscribeDocAsync(string path, object callback) =>
         js.InvokeAsync<string?>("mobihymnFirebase.subscribeDoc", path, callback).AsTask();
 
@@ -73,14 +107,50 @@ public sealed class FirebaseJs
         return js.InvokeVoidAsync("mobihymnFirebase.unsubscribe", subscriptionId).AsTask();
     }
 
-    public Task<string?> GetFcmTokenAsync() =>
-        js.InvokeAsync<string?>("mobihymnFirebase.getFcmToken").AsTask();
+    public async Task<string?> GetFcmTokenAsync()
+    {
+        var raw = await js.InvokeAsync<string?>("mobihymnFirebase.getFcmToken");
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        // New shape: JSON { token, error }. Old shape: bare token string.
+        if (raw.StartsWith('{'))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(raw);
+                var root = doc.RootElement;
+                var token = root.TryGetProperty("token", out var t) && t.ValueKind == JsonValueKind.String
+                    ? t.GetString()
+                    : null;
+                var err = root.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String
+                    ? e.GetString()
+                    : null;
+                if (string.IsNullOrWhiteSpace(token) && !string.IsNullOrWhiteSpace(err))
+                    LastFcmTokenError = err;
+                else if (!string.IsNullOrWhiteSpace(token))
+                    LastFcmTokenError = null;
+                return string.IsNullOrWhiteSpace(token) ? null : token;
+            }
+            catch
+            {
+                LastFcmTokenError = "invalid getFcmToken response";
+                return null;
+            }
+        }
+        LastFcmTokenError = null;
+        return raw;
+    }
+
+    /// <summary>Last getFcmToken failure reason (for Account UI).</summary>
+    public string? LastFcmTokenError { get; private set; }
 
     public Task<string> GetNotificationPermissionAsync() =>
         js.InvokeAsync<string>("mobihymnFirebase.getNotificationPermission").AsTask();
 
     public Task<string> RequestNotificationPermissionAsync() =>
         js.InvokeAsync<string>("mobihymnFirebase.requestNotificationPermission").AsTask();
+
+    public Task<string> DiagnosePushAsync() =>
+        js.InvokeAsync<string>("mobihymnFirebase.diagnosePush").AsTask();
 
     public Task ShowLocalNotificationAsync(string title, string body, object data) =>
         js.InvokeVoidAsync("mobihymnFirebase.showLocalNotification", title, body, data).AsTask();
@@ -182,8 +252,17 @@ public sealed class FirebaseAuthService : IAuthService
     {
         await firebase.EnsureReadyAsync();
         await firebase.SignUpAsync(email.Trim(), password);
-        await firebase.SendEmailVerificationAsync();
+        // Account exists as soon as createUser succeeds — refresh before email so a
+        // verification-send failure cannot leave C# thinking we're still signed out.
         await RefreshFromJsAsync();
+        try
+        {
+            await firebase.SendEmailVerificationAsync();
+        }
+        catch
+        {
+            // User can resend from /verify. Do not fail signup after Auth user was created.
+        }
     }
 
     public async Task SendPasswordResetEmailAsync(string email)
@@ -208,6 +287,8 @@ public sealed class FirebaseAuthService : IAuthService
     {
         await firebase.EnsureReadyAsync();
         await firebase.ReloadUserAsync();
+        try { await firebase.RefreshIdTokenAsync(true); }
+        catch { /* token refresh best-effort */ }
         await RefreshFromJsAsync();
     }
 

@@ -4,6 +4,7 @@
 @inject IBoardService BoardService
 @inject IBoardNotificationService BoardNotifications
 @inject BoardUiState BoardUi
+@inject BoardNavigationContext BoardNav
 @inject IProfileService Profiles
 @inject IHymnLyricsSource Lyrics
 @inject AppState State
@@ -52,6 +53,21 @@
                         <p class="board-pane-empty-title">Join your worship community</p>
                         <p class="board-pane-empty-copy">Sign in to plan hymns on a group board.</p>
                         <a class="btn" href="@AuthNav.LoginUrl()" @onclick="Close">Log in</a>
+                    </div>
+                }
+                else if (!Auth.IsEmailVerified)
+                {
+                    <div class="board-pane-empty">
+                        <lottie-player class="board-pane-lottie"
+                                       src="/lottie/group.json"
+                                       background="transparent"
+                                       speed="1"
+                                       loop
+                                       autoplay>
+                        </lottie-player>
+                        <p class="board-pane-empty-title">Verify your email</p>
+                        <p class="board-pane-empty-copy">Confirm your email before viewing boards or joining a group.</p>
+                        <a class="btn" href="@AuthNav.VerifyUrl()" @onclick="Close">Verify email</a>
                     </div>
                 }
                 else if (view == View.Groups)
@@ -114,7 +130,7 @@
                         </div>
                     </header>
 
-                    <h3 class="board-pane-section-title">Hymn Setlist</h3>
+                    <h3 class="board-pane-section-title">@(BoardUi.HasPendingAdd ? "Select Hymn Setlist" : "Hymn Setlist")</h3>
 
                     @if (!string.IsNullOrEmpty(Error))
                     {
@@ -131,7 +147,9 @@
                     {
                         <div class="board-pane-empty board-pane-empty--inline">
                             <p class="board-pane-empty-title">No hymn lists yet</p>
-                            <p class="board-pane-empty-copy">Tap + to create today’s setlist (same as the mobile app).</p>
+                            <p class="board-pane-empty-copy">@(CanEditBoard
+                                ? "Tap + to create today’s setlist (same as the mobile app)."
+                                : "Leaders haven’t created a setlist yet.")</p>
                         </div>
                     }
                     else
@@ -146,14 +164,17 @@
                                     var isDragging = string.Equals(swipeDragListId, list.Id, StringComparison.Ordinal);
                                     var offset = isDragging ? swipeDragX : (isOpen ? -SwipeActionsWidth : 0);
                                     var listEnterIdx = listsEnterAnim ? Lists.IndexOf(list) : -1;
+                                    var pastForAdd = BoardUi.HasPendingAdd && IsPastSetlist(list);
                                 }
-                                <div class="board-swipe board-cascade-item @(isOpen ? "is-open" : null) @(isDragging ? "is-dragging" : null) @(offset < -1 ? "is-revealing" : null)"
+                                <div class="board-swipe board-cascade-item @(isOpen ? "is-open" : null) @(isDragging ? "is-dragging" : null) @(offset < -1 ? "is-revealing" : null) @(pastForAdd ? "is-disabled" : null)"
                                      data-list-id="@list.Id"
-                                     style="@CascadeStyle(offset, listEnterIdx)">
-                                    <div class="board-swipe-actions" aria-hidden="@(!isOpen)">
+                                     style="@CascadeStyle(offset, listEnterIdx)"
+                                     aria-disabled="@(pastForAdd ? "true" : null)">
+                                    <div class="board-swipe-actions" aria-hidden="@(!isOpen || pastForAdd)">
                                         <button type="button"
                                                 class="board-swipe-btn board-swipe-btn--delete"
                                                 title="Delete"
+                                                disabled="@pastForAdd"
                                                 @onclick="() => AskDeleteList(list)"
                                                 @onclick:stopPropagation="true">
                                             <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
@@ -161,12 +182,13 @@
                                         <button type="button"
                                                 class="board-swipe-btn board-swipe-btn--edit"
                                                 title="Edit date"
+                                                disabled="@pastForAdd"
                                                 @onclick="() => StartEditList(list)"
                                                 @onclick:stopPropagation="true">
                                             <i class="fa-solid fa-pen" aria-hidden="true"></i>
                                         </button>
                                     </div>
-                                    <div class="board-swipe-front board-pane-card"
+                                    <div class="board-swipe-front board-pane-card @(pastForAdd ? "is-disabled" : null)"
                                          @onpointerdown="e => OnSwipePointerDown(list, e)"
                                          @onpointermove="e => OnSwipePointerMove(list, e)"
                                          @onpointerup="e => OnSwipePointerUp(list, e)"
@@ -176,9 +198,7 @@
                                             <span class="board-pane-card-title">@list.Name</span>
                                             @if (unread > 0)
                                             {
-                                                <span class="board-unread-badge" aria-label="@unread unread">
-                                                    @(unread > 99 ? "99+" : unread.ToString())
-                                                </span>
+                                                <span class="board-unread-dot" aria-label="Unread updates"></span>
                                             }
                                         </span>
                                         <span class="board-pane-card-meta">@HymnCountLabel(list)</span>
@@ -188,13 +208,16 @@
                         </div>
                     }
 
-                    <button type="button"
-                            class="board-pane-fab"
-                            title="Create list"
-                            disabled="@Busy"
-                            @onclick="StartCreateList">
-                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                    </button>
+                    @if (CanEditBoard)
+                    {
+                        <button type="button"
+                                class="board-pane-fab"
+                                title="Create list"
+                                disabled="@Busy"
+                                @onclick="StartCreateList">
+                            <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                        </button>
+                    }
                 }
                 else if (Auth.IsSignedIn && view == View.Members && ActiveGroup != null)
                 {
@@ -333,12 +356,15 @@
                         <div class="board-pane-detail-titles">
                             <div class="board-pane-detail-name">@ActiveList.Name</div>
                         </div>
-                        <button type="button"
-                                class="board-pane-dash-icon"
-                                title="Board options"
-                                @onclick="OpenBoardOptions">
-                            <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
-                        </button>
+                        @if (CanEditBoard)
+                        {
+                            <button type="button"
+                                    class="board-pane-dash-icon"
+                                    title="Board options"
+                                    @onclick="OpenBoardOptions">
+                                <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
+                            </button>
+                        }
                     </div>
 
                     @if (!string.IsNullOrEmpty(Status))
@@ -404,21 +430,25 @@
                                                     </button>
                                                 }
                                             </div>
-                                            <div class="board-swipe-front board-pane-section-row"
+                                            <div class="board-swipe-front board-pane-section-row @(!CanEditBoard ? "board-pane-section-row--no-grip" : null)"
                                                  data-board-entry-id="@sectionEntry.Id"
                                                  @onpointerdown="e => OnSectionSwipePointerDown(sectionEntry, e)"
                                                  @onpointermove="e => OnSectionSwipePointerMove(sectionEntry, e)"
                                                  @onpointerup="e => OnSectionSwipePointerUp(sectionEntry, e)"
                                                  @onpointercancel="e => OnSectionSwipePointerUp(sectionEntry, e)"
+                                                 @oncontextmenu:preventDefault
                                                  @onclick="() => OnSectionRowClick(group.Key)">
-                                                <span class="board-pane-grip"
-                                                      title="Drag to reorder"
-                                                      @onpointerdown="e => BeginBoardPointerDrag(e, sectionEntry)"
-                                                      @onpointerdown:preventDefault
-                                                      @onpointerdown:stopPropagation="true"
-                                                      @onclick:stopPropagation="true">
-                                                    <i class="fa-solid fa-grip-vertical" aria-hidden="true"></i>
-                                                </span>
+                                                @if (CanEditBoard)
+                                                {
+                                                    <span class="board-pane-grip"
+                                                          title="Drag to reorder"
+                                                          @onpointerdown="e => BeginBoardPointerDrag(e, sectionEntry)"
+                                                          @onpointerdown:preventDefault
+                                                          @onpointerdown:stopPropagation="true"
+                                                          @onclick:stopPropagation="true">
+                                                        <i class="fa-solid fa-grip-vertical" aria-hidden="true"></i>
+                                                    </span>
+                                                }
                                                 <span class="board-pane-section-name">@(sectionEntry.SectionName ?? "Section")</span>
                                                 @if (sectionSaved)
                                                 {
@@ -464,21 +494,25 @@
                                                                 <i class="fa-solid fa-pen" aria-hidden="true"></i>
                                                             </button>
                                                         </div>
-                                                        <div class="board-swipe-front board-pane-hymn-card"
+                                                        <div class="board-swipe-front board-pane-hymn-card @(CanEditBoard && CanModifyHymn(hymn) ? "is-draggable" : null)"
                                                              data-board-entry-id="@hymn.Id"
-                                                             @onpointerdown="e => OnHymnSwipePointerDown(hymn, e)"
+                                                             @onpointerdown="e => OnHymnFrontPointerDown(hymn, e)"
                                                              @onpointermove="e => OnHymnSwipePointerMove(hymn, e)"
                                                              @onpointerup="e => OnHymnSwipePointerUp(hymn, e)"
                                                              @onpointercancel="e => OnHymnSwipePointerUp(hymn, e)"
+                                                             @oncontextmenu:preventDefault
                                                              @onclick="() => OnHymnCardClick(hymn)">
-                                                            <span class="board-pane-grip"
-                                                                  title="Drag to reorder"
-                                                                  @onpointerdown="e => BeginBoardPointerDrag(e, hymn)"
-                                                                  @onpointerdown:preventDefault
-                                                                  @onpointerdown:stopPropagation="true"
-                                                                  @onclick:stopPropagation="true">
-                                                                <i class="fa-solid fa-grip-vertical" aria-hidden="true"></i>
-                                                            </span>
+                                                            @if (CanEditBoard)
+                                                            {
+                                                                <span class="board-pane-grip"
+                                                                      title="Drag to reorder"
+                                                                      @onpointerdown="e => BeginBoardPointerDrag(e, hymn)"
+                                                                      @onpointerdown:preventDefault
+                                                                      @onpointerdown:stopPropagation="true"
+                                                                      @onclick:stopPropagation="true">
+                                                                    <i class="fa-solid fa-grip-vertical" aria-hidden="true"></i>
+                                                                </span>
+                                                            }
                                                             <span class="board-pane-hymn-body">
                                                                 <span class="board-pane-hymn-top">
                                                                     <span class="board-pane-hymn-number">Hymn #@hymn.HymnNumber</span>
@@ -522,7 +556,67 @@
                         }
                     </div>
 
-                    @if (showAddHymn)
+                    @if (showPendingAddPicker)
+                    {
+                        <div class="board-add-panel" @onclick:stopPropagation="true">
+                            <div class="board-add-panel-head">
+                                <span class="board-add-panel-title">Add hymn #@pendingAddNumber</span>
+                                <button type="button"
+                                        class="board-add-panel-close"
+                                        title="Cancel"
+                                        @onclick="() => ClosePendingAddPicker(clearPending: true)">
+                                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(pendingAddLine))
+                            {
+                                <p class="board-pending-add-line">@pendingAddLine</p>
+                            }
+                            <input class="board-add-panel-input"
+                                   type="text"
+                                   autocomplete="off"
+                                   placeholder="Note (optional)"
+                                   @bind="pendingAddNotes"
+                                   @bind:event="oninput" />
+                            @if (SectionOptions.Count > 0)
+                            {
+                                <label class="board-add-panel-field">
+                                    <span>Section</span>
+                                    <select class="board-add-panel-input board-add-panel-select"
+                                            @bind="pendingAddSectionId">
+                                        <option value="">None (top of list)</option>
+                                        @foreach (var s in SectionOptions)
+                                        {
+                                            <option value="@s.Id">@s.Name</option>
+                                        }
+                                    </select>
+                                </label>
+                            }
+                            else
+                            {
+                                <p class="board-pending-add-hint">This setlist has no sections. The hymn will be added to the list.</p>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(pendingAddError))
+                            {
+                                <p class="board-add-panel-error">@pendingAddError</p>
+                            }
+                            <div class="board-add-panel-foot">
+                                <button type="button"
+                                        class="btn secondary board-add-panel-submit"
+                                        disabled="@Busy"
+                                        @onclick="() => ClosePendingAddPicker(clearPending: true)">
+                                    Cancel
+                                </button>
+                                <button type="button"
+                                        class="btn btn-yellow-black board-add-panel-submit"
+                                        disabled="@Busy"
+                                        @onclick="ConfirmPendingAdd">
+                                    Add
+                                </button>
+                            </div>
+                        </div>
+                    }
+                    else if (showAddHymn)
                     {
                         <div class="board-add-panel" @onclick:stopPropagation="true">
                             <div class="board-add-panel-head">
@@ -575,6 +669,20 @@
                                    placeholder="Note (optional)"
                                    @bind="addHymnNotes"
                                    @bind:event="oninput" />
+                            @if (SectionOptions.Count > 0)
+                            {
+                                <label class="board-add-panel-field">
+                                    <span>Section</span>
+                                    <select class="board-add-panel-input board-add-panel-select"
+                                            @bind="addHymnSectionId">
+                                        <option value="">None (top of list)</option>
+                                        @foreach (var s in SectionOptions)
+                                        {
+                                            <option value="@s.Id">@s.Name</option>
+                                        }
+                                    </select>
+                                </label>
+                            }
                             @if (!string.IsNullOrWhiteSpace(addHymnError))
                             {
                                 <p class="board-add-panel-error">@addHymnError</p>
@@ -624,7 +732,7 @@
                             </div>
                         </div>
                     }
-                    else
+                    else if (CanEditBoard)
                     {
                         <div class="board-pane-fab-stack @(fabMenuOpen ? "is-open" : null)">
                             <div class="board-pane-fab-sub">
@@ -832,16 +940,59 @@
             <p class="create-hymn-list-copy">Update the hymn number or notes.</p>
             <label class="field">
                 <span>Hymn number</span>
-                <input type="text"
-                       inputmode="numeric"
-                       autocomplete="off"
-                       @bind="editHymnNumber"
-                       @bind:event="oninput" />
+                <div class="board-add-suggest-wrap">
+                    @if (editHymnSuggestions.Count > 0)
+                    {
+                        <div class="board-add-suggest" role="listbox" aria-label="Hymn suggestions">
+                            @foreach (var s in editHymnSuggestions)
+                            {
+                                <button type="button"
+                                        class="board-add-suggest-item"
+                                        role="option"
+                                        @onclick="() => PickEditHymnSuggestion(s)">
+                                    @if (s.LineFirst)
+                                    {
+                                        <span class="board-add-suggest-primary">@s.Line</span>
+                                        <span class="board-add-suggest-secondary">Hymn #@s.Number</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="board-add-suggest-primary">Hymn #@s.Number</span>
+                                        @if (!string.IsNullOrWhiteSpace(s.Line))
+                                        {
+                                            <span class="board-add-suggest-secondary">@s.Line</span>
+                                        }
+                                    }
+                                </button>
+                            }
+                        </div>
+                    }
+                    <input type="text"
+                           inputmode="numeric"
+                           autocomplete="off"
+                           placeholder="Number or any line"
+                           value="@editHymnNumber"
+                           @oninput="OnEditHymnQueryInput"
+                           @onkeydown="OnEditHymnKeyDown" />
+                </div>
             </label>
             <label class="field">
                 <span>Notes</span>
                 <textarea rows="3" @bind="editHymnNotes" @bind:event="oninput"></textarea>
             </label>
+            @if (SectionOptions.Count > 0)
+            {
+                <label class="field">
+                    <span>Section</span>
+                    <select @bind="editHymnSectionId">
+                        <option value="">None (top of list)</option>
+                        @foreach (var s in SectionOptions)
+                        {
+                            <option value="@s.Id">@s.Name</option>
+                        }
+                    </select>
+                </label>
+            }
             @if (!string.IsNullOrWhiteSpace(editHymnError))
             {
                 <p class="create-hymn-list-error">@editHymnError</p>
@@ -908,6 +1059,7 @@
     bool show;
     bool animOpen;
     bool closing;
+    bool suppressUrlSync;
     bool Busy;
     bool showCreateList;
     bool showGroupMenu;
@@ -923,6 +1075,7 @@
     bool showEditHymn;
     bool showAddHymn;
     bool showAddSection;
+    bool showPendingAddPicker;
     bool fabMenuOpen;
     bool addSectionThisListOnly = true;
     bool showRemoveSection;
@@ -932,6 +1085,8 @@
     int removeSectionHymnCount;
     bool membersGroupByRole;
     bool currentUserIsGroupAdmin;
+    /// <summary>Leadership roles may edit/reorder the board (MAUI canEdit).</summary>
+    bool currentUserCanEditBoard;
     bool listsEnterAnim;
     bool hymnsEnterAnim;
     bool membersEnterAnim;
@@ -951,12 +1106,41 @@
     List<string> memberMenuOptions = new();
     string editHymnNumber = "";
     string editHymnNotes = "";
+    string editHymnSectionId = "";
     string? editHymnError;
+    string? editHymnPickedNumber;
+    string? editHymnPickedLine;
+    List<BoardHymnSuggestion> editHymnSuggestions = new();
+    CancellationTokenSource? editHymnSuggestCts;
     string addHymnQuery = "";
     string addHymnNotes = "";
+    string addHymnSectionId = "";
     string? addHymnError;
     string? addHymnPickedNumber;
     string? addHymnPickedLine;
+    string pendingAddNumber = "";
+    string pendingAddSectionId = "";
+    string pendingAddNotes = "";
+    string? pendingAddLine;
+    string? pendingAddError;
+
+    sealed class SectionOption
+    {
+        public string Id { get; init; } = "";
+        public string Name { get; init; } = "";
+    }
+
+    List<SectionOption> SectionOptions =>
+        ActiveList?.Hymns
+            .Where(h => h.IsSection)
+            .OrderBy(h => h.SortOrder)
+            .Select(h => new SectionOption
+            {
+                Id = h.Id,
+                Name = string.IsNullOrWhiteSpace(h.SectionName) ? "Section" : h.SectionName.Trim()
+            })
+            .ToList()
+        ?? new();
     string addSectionName = "";
     string? addSectionError;
     List<BoardHymnSuggestion> addHymnSuggestions = new();
@@ -1050,7 +1234,7 @@
     bool suppressNextClick;
 
     bool HasActiveHymn => State.ActiveHymn != null && !string.IsNullOrWhiteSpace(State.ActiveHymn.Number);
-    bool UseDashboardChrome => Auth.IsSignedIn
+    bool UseDashboardChrome => AuthNav.CanAccessGroups
         && view is View.Lists or View.ListDetail or View.Members
         && ActiveGroup != null;
     bool CanGoBack => false;
@@ -1095,12 +1279,18 @@
             animOpen = false;
             ResetNav();
             await EnterAsync();
-            if (Auth.IsSignedIn)
-                await LoadGroupsAsync();
+            if (AuthNav.CanAccessGroups)
+                await LoadGroupsAsync(autoOpenPreferred: !BoardUi.HasPendingOpen);
+            // Deep-link / notification open may have set Pending* before Visible flipped.
+            await ApplyPendingOpenAsync();
         }
         else if (!Visible && show && !closing)
         {
             await ExitAsync(notifyParent: false);
+        }
+        else if (Visible && show && BoardUi.HasPendingOpen)
+        {
+            await ApplyPendingOpenAsync();
         }
     }
 
@@ -1122,12 +1312,16 @@
         showSortMenu = false;
         showLeaveConfirm = false;
         showBoardConfirm = false;
+        // Closing over an immersive reader left topbar/player stuck off-screen.
+        State.SetReadView(true);
+        RestoreReadUrlIfOnBoardDeepLink();
         await InvokeAsync(StateHasChanged);
         await Task.Delay(CloseMs);
         show = false;
         closing = false;
         listSub?.Dispose();
         listSub = null;
+        BoardUi.SetViewingList(null, null);
         if (notifyParent || Visible)
             await VisibleChanged.InvokeAsync(false);
         await InvokeAsync(StateHasChanged);
@@ -1140,6 +1334,7 @@
         view = View.Groups;
         ActiveGroup = null;
         ActiveList = null;
+        BoardUi.SetViewingList(null, null);
         Lists = new();
         Members = new();
         DisplayedMemberRows = new();
@@ -1161,13 +1356,16 @@
         fabMenuOpen = false;
         showAddSection = false;
         showAddHymn = false;
+        showPendingAddPicker = false;
         if (view == View.ListDetail)
         {
             listSub?.Dispose();
             listSub = null;
             ActiveList = null;
+            BoardUi.SetViewingList(null, null);
             view = View.Lists;
             TriggerListsEnterAnim();
+            SyncBoardUrl();
             return;
         }
 
@@ -1180,6 +1378,8 @@
         ActiveGroup = null;
         Lists = new();
         view = View.Groups;
+        // Leave board query params when returning to the in-pane group picker.
+        ClearBoardQueryFromUrl();
     }
 
     void BackFromMembers()
@@ -1187,6 +1387,7 @@
         Error = null;
         view = View.Lists;
         TriggerListsEnterAnim();
+        SyncBoardUrl();
     }
 
     void TriggerListsEnterAnim() =>
@@ -1200,6 +1401,10 @@
 
     void TriggerCascadeEnter(ref bool flag, ref int token, int itemCount, string kind)
     {
+        // Don't restart an in-progress enter animation (parent re-renders / pending-open retries).
+        if (flag)
+            return;
+
         token++;
         var t = token;
         flag = itemCount > 0;
@@ -1264,12 +1469,18 @@
 
     void OpenBoardOptions()
     {
+        if (!CanEditBoard) return;
         showBoardOptions = true;
     }
 
-    async Task OnBoardOptionSelected(string action)
+    Task OnBoardOptionSelected(string action)
     {
-        if (ActiveGroup == null || ActiveList == null || string.IsNullOrEmpty(action)) return;
+        if (ActiveGroup == null || ActiveList == null || string.IsNullOrEmpty(action)) return Task.CompletedTask;
+        if (!currentUserIsGroupAdmin)
+        {
+            Error = "Only the group admin can do that.";
+            return Task.CompletedTask;
+        }
         switch (action)
         {
             case "Sort sections":
@@ -1298,12 +1509,17 @@
                 break;
         }
 
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     async Task OnSortOptionSelected(string picked)
     {
         if (ActiveGroup == null || ActiveList == null || string.IsNullOrWhiteSpace(picked)) return;
+        if (!currentUserIsGroupAdmin)
+        {
+            Error = "Only the group admin can sort sections.";
+            return;
+        }
         var label = picked.StartsWith("✓ ", StringComparison.Ordinal) ? picked[2..] : picked;
         var mode = SortModes.FirstOrDefault(m => m.Label == label).Mode;
         if (string.IsNullOrEmpty(mode)) return;
@@ -1332,6 +1548,13 @@
     {
         if (ActiveGroup == null || ActiveList == null || pendingBoardAction == BoardConfirmAction.None)
             return;
+        if (!currentUserIsGroupAdmin)
+        {
+            Error = "Only the group admin can do that.";
+            pendingBoardAction = BoardConfirmAction.None;
+            showBoardConfirm = false;
+            return;
+        }
 
         Busy = true;
         Error = null;
@@ -1440,6 +1663,8 @@
             currentUserIsGroupAdmin = Members.Any(m =>
                 string.Equals(m.Id, Auth.CurrentUserId, StringComparison.Ordinal) && m.IsAdmin)
                 || string.Equals(ActiveGroup.CreatedBy, Auth.CurrentUserId, StringComparison.Ordinal);
+            var me = Members.FirstOrDefault(m => string.Equals(m.Id, Auth.CurrentUserId, StringComparison.Ordinal));
+            RefreshCanEditBoard(me?.Roles);
             RefreshMemberPresentation();
         }
         catch (Exception ex)
@@ -1813,6 +2038,7 @@
 
     void StartCreateList()
     {
+        if (!CanEditBoard) return;
         editingList = null;
         newListDate = DateTime.Today;
         createListMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
@@ -1876,6 +2102,9 @@
         return DateTime.Today;
     }
 
+    static bool IsPastSetlist(BoardListDoc list) =>
+        ResolveListDate(list) < DateTime.Today;
+
     void CloseOpenSwipe()
     {
         swipedListId = null;
@@ -1909,6 +2138,10 @@
 
     void OnSwipePointerDown(BoardListDoc list, PointerEventArgs e)
     {
+        if (!CanEditBoard)
+            return;
+        if (BoardUi.HasPendingAdd && IsPastSetlist(list))
+            return;
         if (e.Button != 0 && e.PointerType == "mouse")
             return;
 
@@ -1993,6 +2226,9 @@
             return;
         }
 
+        if (BoardUi.HasPendingAdd && IsPastSetlist(list))
+            return;
+
         if (swipedListId != null && !string.Equals(swipedListId, list.Id, StringComparison.Ordinal))
         {
             CloseOpenSwipe();
@@ -2031,6 +2267,7 @@
             if (ActiveList != null && string.Equals(ActiveList.Id, listId, StringComparison.Ordinal))
             {
                 ActiveList = null;
+                BoardUi.SetViewingList(null, null);
                 view = View.Lists;
             }
         }
@@ -2047,6 +2284,8 @@
 
     void OnHymnSwipePointerDown(BoardHymnDoc hymn, PointerEventArgs e)
     {
+        if (!CanEditBoard)
+            return;
         if (e.Button != 0 && e.PointerType == "mouse")
             return;
 
@@ -2061,6 +2300,14 @@
         swipeHymnMoved = false;
         swipeHymnAxisLocked = false;
         swipeHymnHorizontal = false;
+    }
+
+    async Task OnHymnFrontPointerDown(BoardHymnDoc hymn, PointerEventArgs e)
+    {
+        OnHymnSwipePointerDown(hymn, e);
+        // Whole card can start a reorder; JS only activates on vertical move so swipe still works.
+        if (CanEditBoard && CanModifyHymn(hymn))
+            await BeginBoardPointerDrag(e, hymn, requireVertical: true);
     }
 
     void OnHymnSwipePointerMove(BoardHymnDoc hymn, PointerEventArgs e)
@@ -2138,14 +2385,31 @@
         await OnHymnClick(hymn.HymnNumber);
     }
 
-    bool CanModifyHymn(BoardHymnDoc hymn)
+    static bool HasLeadershipRole(IEnumerable<string>? roles) =>
+        RoleHelper.HasLeadershipRole(roles);
+
+    bool CanEditBoard => currentUserCanEditBoard;
+
+    void RefreshCanEditBoard(IEnumerable<string>? memberRoles = null)
     {
-        if (hymn == null || hymn.IsSection)
-            return false;
+        // Match MAUI canEdit: profile (or member) leadership roles — not group admin alone.
+        currentUserCanEditBoard = HasLeadershipRole(Profiles.CurrentProfile?.Roles)
+            || HasLeadershipRole(memberRoles);
+    }
+
+    /// <summary>Group admins (IsAdmin or the group creator) may manage anyone's entries;
+    /// everyone else may only touch what they personally added.</summary>
+    bool CanModifyEntry(BoardHymnDoc? entry)
+    {
+        if (entry == null) return false;
+        if (currentUserIsGroupAdmin) return true;
         var uid = Auth.CurrentUserId;
         return !string.IsNullOrEmpty(uid)
-            && string.Equals(hymn.AddedBy, uid, StringComparison.Ordinal);
+            && string.Equals(entry.AddedBy, uid, StringComparison.Ordinal);
     }
+
+    bool CanModifyHymn(BoardHymnDoc hymn) =>
+        hymn != null && !hymn.IsSection && CanModifyEntry(hymn);
 
     void AskDeleteHymn(BoardHymnDoc hymn)
     {
@@ -2167,17 +2431,24 @@
             return;
 
         var entryId = pendingDeleteHymn.Id;
+        var snapshot = ActiveList.Hymns.ToList();
         Busy = true;
         Error = null;
         try
         {
             ActiveList.Hymns.RemoveAll(h => string.Equals(h.Id, entryId, StringComparison.Ordinal));
             RenumberBoard();
-            await BoardService.UpdateListAsync(ActiveGroup.Id, ActiveList);
             RebuildBoardDisplayRows();
+            // Toast immediately — network save should not block perceived success.
+            State.ShowToast("/lottie/bookmark-deleted.gif", "Hymn removed.");
+            await InvokeAsync(StateHasChanged);
+            await BoardService.UpdateListAsync(ActiveGroup.Id, ActiveList);
         }
         catch (Exception ex)
         {
+            ActiveList.Hymns = snapshot;
+            RenumberBoard();
+            RebuildBoardDisplayRows();
             Error = ex.Message;
         }
         finally
@@ -2187,7 +2458,7 @@
         }
     }
 
-    void StartEditHymn(BoardHymnDoc hymn)
+    async Task StartEditHymn(BoardHymnDoc hymn)
     {
         CloseOpenHymnSwipe();
         if (!CanModifyHymn(hymn))
@@ -2199,15 +2470,27 @@
         editingHymn = hymn;
         editHymnNumber = hymn.HymnNumber ?? "";
         editHymnNotes = hymn.Notes ?? "";
+        editHymnSectionId = FindSectionIdForHymn(hymn) ?? "";
         editHymnError = null;
+        editHymnPickedNumber = null;
+        editHymnPickedLine = null;
+        editHymnSuggestions = new();
         showEditHymn = true;
+        await EnsureAddHymnCatalogAsync();
+        _ = Lyrics.WarmSearchIndexAsync();
     }
 
     void CloseEditHymn()
     {
+        editHymnSuggestCts?.Cancel();
+        editHymnSuggestCts = null;
         showEditHymn = false;
         editingHymn = null;
         editHymnError = null;
+        editHymnSectionId = "";
+        editHymnPickedNumber = null;
+        editHymnPickedLine = null;
+        editHymnSuggestions = new();
     }
 
     async Task SaveEditHymn()
@@ -2215,12 +2498,12 @@
         if (ActiveGroup == null || ActiveList == null || editingHymn == null)
             return;
 
-        var number = (editHymnNumber ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(number))
-        {
-            editHymnError = "Enter a hymn number.";
+        await EnsureAddHymnCatalogAsync();
+        var resolved = await ResolveEditHymnSelectionAsync();
+        if (resolved == null)
             return;
-        }
+
+        var (number, line) = resolved.Value;
 
         if (ActiveList.Hymns.Any(h =>
                 !h.IsSection
@@ -2239,8 +2522,21 @@
             editingHymn.HymnNumber = number;
             editingHymn.Notes = string.IsNullOrWhiteSpace(editHymnNotes) ? null : editHymnNotes.Trim();
             editingHymn.UpdatedAt = DateTimeOffset.UtcNow;
+            if (!string.IsNullOrWhiteSpace(line))
+                firstLineCache[number] = line.Trim();
+
+            var currentSectionId = FindSectionIdForHymn(editingHymn) ?? "";
+            var targetSectionId = editHymnSectionId?.Trim() ?? "";
+            if (!string.Equals(currentSectionId, targetSectionId, StringComparison.Ordinal))
+            {
+                ActiveList.Hymns.Remove(editingHymn);
+                InsertHymnIntoSection(editingHymn, targetSectionId);
+                RenumberBoard();
+            }
+
             await BoardService.UpdateListAsync(ActiveGroup.Id, ActiveList);
             RebuildBoardDisplayRows();
+            _ = ResolveFirstLinesAsync();
             CloseEditHymn();
         }
         catch (Exception ex)
@@ -2253,7 +2549,7 @@
         }
     }
 
-    async Task LoadGroupsAsync()
+    async Task LoadGroupsAsync(bool autoOpenPreferred = true)
     {
         Busy = true;
         Error = null;
@@ -2262,6 +2558,14 @@
         {
             Groups = (await GroupService.GetMyGroupsAsync()).ToList();
             if (Groups.Count == 0)
+                return;
+
+            // Only auto-jump into a group when browsing the pane — never while a deep link /
+            // notification pending open is in flight (that path calls OpenGroup itself), and
+            // never re-open if we're already showing a group (prevents cascade anim loops).
+            if (!autoOpenPreferred || BoardUi.HasPendingOpen)
+                return;
+            if (ActiveGroup != null && view is View.Lists or View.ListDetail or View.Members)
                 return;
 
             // Prefer a group that actually has hymn lists (groupIds order can be wrong/stale).
@@ -2293,7 +2597,6 @@
             }
 
             await OpenGroup(preferred);
-            return;
         }
         catch (Exception ex)
         {
@@ -2310,17 +2613,29 @@
 
     async Task OpenGroup(WorshipGroupDoc group)
     {
+        var sameGroup = ActiveGroup != null
+            && string.Equals(ActiveGroup.Id, group.Id, StringComparison.OrdinalIgnoreCase)
+            && Lists.Count > 0;
+
         ActiveGroup = group;
         view = View.Lists;
-        Lists = new();
-        Busy = true;
+        ActiveList = null;
+        BoardUi.SetViewingList(null, null);
+        if (!sameGroup)
+            Lists = new();
+        Busy = !sameGroup;
         Error = null;
         await InvokeAsync(StateHasChanged);
+        if (!sameGroup)
+            _ = RefreshAdminStatusAsync(group);
         try
         {
-            Lists = (await BoardService.GetListsAsync(group.Id))
-                .OrderByDescending(l => l.CreatedAt)
-                .ToList();
+            if (!sameGroup)
+            {
+                Lists = (await BoardService.GetListsAsync(group.Id))
+                    .OrderByDescending(l => l.CreatedAt)
+                    .ToList();
+            }
 
             if (Lists.Count == 0)
             {
@@ -2357,14 +2672,68 @@
         finally
         {
             Busy = false;
-            TriggerListsEnterAnim();
+            if (!sameGroup)
+                TriggerListsEnterAnim();
+            SyncBoardUrl();
             await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task RefreshAdminStatusAsync(WorshipGroupDoc group)
+    {
+        // Independent of the Members tab (which may never be opened this session) —
+        // hymn/section permission checks need this as soon as a group is opened.
+        var uid = Auth.CurrentUserId;
+        currentUserIsGroupAdmin = !string.IsNullOrEmpty(uid)
+            && string.Equals(group.CreatedBy, uid, StringComparison.Ordinal);
+        RefreshCanEditBoard();
+        try
+        {
+            var members = await GroupService.GetMembersAsync(group.Id);
+            if (ActiveGroup == null || !string.Equals(ActiveGroup.Id, group.Id, StringComparison.OrdinalIgnoreCase))
+                return; // user navigated away before this resolved
+
+            var me = members.FirstOrDefault(m => string.Equals(m.Id, Auth.CurrentUserId, StringComparison.Ordinal));
+            currentUserIsGroupAdmin = currentUserIsGroupAdmin || (me?.IsAdmin == true);
+            RefreshCanEditBoard(me?.Roles);
+            if (!CanEditBoard)
+            {
+                CloseAllSwipes();
+                fabMenuOpen = false;
+                showBoardOptions = false;
+                showAddHymn = false;
+                showAddSection = false;
+                showCreateList = false;
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Keep the creator-based / profile-role fallback already assigned above.
         }
     }
 
     void OpenList(BoardListDoc list)
     {
         if (ActiveGroup == null) return;
+        if (BoardUi.HasPendingAdd && IsPastSetlist(list))
+            return;
+
+        // Opening a setlist clears its unread badge immediately (incl. notification deep-link).
+        BoardUi.SetViewingList(ActiveGroup.Id, list.Id);
+        _ = BoardNotifications.MarkListReadAsync(ActiveGroup.Id, list.Id);
+
+        var sameList = view == View.ListDetail
+            && ActiveList != null
+            && string.Equals(ActiveList.Id, list.Id, StringComparison.OrdinalIgnoreCase)
+            && listSub != null;
+        if (sameList)
+        {
+            SyncBoardUrl();
+            _ = TryConsumePendingAddAsync();
+            return;
+        }
+
         ActiveList = list;
         view = View.ListDetail;
         Status = null;
@@ -2378,6 +2747,12 @@
         listSub?.Dispose();
         listSub = BoardService.SubscribeList(ActiveGroup.Id, list.Id, updated =>
         {
+            if (updated == null) return;
+            if (ActiveList != null && BoardListContentEquals(ActiveList, updated))
+            {
+                ActiveList = updated;
+                return;
+            }
             ActiveList = updated;
             RebuildBoardDisplayRows();
             _ = ResolveFirstLinesAsync();
@@ -2386,7 +2761,224 @@
         _ = ResolveFirstLinesAsync();
         _ = RefreshSavedSectionNamesAsync();
         _ = EnsureSavedSectionsForActiveListAsync();
-        _ = BoardNotifications.MarkListReadAsync(ActiveGroup.Id, list.Id);
+        SyncBoardUrl();
+        _ = TryConsumePendingAddAsync();
+    }
+
+    async Task MaybeAutoOpenListForPendingAddAsync()
+    {
+        if (!BoardUi.HasPendingAdd || ActiveGroup == null)
+            return;
+
+        if (ActiveList != null && view == View.ListDetail)
+        {
+            if (IsPastSetlist(ActiveList))
+                return;
+            await TryConsumePendingAddAsync();
+            return;
+        }
+
+        if (Lists.Count == 0)
+            return;
+
+        BoardListDoc? pick = null;
+        if (!string.IsNullOrWhiteSpace(BoardNav.ListId)
+            && string.Equals(BoardNav.GroupId, ActiveGroup.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            pick = Lists.FirstOrDefault(l =>
+                string.Equals(l.Id, BoardNav.ListId, StringComparison.OrdinalIgnoreCase)
+                && !IsPastSetlist(l));
+        }
+
+        if (pick == null)
+        {
+            var today = DateTime.Today.ToString("yyyy-MM-dd");
+            pick = Lists.FirstOrDefault(l =>
+                string.Equals(l.Id, today, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (pick == null)
+        {
+            pick = Lists.FirstOrDefault(l => !IsPastSetlist(l));
+        }
+
+        if (pick != null)
+            OpenList(pick);
+        // else: leave pending; user picks a setlist and OpenList will add.
+    }
+
+    async Task TryConsumePendingAddAsync()
+    {
+        if (!BoardUi.HasPendingAdd || ActiveGroup == null || ActiveList == null)
+            return;
+
+        if (!CanEditBoard)
+        {
+            Status = "You don't have permission to add hymns to this list.";
+            BoardUi.ClearPendingAdd();
+            showPendingAddPicker = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        var number = BoardUi.PendingAddHymnNumber?.Trim();
+        if (string.IsNullOrWhiteSpace(number))
+            return;
+
+        // Wait so saved section templates are available in the picker.
+        await EnsureSavedSectionsForActiveListAsync();
+
+        pendingAddNumber = number;
+        pendingAddSectionId = "";
+        pendingAddNotes = "";
+        pendingAddError = null;
+        pendingAddLine = null;
+        showAddHymn = false;
+        showAddSection = false;
+        fabMenuOpen = false;
+        showPendingAddPicker = true;
+
+        try
+        {
+            var hymn = await Lyrics.GetHymnAsync(number);
+            if (!string.IsNullOrWhiteSpace(hymn.FirstLine))
+                pendingAddLine = hymn.FirstLine.Trim();
+            if (!string.IsNullOrWhiteSpace(hymn.Number))
+                pendingAddNumber = hymn.Number.Trim();
+        }
+        catch
+        {
+            // Offline / unknown — still allow add by number.
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    void ClosePendingAddPicker(bool clearPending)
+    {
+        showPendingAddPicker = false;
+        pendingAddError = null;
+        pendingAddLine = null;
+        pendingAddSectionId = "";
+        pendingAddNotes = "";
+        if (clearPending)
+            BoardUi.ClearPendingAdd();
+    }
+
+    async Task ConfirmPendingAdd()
+    {
+        if (!CanEditBoard || ActiveList == null)
+            return;
+
+        var number = pendingAddNumber.Trim();
+        if (string.IsNullOrWhiteSpace(number))
+        {
+            ClosePendingAddPicker(clearPending: true);
+            return;
+        }
+
+        pendingAddError = null;
+        var sectionId = string.IsNullOrWhiteSpace(pendingAddSectionId)
+            ? null
+            : pendingAddSectionId.Trim();
+        var notes = pendingAddNotes?.Trim() ?? "";
+        var ok = await AddHymnToListAsync(
+            number,
+            notes,
+            pendingAddLine,
+            panelError: false,
+            sectionId: sectionId);
+
+        if (ok)
+        {
+            BoardUi.ClearPendingAdd();
+            ClosePendingAddPicker(clearPending: false);
+        }
+        else
+        {
+            pendingAddError = Status ?? Error ?? "Couldn't add hymn.";
+            // Keep pending number so Cancel still clears, or user can retry.
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    string? lastSyncedBoardUrl;
+
+    /// <summary>Keep the address bar on /read/{n}?groupId=&amp;listId= without Blazor navigation.</summary>
+    void SyncBoardUrl()
+    {
+        if (suppressUrlSync)
+            return;
+
+        string? target = null;
+        if (ActiveGroup != null && ActiveList != null && view == View.ListDetail)
+            target = BoardDeepLinkService.BoardPath(ActiveGroup.Id, ActiveList.Id, CurrentHymnNumber());
+        else if (ActiveGroup != null && view is View.Lists or View.Members)
+            target = BoardDeepLinkService.BoardPath(ActiveGroup.Id, null, CurrentHymnNumber());
+
+        if (string.IsNullOrEmpty(target))
+            return;
+
+        if (string.Equals(lastSyncedBoardUrl, target, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var current = CurrentRelativePathAndQuery();
+        if (string.Equals(current, target.TrimStart('/'), StringComparison.OrdinalIgnoreCase))
+        {
+            lastSyncedBoardUrl = target;
+            return;
+        }
+
+        lastSyncedBoardUrl = target;
+        _ = ReplaceBrowserPathAsync("/" + target.TrimStart('/'));
+    }
+
+    void ClearBoardQueryFromUrl() => RestoreReadUrlIfOnBoardDeepLink();
+
+    void RestoreReadUrlIfOnBoardDeepLink()
+    {
+        var target = $"read/{Uri.EscapeDataString(CurrentHymnNumber())}";
+        var current = CurrentRelativePathAndQuery();
+        var hasBoardQuery = current.Contains("groupId=", StringComparison.OrdinalIgnoreCase)
+            || current.Contains("listId=", StringComparison.OrdinalIgnoreCase);
+        if (!hasBoardQuery
+            && !current.StartsWith("groups/", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        lastSyncedBoardUrl = null;
+        _ = ReplaceBrowserPathAsync("/" + target);
+    }
+
+    async Task ReplaceBrowserPathAsync(string path)
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("mobihymnPwa.replacePath", path);
+        }
+        catch
+        {
+            // Older cached pwa.js — fall back (may remount; still better than stuck URL).
+            Nav.NavigateTo(path.TrimStart('/'), forceLoad: false, replace: true);
+        }
+    }
+
+    string CurrentHymnNumber()
+    {
+        var n = State.ActiveHymn?.Number
+            ?? State.Settings.LastHymnNumber
+            ?? "1";
+        n = (n ?? "").Trim();
+        return string.IsNullOrWhiteSpace(n) ? "1" : n;
+    }
+
+    string CurrentRelativePathAndQuery()
+    {
+        var rel = Nav.ToBaseRelativePath(Nav.Uri);
+        var hash = rel.IndexOf('#');
+        if (hash >= 0)
+            rel = rel[..hash];
+        return rel.TrimStart('/');
     }
 
     async Task EnsureSavedSectionsForActiveListAsync()
@@ -2440,48 +3032,196 @@
 
     void OnUnreadChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
 
-    void OnOpenRequested(object? sender, EventArgs e) => _ = HandleOpenRequestAsync();
+    void OnOpenRequested(object? sender, EventArgs e)
+    {
+        Console.WriteLine($"[BoardOpen] OnOpenRequested fired (pending={BoardUi.HasPendingOpen} groupId={BoardUi.PendingGroupId} listId={BoardUi.PendingListId})");
+        _ = HandleOpenRequestAsync();
+    }
 
     async Task HandleOpenRequestAsync()
     {
-        var groupId = BoardUi.PendingGroupId;
-        var listId = BoardUi.PendingListId;
-        BoardUi.ClearPendingOpen();
+        State.SetReadView(true);
 
         if (!Visible)
             await VisibleChanged.InvokeAsync(true);
 
-        // Wait for pane to open / groups to load.
-        for (var i = 0; i < 20 && (!show || Groups.Count == 0); i++)
+        // Wait for pane shell to mount (OnParametersSet → show=true).
+        for (var i = 0; i < 60 && (!show || closing); i++)
             await Task.Delay(50);
 
-        if (!Auth.IsSignedIn) return;
-
-        if (Groups.Count == 0)
-            await LoadGroupsAsync();
-
-        if (string.IsNullOrWhiteSpace(groupId))
+        if (!show)
         {
-            await InvokeAsync(StateHasChanged);
+            // Last resort: force show flag if parent already set Visible.
+            if (Visible)
+            {
+                show = true;
+                animOpen = true;
+                await InvokeAsync(StateHasChanged);
+            }
+            else
+            {
+                Console.WriteLine("[BoardOpen] HandleOpenRequestAsync bailed: pane never became Visible");
+                return;
+            }
+        }
+
+        await ApplyPendingOpenAsync();
+    }
+
+    bool applyingPending;
+
+    async Task ApplyPendingOpenAsync()
+    {
+        if (applyingPending)
+        {
+            Console.WriteLine("[BoardOpen] ApplyPendingOpenAsync bailed: already applying");
+            return;
+        }
+        if (!BoardUi.HasPendingOpen && !BoardUi.HasPendingAdd)
+        {
+            Console.WriteLine("[BoardOpen] ApplyPendingOpenAsync bailed: no pending open");
+            return;
+        }
+        if (!AuthNav.CanAccessGroups)
+        {
+            Console.WriteLine("[BoardOpen] ApplyPendingOpenAsync bailed: auth not ready (will resume on OnAuth)");
             return;
         }
 
-        var group = Groups.FirstOrDefault(g => string.Equals(g.Id, groupId, StringComparison.Ordinal));
-        if (group == null)
+        applyingPending = true;
+        try
         {
-            await LoadGroupsAsync();
-            group = Groups.FirstOrDefault(g => string.Equals(g.Id, groupId, StringComparison.Ordinal));
+            // Add-from-search/number: open preferred group/list, then add the queued hymn.
+            if (!BoardUi.HasPendingOpen && BoardUi.HasPendingAdd)
+            {
+                if (Groups.Count == 0 || ActiveGroup == null)
+                    await LoadGroupsAsync(autoOpenPreferred: true);
+                await MaybeAutoOpenListForPendingAddAsync();
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            var groupId = BoardUi.PendingGroupId;
+            var listId = BoardUi.PendingListId;
+            Console.WriteLine($"[BoardOpen] ApplyPendingOpenAsync starting groupId={groupId} listId={listId} cachedGroups={Groups.Count}");
+
+            if (Groups.Count == 0)
+                await LoadGroupsAsync(autoOpenPreferred: false);
+
+            if (string.IsNullOrWhiteSpace(groupId))
+            {
+                BoardUi.ClearPendingOpen();
+                if (BoardUi.HasPendingAdd)
+                {
+                    if (ActiveGroup == null)
+                        await LoadGroupsAsync(autoOpenPreferred: true);
+                    await MaybeAutoOpenListForPendingAddAsync();
+                }
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            // Cold PWA launches can have a slow first Firestore round-trip (network
+            // reconnect, auth token refresh, etc.) — a short retry window here used to
+            // give up permanently and strand the notification tap with nothing shown.
+            WorshipGroupDoc? group = null;
+            for (var attempt = 0; attempt < 20 && group == null; attempt++)
+            {
+                group = Groups.FirstOrDefault(g =>
+                    string.Equals(g.Id, groupId, StringComparison.OrdinalIgnoreCase));
+                if (group == null)
+                {
+                    await LoadGroupsAsync(autoOpenPreferred: false);
+                    await Task.Delay(300);
+                }
+            }
+
+            if (group == null)
+            {
+                Console.WriteLine($"[BoardOpen] ApplyPendingOpenAsync could not find group {groupId} among {Groups.Count} groups after retries — leaving pending");
+                return; // keep pending — membership may still be hydrating
+            }
+
+            var wantList = !string.IsNullOrWhiteSpace(listId);
+            var alreadyOpen = show && !closing
+                && ActiveGroup != null
+                && string.Equals(ActiveGroup.Id, group.Id, StringComparison.OrdinalIgnoreCase)
+                && (
+                    wantList
+                        ? view == View.ListDetail
+                          && ActiveList != null
+                          && string.Equals(ActiveList.Id, listId, StringComparison.OrdinalIgnoreCase)
+                        : view is View.Lists or View.Members
+                );
+            if (alreadyOpen)
+            {
+                BoardUi.ClearPendingOpen();
+                if (BoardUi.HasPendingAdd && ActiveList != null)
+                    await TryConsumePendingAddAsync();
+                else if (BoardUi.HasPendingAdd)
+                    await MaybeAutoOpenListForPendingAddAsync();
+                SyncBoardUrl();
+                animOpen = true;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            suppressUrlSync = true;
+            try
+            {
+                await OpenGroup(group);
+                if (wantList)
+                {
+                    var list = Lists.FirstOrDefault(l =>
+                        string.Equals(l.Id, listId, StringComparison.OrdinalIgnoreCase));
+                    if (list == null)
+                    {
+                        await Task.Delay(150);
+                        list = Lists.FirstOrDefault(l =>
+                            string.Equals(l.Id, listId, StringComparison.OrdinalIgnoreCase));
+                    }
+                    if (list != null)
+                        OpenList(list);
+                }
+            }
+            finally
+            {
+                suppressUrlSync = false;
+            }
+
+            BoardUi.ClearPendingOpen();
+            SyncBoardUrl();
+            animOpen = true;
+            Console.WriteLine($"[BoardOpen] ApplyPendingOpenAsync succeeded: opened group={group.Id} list={listId}");
+            await InvokeAsync(StateHasChanged);
         }
-
-        if (group == null) return;
-
-        await OpenGroup(group);
-        if (!string.IsNullOrWhiteSpace(listId))
+        finally
         {
-            var list = Lists.FirstOrDefault(l => string.Equals(l.Id, listId, StringComparison.Ordinal));
-            if (list != null)
-                OpenList(list);
+            applyingPending = false;
         }
+    }
+
+    static bool BoardListContentEquals(BoardListDoc a, BoardListDoc b)
+    {
+        if (!string.Equals(a.Id, b.Id, StringComparison.Ordinal))
+            return false;
+        if (!string.Equals(a.Name, b.Name, StringComparison.Ordinal))
+            return false;
+        if (a.Hymns.Count != b.Hymns.Count)
+            return false;
+        for (var i = 0; i < a.Hymns.Count; i++)
+        {
+            var x = a.Hymns[i];
+            var y = b.Hymns[i];
+            if (!string.Equals(x.Id, y.Id, StringComparison.Ordinal)
+                || x.IsSection != y.IsSection
+                || x.SortOrder != y.SortOrder
+                || !string.Equals(x.HymnNumber, y.HymnNumber, StringComparison.Ordinal)
+                || !string.Equals(x.SectionName, y.SectionName, StringComparison.Ordinal)
+                || !string.Equals(x.Notes, y.Notes, StringComparison.Ordinal))
+                return false;
+        }
+        return true;
     }
 
     void RebuildBoardDisplayRows()
@@ -2570,6 +3310,8 @@
 
     void OnSectionSwipePointerDown(BoardHymnDoc section, PointerEventArgs e)
     {
+        if (!CanEditBoard)
+            return;
         if (e.Button != 0 && e.PointerType == "mouse")
             return;
 
@@ -2689,6 +3431,11 @@
         CloseOpenSectionSwipe();
         if (section == null || !section.IsSection || ActiveList == null)
             return;
+        if (!CanModifyEntry(section))
+        {
+            Error = "Only the group admin or the person who added this section can remove it.";
+            return;
+        }
 
         pendingRemoveSection = section;
         removeSectionIsSaved = IsSectionSaved(section.SectionName);
@@ -2777,29 +3524,67 @@
         await OpenHymn(number);
     }
 
+    string? pendingDragEntryId;
+
     string DragClass(string? id) =>
         !string.IsNullOrEmpty(id) && id == dragEntryId ? "is-dragging" : "";
 
     string DropLineClass(string id, bool below) =>
         dropLineEntryId == id && dropLineBelow == below ? "is-active" : "";
 
-    async Task BeginBoardPointerDrag(PointerEventArgs e, BoardHymnDoc entry)
+    async Task BeginBoardPointerDrag(PointerEventArgs e, BoardHymnDoc entry, bool requireVertical = false)
     {
+        if (!CanEditBoard)
+            return;
         if (e.Button != 0 && e.PointerType == "mouse")
             return;
+        if (!CanModifyEntry(entry))
+        {
+            Error = entry.IsSection
+                ? "Only the group admin or the person who added this section can move it."
+                : "Only the group admin or the person who added this hymn can move it.";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
 
-        dragEntryId = entry.Id;
+        // Arm only — visual drag / drop lines start after the JS threshold move.
+        // Do not suppress clicks until the drag actually activates (tap still opens hymn).
+        pendingDragEntryId = entry.Id;
+        dragEntryId = null;
         dropLineEntryId = null;
         dropLineBelow = false;
-        suppressNextClick = true;
         dragDotNetRef ??= DotNetObjectReference.Create(this);
-        await Js.InvokeVoidAsync("mobihymnBoardDrag.begin", dragDotNetRef, entry.Id, e.ClientX, e.ClientY);
-        await InvokeAsync(StateHasChanged);
+        await Js.InvokeVoidAsync(
+            "mobihymnBoardDrag.begin",
+            dragDotNetRef,
+            entry.Id,
+            e.ClientX,
+            e.ClientY,
+            new { requireVertical });
+    }
+
+    [JSInvokable]
+    public void OnBoardPointerDragActivated()
+    {
+        suppressNextClick = true;
+        suppressHymnClick = true;
+        // Hand off from swipe to reorder.
+        swipeHymnDragId = null;
+        swipeHymnPointerId = null;
+        swipeHymnMoved = false;
+        swipeSectionDragId = null;
+        swipeSectionPointerId = null;
+        if (string.IsNullOrEmpty(dragEntryId) && !string.IsNullOrEmpty(pendingDragEntryId))
+            dragEntryId = pendingDragEntryId;
+        _ = InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable]
     public void OnBoardPointerDragOver(string? targetId, bool preferBelow)
     {
+        if (string.IsNullOrEmpty(dragEntryId) && !string.IsNullOrEmpty(pendingDragEntryId))
+            dragEntryId = pendingDragEntryId;
+
         if (string.IsNullOrEmpty(dragEntryId) || ActiveList == null)
             return;
 
@@ -2844,6 +3629,7 @@
     {
         if (ActiveGroup == null || ActiveList == null || string.IsNullOrEmpty(dragEntryId))
         {
+            pendingDragEntryId = null;
             dragEntryId = null;
             ClearDropLine();
             await InvokeAsync(StateHasChanged);
@@ -2866,6 +3652,7 @@
                 ResolveDropIndicator(source, target, preferBelow, out below);
         }
 
+        pendingDragEntryId = null;
         dragEntryId = null;
         ClearDropLine();
 
@@ -3256,20 +4043,28 @@
     async Task AddActiveHymn()
     {
         if (!HasActiveHymn) return;
-        await AddHymnToListAsync(State.ActiveHymn!.Number.Trim(), notes: "", firstLine: State.ActiveHymn.FirstLine);
+        await AddHymnToListAsync(
+            State.ActiveHymn!.Number.Trim(),
+            notes: "",
+            firstLine: State.ActiveHymn.FirstLine,
+            sectionId: "");
     }
 
     void ToggleFabMenu()
     {
+        if (!CanEditBoard) return;
         fabMenuOpen = !fabMenuOpen;
     }
 
     async Task OpenAddHymn()
     {
+        if (!CanEditBoard) return;
         fabMenuOpen = false;
         showAddSection = false;
+        showPendingAddPicker = false;
         addHymnQuery = "";
         addHymnNotes = "";
+        addHymnSectionId = "";
         addHymnError = null;
         addHymnPickedNumber = null;
         addHymnPickedLine = null;
@@ -3287,6 +4082,7 @@
         addHymnError = null;
         addHymnQuery = "";
         addHymnNotes = "";
+        addHymnSectionId = "";
         addHymnPickedNumber = null;
         addHymnPickedLine = null;
         addHymnSuggestions = new();
@@ -3294,6 +4090,7 @@
 
     void OpenAddSection()
     {
+        if (!CanEditBoard) return;
         fabMenuOpen = false;
         showAddHymn = false;
         addSectionName = "";
@@ -3438,7 +4235,8 @@
             resolved.Value.Number,
             addHymnNotes?.Trim() ?? "",
             firstLine: resolved.Value.Line,
-            panelError: true);
+            panelError: true,
+            sectionId: addHymnSectionId);
         if (ok)
             CloseAddHymn();
     }
@@ -3493,6 +4291,152 @@
         }
 
         addHymnError = "No matching hymn. Pick one from the list or refine your search.";
+        return null;
+    }
+
+    async Task OnEditHymnQueryInput(ChangeEventArgs e)
+    {
+        editHymnNumber = e.Value?.ToString() ?? "";
+        editHymnPickedNumber = null;
+        editHymnPickedLine = null;
+        editHymnError = null;
+        await UpdateEditHymnSuggestionsAsync(editHymnNumber);
+    }
+
+    async Task UpdateEditHymnSuggestionsAsync(string query)
+    {
+        editHymnSuggestCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        editHymnSuggestCts = cts;
+        var token = cts.Token;
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            editHymnSuggestions = new();
+            return;
+        }
+
+        try
+        {
+            await Task.Delay(AddHymnSuggestDebounceMs, token);
+            await EnsureAddHymnCatalogAsync();
+            if (token.IsCancellationRequested)
+                return;
+
+            List<BoardHymnSuggestion> suggestions;
+            if (IsNumberQuery(query))
+            {
+                suggestions = BuildNumberSuggestions(query, addHymnCatalog);
+            }
+            else
+            {
+                var hits = await Lyrics.SearchLyricsAsync(query.Trim(), token);
+                if (token.IsCancellationRequested)
+                    return;
+
+                suggestions = hits
+                    .Take(8)
+                    .Select(h => new BoardHymnSuggestion
+                    {
+                        Number = h.Number,
+                        Line = h.Line ?? "",
+                        LineFirst = true,
+                    })
+                    .ToList();
+            }
+
+            if (token.IsCancellationRequested)
+                return;
+
+            editHymnSuggestions = suggestions;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // superseded
+        }
+        catch
+        {
+            if (!token.IsCancellationRequested && !IsNumberQuery(query))
+            {
+                editHymnSuggestions = BuildCatalogLineSuggestions(query, addHymnCatalog);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    void PickEditHymnSuggestion(BoardHymnSuggestion suggestion)
+    {
+        editHymnPickedNumber = suggestion.Number;
+        editHymnPickedLine = suggestion.Line;
+        editHymnNumber = suggestion.Number;
+        editHymnSuggestions = new();
+        editHymnError = null;
+        editHymnSuggestCts?.Cancel();
+        editHymnSuggestCts = null;
+    }
+
+    async Task OnEditHymnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await SaveEditHymn();
+        else if (e.Key == "Escape")
+            CloseEditHymn();
+    }
+
+    async Task<(string Number, string? Line)?> ResolveEditHymnSelectionAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(editHymnPickedNumber))
+            return (editHymnPickedNumber!.Trim(), editHymnPickedLine);
+
+        var query = (editHymnNumber ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            editHymnError = "Enter a hymn number.";
+            return null;
+        }
+
+        if (IsNumberQuery(query))
+        {
+            var prefix = ExtractNumberPrefix(query);
+            if (!string.IsNullOrEmpty(prefix))
+            {
+                var exact = addHymnCatalog.FirstOrDefault(h =>
+                    string.Equals(h.Number, prefix, StringComparison.OrdinalIgnoreCase));
+                if (exact != null)
+                    return (exact.Number, exact.FirstLine ?? exact.Title);
+
+                var matches = BuildNumberSuggestions(query, addHymnCatalog, maxCount: 2);
+                if (matches.Count == 1)
+                    return (matches[0].Number, matches[0].Line);
+
+                // No catalog match — still allow saving a raw number (e.g. offline).
+                return (prefix, null);
+            }
+
+            editHymnError = "Enter a hymn number.";
+            return null;
+        }
+
+        try
+        {
+            var hits = await Lyrics.SearchLyricsAsync(query);
+            if (hits.Count == 1)
+                return (hits[0].Number, hits[0].Line);
+            if (hits.Count == 0)
+            {
+                editHymnError = "No matching hymn. Pick one from the list or refine your search.";
+                return null;
+            }
+        }
+        catch
+        {
+            var fallback = BuildCatalogLineSuggestions(query, addHymnCatalog, maxCount: 2);
+            if (fallback.Count == 1)
+                return (fallback[0].Number, fallback[0].Line);
+        }
+
+        editHymnError = "No matching hymn. Pick one from the list or refine your search.";
         return null;
     }
 
@@ -3679,7 +4623,12 @@
         return Auth.CurrentEmail ?? "";
     }
 
-    async Task<bool> AddHymnToListAsync(string number, string notes, string? firstLine, bool panelError = false)
+    async Task<bool> AddHymnToListAsync(
+        string number,
+        string notes,
+        string? firstLine,
+        bool panelError = false,
+        string? sectionId = null)
     {
         if (ActiveGroup == null || ActiveList == null)
             return false;
@@ -3732,8 +4681,6 @@
             await Profiles.RefreshCurrentProfileAsync();
             var actor = ActorDisplayName();
 
-            // Place new hymns before the first section (MAUI parity).
-            var firstSectionIndex = ActiveList.Hymns.FindIndex(h => h.IsSection);
             var entry = new BoardHymnDoc
             {
                 Id = Guid.NewGuid().ToString("N")[..10],
@@ -3744,10 +4691,7 @@
                 AddedByName = actor,
                 UpdatedAt = DateTimeOffset.UtcNow
             };
-            if (firstSectionIndex < 0)
-                ActiveList.Hymns.Add(entry);
-            else
-                ActiveList.Hymns.Insert(firstSectionIndex, entry);
+            InsertHymnIntoSection(entry, sectionId);
 
             RenumberBoard();
             if (!string.IsNullOrWhiteSpace(firstLine))
@@ -3772,9 +4716,86 @@
         }
     }
 
+    /// <summary>
+    /// Inserts a hymn under the given section (bottom of that section), or before the
+    /// first section when <paramref name="sectionId"/> is empty (unsectioned / top).
+    /// </summary>
+    void InsertHymnIntoSection(BoardHymnDoc entry, string? sectionId)
+    {
+        if (ActiveList == null)
+            return;
+
+        var hymns = ActiveList.Hymns;
+        var targetId = sectionId?.Trim() ?? "";
+
+        if (string.IsNullOrEmpty(targetId))
+        {
+            // Unsectioned: place before the first section (MAUI parity).
+            var firstSectionIndex = hymns.FindIndex(h => h.IsSection);
+            if (firstSectionIndex < 0)
+                hymns.Add(entry);
+            else
+                hymns.Insert(firstSectionIndex, entry);
+            return;
+        }
+
+        var sectionIndex = hymns.FindIndex(h =>
+            h.IsSection && string.Equals(h.Id, targetId, StringComparison.Ordinal));
+        if (sectionIndex < 0)
+        {
+            hymns.Add(entry);
+            return;
+        }
+
+        // Append after the last hymn in this section (before the next section header).
+        var insertAt = hymns.Count;
+        for (var i = sectionIndex + 1; i < hymns.Count; i++)
+        {
+            if (hymns[i].IsSection)
+            {
+                insertAt = i;
+                break;
+            }
+        }
+        hymns.Insert(insertAt, entry);
+    }
+
+    string? FindSectionIdForHymn(BoardHymnDoc hymn)
+    {
+        if (ActiveList == null || hymn == null)
+            return null;
+
+        string? current = null;
+        foreach (var entry in ActiveList.Hymns.OrderBy(h => h.SortOrder))
+        {
+            if (entry.IsSection)
+            {
+                current = entry.Id;
+                continue;
+            }
+
+            if (string.Equals(entry.Id, hymn.Id, StringComparison.Ordinal))
+                return current;
+        }
+
+        return null;
+    }
+
     async Task OpenHymn(string? number)
     {
         if (string.IsNullOrWhiteSpace(number)) return;
+
+        if (ActiveGroup != null && ActiveList?.Hymns != null)
+        {
+            var numbers = ActiveList.Hymns
+                .Where(h => !h.IsSection && !string.IsNullOrWhiteSpace(h.HymnNumber))
+                .Select(h => h.HymnNumber!.Trim())
+                .ToList();
+            var index = numbers.FindIndex(n =>
+                string.Equals(n, number.Trim(), StringComparison.OrdinalIgnoreCase));
+            BoardNav.Set(ActiveGroup.Id, ActiveList.Id, numbers, Math.Max(0, index));
+        }
+
         var hymn = await State.OpenHymnAsync(number);
         if (hymn != null)
         {
@@ -3786,9 +4807,22 @@
     void OnAuth(object? s, EventArgs e) =>
         _ = InvokeAsync(async () =>
         {
+            // A notification/deep-link can request an open before auth finishes
+            // restoring (cold start). ApplyPendingOpenAsync bails out silently while
+            // signed out, so resume it here once auth settles — otherwise the pane
+            // is stuck showing nothing (or the groups list) forever.
+            if (BoardUi.HasPendingOpen)
+            {
+                if (AuthNav.CanAccessGroups)
+                    await ApplyPendingOpenAsync();
+                else if (show)
+                    StateHasChanged();
+                return;
+            }
+
             if (!show) return;
             ResetNav();
-            if (Auth.IsSignedIn)
+            if (AuthNav.CanAccessGroups)
                 await LoadGroupsAsync();
             else
                 StateHasChanged();
@@ -3802,6 +4836,7 @@
         State.Changed -= OnStateChanged;
         BoardUi.UnreadChanged -= OnUnreadChanged;
         BoardUi.OpenRequested -= OnOpenRequested;
+        BoardUi.SetViewingList(null, null);
         listSub?.Dispose();
         addHymnSuggestCts?.Cancel();
         addHymnSuggestCts?.Dispose();

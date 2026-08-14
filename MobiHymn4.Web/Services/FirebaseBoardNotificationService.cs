@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using MobiHymn4.Shared;
 using MobiHymn4.Shared.Models;
@@ -12,9 +13,10 @@ namespace MobiHymn4.Web.Services;
 /// </summary>
 public sealed class FirebaseBoardNotificationService : IBoardNotificationService, IAsyncDisposable
 {
-    static readonly HashSet<string> LeadershipRoles = new(StringComparer.OrdinalIgnoreCase)
+    /// <summary>Roles unmuted for setlist push by default (server onBoardWrite matches).</summary>
+    static readonly HashSet<string> DefaultNotifyRoles = new(StringComparer.OrdinalIgnoreCase)
     {
-        "pastor", "worshipLeader", "projector", "accompaniment", "preacher"
+        "projector", "accompaniment"
     };
 
     readonly FirebaseJs firebase;
@@ -23,10 +25,12 @@ public sealed class FirebaseBoardNotificationService : IBoardNotificationService
     readonly IGroupService groups;
     readonly IAppPreferences prefs;
     readonly BoardUiState boardUi;
+    readonly NavigationManager nav;
 
     string? notificationsSubId;
     string? lastRegisteredToken;
     string? lastRegisteredUid;
+    public string? LastRegisterError { get; private set; }
     DotNetObjectReference<FirebaseBoardNotificationService>? selfRef;
     readonly HashSet<string> knownUnreadIds = new(StringComparer.Ordinal);
     bool unreadSnapshotSeeded;
@@ -39,7 +43,8 @@ public sealed class FirebaseBoardNotificationService : IBoardNotificationService
         IProfileService profiles,
         IGroupService groups,
         IAppPreferences prefs,
-        BoardUiState boardUi)
+        BoardUiState boardUi,
+        NavigationManager nav)
     {
         this.firebase = firebase;
         this.auth = auth;
@@ -47,6 +52,7 @@ public sealed class FirebaseBoardNotificationService : IBoardNotificationService
         this.groups = groups;
         this.prefs = prefs;
         this.boardUi = boardUi;
+        this.nav = nav;
         auth.AuthStateChanged += (_, _) => _ = OnAuthChangedAsync();
         profiles.ProfileChanged += (_, _) =>
         {
@@ -57,8 +63,13 @@ public sealed class FirebaseBoardNotificationService : IBoardNotificationService
 
     public async Task StartAsync()
     {
-        if (started) return;
+        if (started)
+        {
+            Console.WriteLine("[BoardOpen] FirebaseBoardNotificationService.StartAsync skipped — already started");
+            return;
+        }
         started = true;
+        Console.WriteLine("[BoardOpen] FirebaseBoardNotificationService.StartAsync begin");
         await WireClickHandlerAsync();
         await OnAuthChangedAsync();
     }
@@ -74,41 +85,84 @@ public sealed class FirebaseBoardNotificationService : IBoardNotificationService
         boardUi.SetUnreadLists(null);
     }
 
-    public async Task RegisterTokenAsync()
+    public async Task<bool> RegisterTokenAsync(bool force = false)
     {
-        if (!auth.IsSignedIn) return;
-
-        try
+        if (!auth.IsSignedIn)
         {
-            await firebase.EnsureReadyAsync();
-            var token = await firebase.GetFcmTokenAsync();
-            if (string.IsNullOrWhiteSpace(token))
-                return;
-
-            var uid = auth.CurrentUserId;
-            if (string.Equals(lastRegisteredToken, token, StringComparison.Ordinal)
-                && string.Equals(lastRegisteredUid, uid, StringComparison.Ordinal))
-                return;
-
-            var deviceId = GetOrCreateDeviceId();
-            await firebase.SetDocAsync(
-                $"{FirestorePaths.Users}/{uid}/{FirestorePaths.FcmTokens}/{deviceId}",
-                new
-                {
-                    token,
-                    platform = "Web",
-                    updatedAt = DateTimeOffset.UtcNow
-                });
-
-            lastRegisteredToken = token;
-            lastRegisteredUid = uid;
+            LastRegisterError = "Not signed in.";
+            return false;
         }
-        catch (Exception ex)
+
+        LastRegisterError = null;
+        if (force)
         {
             lastRegisteredToken = null;
             lastRegisteredUid = null;
-            Console.WriteLine($"RegisterTokenAsync failed: {ex.Message}");
         }
+
+        // Keep this short — getFcmToken has its own JS timeouts. Long retry loops
+        // made Account "Registering…" look stuck on Android TWA.
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            try
+            {
+                await firebase.EnsureReadyAsync();
+                var tokenTask = firebase.GetFcmTokenAsync();
+                var finished = await Task.WhenAny(tokenTask, Task.Delay(25000));
+                if (finished != tokenTask)
+                {
+                    LastRegisterError = "Push token request timed out. Fully close the app and try Register again.";
+                    Console.WriteLine($"[BoardOpen] RegisterTokenAsync attempt {attempt}: getFcmToken timed out");
+                    continue;
+                }
+
+                var token = await tokenTask;
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    LastRegisterError = string.IsNullOrWhiteSpace(firebase.LastFcmTokenError)
+                        ? "Could not get a push token from Firebase."
+                        : firebase.LastFcmTokenError;
+                    Console.WriteLine($"[BoardOpen] RegisterTokenAsync attempt {attempt}: no token — {LastRegisterError}");
+                    if (attempt < 2) await Task.Delay(800);
+                    continue;
+                }
+
+                var uid = auth.CurrentUserId;
+                if (!force
+                    && string.Equals(lastRegisteredToken, token, StringComparison.Ordinal)
+                    && string.Equals(lastRegisteredUid, uid, StringComparison.Ordinal))
+                {
+                    Console.WriteLine("[BoardOpen] RegisterTokenAsync: token unchanged");
+                    LastRegisterError = null;
+                    return true;
+                }
+
+                var deviceId = GetOrCreateDeviceId();
+                await firebase.SetDocAsync(
+                    $"{FirestorePaths.Users}/{uid}/{FirestorePaths.FcmTokens}/{deviceId}",
+                    new
+                    {
+                        token,
+                        platform = "Web",
+                        updatedAt = DateTimeOffset.UtcNow.ToString("o")
+                    });
+
+                lastRegisteredToken = token;
+                lastRegisteredUid = uid;
+                LastRegisterError = null;
+                Console.WriteLine($"[BoardOpen] RegisterTokenAsync: saved Web token for {uid} device={deviceId}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                lastRegisteredToken = null;
+                lastRegisteredUid = null;
+                LastRegisterError = ex.Message;
+                Console.WriteLine($"[BoardOpen] RegisterTokenAsync attempt {attempt} failed: {ex.Message}");
+                if (attempt < 2) await Task.Delay(800);
+            }
+        }
+        return false;
     }
 
     public async Task MarkAllReadAsync()
@@ -137,6 +191,8 @@ public sealed class FirebaseBoardNotificationService : IBoardNotificationService
 
         groupId = groupId.Trim();
         listId = listId.Trim();
+        // Clear badge immediately — do not wait for the Firestore unread snapshot.
+        boardUi.ClearListUnread(groupId, listId);
         try
         {
             var matching = (await QueryUnreadAsync())
@@ -158,6 +214,22 @@ public sealed class FirebaseBoardNotificationService : IBoardNotificationService
         }
     }
 
+    async Task MarkNotificationReadQuietAsync(string notifId)
+    {
+        if (!auth.IsSignedIn || string.IsNullOrWhiteSpace(notifId))
+            return;
+        try
+        {
+            await firebase.SetDocAsync(
+                $"{FirestorePaths.Users}/{auth.CurrentUserId}/{FirestorePaths.Notifications}/{notifId.Trim()}",
+                new { read = true });
+        }
+        catch
+        {
+            // best-effort cleanup of self-action leftovers
+        }
+    }
+
     [JSInvokable]
     public void OnQuerySnapshot(JsonElement[]? rows)
     {
@@ -172,7 +244,19 @@ public sealed class FirebaseBoardNotificationService : IBoardNotificationService
     [JSInvokable]
     public void OnBoardNotificationClick(string groupId, string listId)
     {
-        boardUi.Open(groupId, listId);
+        Console.WriteLine($"[BoardOpen] .NET OnBoardNotificationClick invoked from JS: groupId={groupId} listId={listId}");
+        var gid = (groupId ?? "").Trim();
+        var lid = (listId ?? "").Trim();
+        if (string.IsNullOrEmpty(gid))
+        {
+            Console.WriteLine("[BoardOpen] OnBoardNotificationClick bailed: empty groupId");
+            return;
+        }
+
+        // Open the sliding pane immediately. Do not NavigateTo here — iOS PWA
+        // navigation from notification taps is unreliable, and URL sync is handled
+        // by BoardPane after the board mounts (history.replaceState).
+        boardUi.Open(gid, string.IsNullOrEmpty(lid) ? null : lid);
     }
 
     async Task OnAuthChangedAsync()
@@ -189,9 +273,17 @@ public sealed class FirebaseBoardNotificationService : IBoardNotificationService
             return;
         }
 
-        await RegisterTokenAsync();
+        await RegisterTokenAsync(force: true);
         await HydrateGroupMutePreferencesAsync();
         await SubscribeUnreadAsync();
+    }
+
+    [JSInvokable]
+    public void OnPushResume()
+    {
+        if (!auth.IsSignedIn) return;
+        Console.WriteLine("[BoardOpen] OnPushResume — refreshing Web FCM token");
+        _ = RegisterTokenAsync(force: true);
     }
 
     async Task HydrateGroupMutePreferencesAsync()
@@ -257,6 +349,16 @@ public sealed class FirebaseBoardNotificationService : IBoardNotificationService
             if (string.IsNullOrWhiteSpace(doc.Id)) continue;
             currentIds.Add(doc.Id);
 
+            // Never toast/badge yourself for your own board edits (other devices of same account).
+            var isOwnAction = !string.IsNullOrWhiteSpace(doc.UpdatedBy)
+                && string.Equals(doc.UpdatedBy, auth.CurrentUserId, StringComparison.Ordinal);
+            if (isOwnAction)
+            {
+                if (unreadSnapshotSeeded && !knownUnreadIds.Contains(doc.Id))
+                    _ = MarkNotificationReadQuietAsync(doc.Id);
+                continue;
+            }
+
             if (unreadSnapshotSeeded && !knownUnreadIds.Contains(doc.Id))
                 newlyArrived.Add(doc);
 
@@ -294,6 +396,16 @@ public sealed class FirebaseBoardNotificationService : IBoardNotificationService
             knownUnreadIds.Add(id);
         unreadSnapshotSeeded = true;
 
+        // If the user is already viewing a setlist, keep its badge off and mark those docs read.
+        var viewing = boardUi.ViewingListKey;
+        if (!string.IsNullOrEmpty(viewing) && byList.ContainsKey(viewing))
+        {
+            byList.Remove(viewing);
+            var parts = viewing.Split('|', 2);
+            if (parts.Length == 2)
+                _ = MarkListReadAsync(parts[0], parts[1]);
+        }
+
         boardUi.SetUnreadLists(byList);
         _ = NotifyNewlyArrivedAsync(newlyArrived);
     }
@@ -307,6 +419,9 @@ public sealed class FirebaseBoardNotificationService : IBoardNotificationService
             foreach (var doc in newlyArrived)
             {
                 if (doc.SuppressPush || ShouldSuppressPush(doc.GroupId))
+                    continue;
+                if (!string.IsNullOrWhiteSpace(doc.UpdatedBy)
+                    && string.Equals(doc.UpdatedBy, auth.CurrentUserId, StringComparison.Ordinal))
                     continue;
 
                 var title = string.IsNullOrWhiteSpace(doc.Title)
@@ -322,7 +437,10 @@ public sealed class FirebaseBoardNotificationService : IBoardNotificationService
                     data["listId"] = doc.ListId;
                     data["date"] = doc.ListId;
                 }
+                if (!string.IsNullOrWhiteSpace(doc.GroupId) && !string.IsNullOrWhiteSpace(doc.ListId))
+                    data["boardPath"] = BoardDeepLinkService.BoardPath(doc.GroupId, doc.ListId);
                 if (!string.IsNullOrWhiteSpace(doc.GroupName)) data["groupName"] = doc.GroupName;
+                if (!string.IsNullOrWhiteSpace(doc.UpdatedBy)) data["updatedBy"] = doc.UpdatedBy;
 
                 await firebase.ShowLocalNotificationAsync(title, body, data);
             }
@@ -352,7 +470,7 @@ public sealed class FirebaseBoardNotificationService : IBoardNotificationService
     static bool DefaultNotificationsMuted(IEnumerable<string>? roles)
     {
         if (roles == null) return true;
-        return !roles.Any(r => LeadershipRoles.Contains(r));
+        return !roles.Any(r => DefaultNotifyRoles.Contains(r));
     }
 
     async Task<List<BoardNotificationDoc>> QueryUnreadAsync()
@@ -422,18 +540,29 @@ public sealed class FirebaseBoardNotificationService : IBoardNotificationService
 
     async Task WireClickHandlerAsync()
     {
-        if (clickWired) return;
-        try
+        // Retry with backoff instead of giving up forever — a transient JS interop
+        // failure here (e.g. a slow cold start racing Firebase init) would otherwise
+        // permanently break "tap notification → open board" for the whole session.
+        var delayMs = 500;
+        for (var attempt = 0; attempt < 6 && !clickWired; attempt++)
         {
-            await firebase.EnsureReadyAsync();
-            selfRef ??= DotNetObjectReference.Create(this);
-            await firebase.OnBoardNotificationClickAsync(selfRef);
-            clickWired = true;
+            try
+            {
+                await firebase.EnsureReadyAsync();
+                selfRef ??= DotNetObjectReference.Create(this);
+                await firebase.OnBoardNotificationClickAsync(selfRef);
+                clickWired = true;
+                Console.WriteLine($"[BoardOpen] WireClickHandlerAsync succeeded on attempt {attempt + 1}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[BoardOpen] WireClickHandler failed (attempt {attempt + 1}): {ex.Message}");
+                await Task.Delay(delayMs);
+                delayMs = Math.Min(delayMs * 2, 8000);
+            }
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"WireClickHandler failed: {ex.Message}");
-        }
+        if (!clickWired)
+            Console.WriteLine("[BoardOpen] WireClickHandlerAsync gave up after 6 attempts — notification taps will NOT open the board this session");
     }
 
     public async ValueTask DisposeAsync()

@@ -11,12 +11,16 @@
 @inject CatalogUpdateService Catalog
 @inject IJSRuntime Js
 @inject NavigationManager Nav
+@inject IBoardNotificationService BoardNotifications
+@inject FirebaseJs Firebase
+@inject BoardNavigationContext BoardNav
 @implements IDisposable
 
 <ThemeSync />
 <KeepAwakeSync />
 <IntroSlider />
 <DownloadLibraryDialog />
+<CommunitySignInPrompt />
 
 <!-- Sidebar overlay -->
 <div class="sidebar-overlay @(sidebarOpen ? "open" : "")" @onclick="CloseSidebar"></div>
@@ -64,6 +68,12 @@
             <a href="account" class="@(IsNavActive("account") ? "active" : null)" @onclick="CloseSidebar">
                 <i class="fa-solid fa-user"></i><span>Account</span>
             </a>
+            @if (IsDashboardAdmin)
+            {
+                <a href="dashboard" class="@(IsNavActive("dashboard") ? "active" : null)" @onclick="CloseSidebar">
+                    <i class="fa-solid fa-chart-simple"></i><span>Dashboard</span>
+                </a>
+            }
         }
         <a href="about" class="@(IsNavActive("about") ? "active" : null)" @onclick="CloseSidebar">
             <i class="fa-solid fa-circle-info"></i><span>About</span>
@@ -98,12 +108,19 @@
 <!-- App shell -->
 <div class="app-shell @(IsReadPage ? "app-shell-read" : null) @(IsReadPage && !State.IsReadView ? "read-chrome-hidden" : null)"
      style="@(IsReadPage ? $"--reader-theme:{State.ReaderTheme}" : null)">
-    <header class="topbar @(IsReadPage ? "topbar-read" : "") @(IsNumberPage ? "topbar-input" : "") @(IsSearchPage ? "topbar-search" : "") @(IsHistoryPage ? "topbar-history" : "") @(IsBookmarksPage ? "topbar-bookmarks" : "") @(IsAboutPage ? "topbar-about" : "") @(IsSettingsPage ? "topbar-settings" : "") @(IsAccountPage ? "topbar-account" : "") @(IsProfilePage ? "topbar-profile" : "") @(IsGroupsListPage ? "topbar-groups" : "") @(IsAgentPage ? "topbar-agent" : "") @(IsLoginPage ? "topbar-login" : "") @(IsReadPage && !State.IsReadView ? "topbar-chrome-out" : null)">
+    <header class="topbar @(IsReadPage ? "topbar-read" : "") @(IsNumberPage ? "topbar-input" : "") @(IsSearchPage ? "topbar-search" : "") @(IsHistoryPage ? "topbar-history" : "") @(IsBookmarksPage ? "topbar-bookmarks" : "") @(IsAboutPage ? "topbar-about" : "") @(IsSettingsPage ? "topbar-settings" : "") @(IsAccountPage ? "topbar-account" : "") @(IsDashboardPage ? "topbar-account" : "") @(IsProfilePage ? "topbar-profile" : "") @(IsGroupsListPage ? "topbar-groups" : "") @(IsAgentPage ? "topbar-agent" : "") @(IsLoginPage ? "topbar-login" : "") @(IsReadPage && !State.IsReadView ? "topbar-chrome-out" : null)">
         @if (IsLoginPage)
         {
             <button class="tb-icon tb-back" @onclick="GoBackFromLogin" aria-label="Back" title="Back">
                 <i class="fa-solid fa-arrow-left"></i>
             </button>
+        }
+        else if (IsDashboardPage)
+        {
+            <button type="button" class="@HamburgerClass" @onclick="ToggleSidebar" aria-label="Menu">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <div class="topbar-title">Dashboard</div>
         }
         else if (IsNumberPage)
         {
@@ -111,13 +128,16 @@
                 <i class="fa-solid fa-arrow-left"></i>
             </button>
             <div class="topbar-actions">
-                <button type="button" class="tb-icon" title="Add to board" @onclick="OpenBoardPane">
-                    <i class="fa-solid fa-plus"></i>
-                    @if (BoardUi.HasUnread)
-                    {
-                        <span class="tb-unread-dot" aria-hidden="true"></span>
-                    }
-                </button>
+                @if (CanAddToBoard)
+                {
+                    <button type="button" class="tb-icon" title="Add to board" @onclick="AddToBoardFromNumber">
+                        <BoardPlusIcon />
+                        @if (BoardUi.HasUnread)
+                        {
+                            <span class="tb-unread-dot" aria-hidden="true"></span>
+                        }
+                    </button>
+                }
                 <a class="tb-icon" href="search" title="Search">
                     <i class="fa-solid fa-magnifying-glass"></i>
                 </a>
@@ -333,6 +353,17 @@
     <main class="page @(IsReadPage ? "page-read" : "") @(IsNumberPage ? "page-input" : "") @(IsSearchPage ? "page-search" : "") @(IsHistoryPage ? "page-history" : "") @(IsBookmarksPage ? "page-bookmarks" : "") @(IsAboutPage ? "page-about" : "") @(IsSettingsPage ? "page-settings" : "") @(IsGroupsListPage ? "page-groups" : "") @(IsLoginPage ? "page-login" : "") @(IsAgentPage ? "page-agent" : "")">
 @Body
     </main>
+
+    @if (showNotifPrompt)
+    {
+        <div class="notif-prompt-bar" role="status">
+            <span class="notif-prompt-text">@notifPromptText</span>
+            <button type="button" class="notif-prompt-enable" disabled="@notifPromptBusy" @onclick="EnableNotificationsFromPromptAsync">
+                @(notifPromptBusy ? "Enabling…" : notifPromptAction)
+            </button>
+            <button type="button" class="notif-prompt-dismiss" aria-label="Dismiss" @onclick="DismissNotifPrompt">×</button>
+        </div>
+    }
 </div>
 
 <BookmarkSaveModal @bind-Visible="showSave"
@@ -367,6 +398,12 @@
     bool showBoardPane;
     bool showSignOutConfirm;
     bool signingOut;
+    bool showNotifPrompt;
+    bool notifPromptBusy;
+    bool notifPromptDismissed;
+    DotNetObjectReference<MainLayout>? appForegroundRef;
+    string notifPromptText = "Enable board notifications so you get alerts when someone updates a list.";
+    string notifPromptAction = "Enable";
 
     bool IsReadPage => Path.StartsWith("read", StringComparison.OrdinalIgnoreCase)
                        || Path.StartsWith("hymn", StringComparison.OrdinalIgnoreCase);
@@ -376,9 +413,17 @@
     bool IsAboutPage => Path.Equals("about", StringComparison.OrdinalIgnoreCase);
     bool IsSettingsPage => Path.Equals("settings", StringComparison.OrdinalIgnoreCase);
     bool IsAccountPage => Path.Equals("account", StringComparison.OrdinalIgnoreCase);
+    bool IsDashboardPage => Path.Equals("dashboard", StringComparison.OrdinalIgnoreCase);
+    bool IsDashboardAdmin =>
+        Auth.IsSignedIn
+        && string.Equals(Auth.CurrentEmail?.Trim(), "tim.gandionco@gmail.com", StringComparison.OrdinalIgnoreCase);
     bool IsProfilePage => Path.Equals("profile", StringComparison.OrdinalIgnoreCase)
         || Path.StartsWith("profile?", StringComparison.OrdinalIgnoreCase)
         || Path.StartsWith("profile/", StringComparison.OrdinalIgnoreCase);
+    bool IsGroupsArea =>
+        Path.Equals("groups", StringComparison.OrdinalIgnoreCase)
+        || Path.StartsWith("groups/", StringComparison.OrdinalIgnoreCase);
+
     bool IsGroupsListPage => Path.Equals("groups", StringComparison.OrdinalIgnoreCase);
     bool IsLoginPage => Path.Equals("login", StringComparison.OrdinalIgnoreCase)
                         || Path.Equals("verify", StringComparison.OrdinalIgnoreCase)
@@ -475,11 +520,15 @@
         }
     }
 
+    bool CanAddToBoard =>
+        Auth.IsSignedIn && RoleHelper.CanAddToBoard(Profiles.CurrentProfile);
+
     protected override void OnInitialized()
     {
         State.Changed += OnChanged;
         BookmarksUi.Changed += OnBookmarksUi;
         Auth.AuthStateChanged += OnAuth;
+        Profiles.ProfileChanged += OnProfileChanged;
         Nav.LocationChanged += OnNav;
         Catalog.Changed += OnCatalog;
         BoardUi.UnreadChanged += OnBoardUnread;
@@ -490,8 +539,123 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && Auth.IsSignedIn)
+        if (!firstRender)
+            return;
+
+        if (Auth.IsSignedIn)
             await Profiles.RefreshCurrentProfileAsync();
+
+        try
+        {
+            appForegroundRef = DotNetObjectReference.Create(this);
+            await Js.InvokeVoidAsync("mobihymnPwa.registerAppForeground", appForegroundRef);
+        }
+        catch { /* older cached pwa.js; cold-start bootstrap still syncs */ }
+
+        if (BoardUi.HasPendingOpen)
+        {
+            showBoardPane = true;
+            await InvokeAsync(StateHasChanged);
+        }
+
+        await RefreshNotifPromptAsync();
+
+        // iOS Home Screen launches at start_url "./" — restore a stashed /groups/... link.
+        try
+        {
+            var pending = await Js.InvokeAsync<string?>("mobihymnPwa.consumePendingDeepLink");
+            if (!string.IsNullOrWhiteSpace(pending))
+            {
+                var path = pending.Trim().TrimStart('/');
+                if (!string.IsNullOrEmpty(path))
+                    Nav.NavigateTo(path, forceLoad: false, replace: true);
+            }
+        }
+        catch { /* older cached pwa.js */ }
+    }
+
+    [JSInvokable]
+    public Task OnAppForeground() => Sync.SyncOnAppOpenAsync();
+
+    async Task RefreshNotifPromptAsync()
+    {
+        if (notifPromptDismissed || !Auth.IsSignedIn)
+        {
+            showNotifPrompt = false;
+            return;
+        }
+        try
+        {
+            var perm = await Firebase.GetNotificationPermissionAsync();
+            // Account mute toggle ≠ browser permission. After clear-data, permission is
+            // often still "default"/"denied" even when the in-app toggle says enabled.
+            if (string.Equals(perm, "granted", StringComparison.OrdinalIgnoreCase))
+            {
+                showNotifPrompt = false;
+            }
+            else if (string.Equals(perm, "denied", StringComparison.OrdinalIgnoreCase))
+            {
+                showNotifPrompt = true;
+                notifPromptText = "Notifications are blocked for this site. Open Account → Register after allowing them in Android settings.";
+                notifPromptAction = "Account";
+            }
+            else
+            {
+                showNotifPrompt = true;
+                notifPromptText = "Allow notifications so board updates reach this device (required after clearing browsing data).";
+                notifPromptAction = "Enable";
+            }
+        }
+        catch
+        {
+            showNotifPrompt = false;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task EnableNotificationsFromPromptAsync()
+    {
+        if (notifPromptBusy) return;
+        notifPromptBusy = true;
+        try
+        {
+            var perm = await Firebase.GetNotificationPermissionAsync();
+            if (string.Equals(perm, "denied", StringComparison.OrdinalIgnoreCase))
+            {
+                Nav.NavigateTo("account");
+                showNotifPrompt = false;
+                return;
+            }
+
+            perm = await Firebase.RequestNotificationPermissionAsync();
+            if (string.Equals(perm, "granted", StringComparison.OrdinalIgnoreCase))
+            {
+                var ok = await BoardNotifications.RegisterTokenAsync();
+                showNotifPrompt = !ok;
+                if (!ok)
+                {
+                    notifPromptText = "Permission granted, but push token was not saved. Open Account and tap Register.";
+                    notifPromptAction = "Account";
+                }
+                else
+                    notifPromptDismissed = true;
+            }
+            else
+            {
+                showNotifPrompt = !string.Equals(perm, "granted", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        finally
+        {
+            notifPromptBusy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    void DismissNotifPrompt()
+    {
+        notifPromptDismissed = true;
+        showNotifPrompt = false;
     }
 
     string HamburgerClass =>
@@ -514,9 +678,24 @@
 
     void OpenReaderSettings() => showReaderSettings = true;
     void OpenBoardPane() => showBoardPane = true;
+
+    void AddToBoardFromNumber()
+    {
+        if (!CanAddToBoard)
+            return;
+        var n = BoardUi.NumSearchHymnNumber;
+        if (string.IsNullOrWhiteSpace(n))
+            return;
+        BoardUi.RequestAddHymn(n);
+    }
     void OnBoardUnread(object? s, EventArgs e) => _ = InvokeAsync(StateHasChanged);
-    void OnBoardOpenRequested(object? s, EventArgs e) =>
-        _ = InvokeAsync(() => { showBoardPane = true; StateHasChanged(); });
+    void OnBoardOpenRequested(object? s, EventArgs e)
+    {
+        State.SetReadView(true);
+        showBoardPane = true;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     void GoBackToRead() => Nav.NavigateTo(ReadHref);
 
     void GoBackFromLogin()
@@ -545,6 +724,7 @@
     void OnChanged()     => InvokeAsync(StateHasChanged);
     void OnBookmarksUi() => InvokeAsync(StateHasChanged);
     void OnCatalog()     => InvokeAsync(StateHasChanged);
+    void OnProfileChanged(object? s, EventArgs e) => InvokeAsync(StateHasChanged);
 
     void BookmarksEnterSelection() => BookmarksUi.OnEnterSelection?.Invoke();
     void BookmarksSelectAll() => BookmarksUi.OnSelectAll?.Invoke();
@@ -556,16 +736,32 @@
     {
         if (Auth.IsSignedIn)
             await Profiles.RefreshCurrentProfileAsync();
+        else
+            BoardNav.Clear();
+        EnforceEmailVerificationGate();
+        await RefreshNotifPromptAsync();
         await InvokeAsync(StateHasChanged);
     }
     void OnNav(object? s, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
-        // Restore chrome when leaving immersive read mode / navigating away
-        if (!IsReadPage && !State.IsReadView)
+        // Always restore immersive chrome when leaving or entering the reader via navigation
+        // (notification deep-links remount /read and previously left topbar+player slid away).
+        if (!State.IsReadView)
             State.SetReadView(true);
+        // Notification / deep-link may navigate while a pending board open is waiting.
+        if (BoardUi.HasPendingOpen)
+            showBoardPane = true;
         if (IsSettingsPage)
             Catalog.AcknowledgeSettingsBadge();
+        EnforceEmailVerificationGate();
         InvokeAsync(StateHasChanged);
+    }
+
+    void EnforceEmailVerificationGate()
+    {
+        if (!Auth.IsSignedIn || Auth.IsEmailVerified || !IsGroupsArea)
+            return;
+        Nav.NavigateTo(AuthNav.VerifyUrl(Path), forceLoad: false, replace: true);
     }
 
     async Task SignOut()
@@ -577,6 +773,7 @@
             if (Auth.IsSignedIn && Prefs.GetBool(PrefKeys.CloudPending, false))
                 await Sync.PushAsync();
             await Auth.SignOutAsync();
+            BoardNav.Clear();
             CloseSidebar();
             Nav.NavigateTo(ReadHref);
         }
@@ -589,13 +786,16 @@
     async Task ShareHymn()
     {
         if (State.ActiveHymn == null) return;
-        var url = Nav.ToAbsoluteUri($"read/{Uri.EscapeDataString(State.ActiveHymn.Number)}").ToString();
-        var title = $"Hymn #{State.ActiveHymn.Number}";
+        var url = "https://mobihymn.web.app/" + $"read/{Uri.EscapeDataString(State.ActiveHymn.Number)}".TrimStart('/');
+        var title = string.IsNullOrWhiteSpace(State.ActiveHymn.FirstLine)
+            ? $"MobiHymn — Hymn #{State.ActiveHymn.Number}"
+            : $"MobiHymn — #{State.ActiveHymn.Number} {State.ActiveHymn.FirstLine}";
+        var text = "Read this hymn on MobiHymn";
         try
         {
             await Js.InvokeVoidAsync("eval",
                 $@"(async()=>{{
-                    if(navigator.share){{await navigator.share({{title:{System.Text.Json.JsonSerializer.Serialize(title)},url:{System.Text.Json.JsonSerializer.Serialize(url)}}});}}
+                    if(navigator.share){{await navigator.share({{title:{System.Text.Json.JsonSerializer.Serialize(title)},text:{System.Text.Json.JsonSerializer.Serialize(text)},url:{System.Text.Json.JsonSerializer.Serialize(url)}}});}}
                     else{{await navigator.clipboard.writeText({System.Text.Json.JsonSerializer.Serialize(url)});}}
                 }})()");
         }
@@ -632,9 +832,12 @@
 
     public void Dispose()
     {
+        _ = Js.InvokeVoidAsync("mobihymnPwa.unregisterAppForeground");
+        appForegroundRef?.Dispose();
         State.Changed -= OnChanged;
         BookmarksUi.Changed -= OnBookmarksUi;
         Auth.AuthStateChanged -= OnAuth;
+        Profiles.ProfileChanged -= OnProfileChanged;
         Nav.LocationChanged -= OnNav;
         Catalog.Changed -= OnCatalog;
         BoardUi.UnreadChanged -= OnBoardUnread;

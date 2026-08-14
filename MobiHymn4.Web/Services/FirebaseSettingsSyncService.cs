@@ -12,6 +12,8 @@ public sealed class FirebaseSettingsSyncService : IUserSettingsSyncService
     CancellationTokenSource? debounce;
     bool bootstrapped;
     bool wasSignedIn;
+    int appOpenSyncInFlight;
+    DateTimeOffset lastAppOpenSyncStarted;
 
     public FirebaseSettingsSyncService(
         IUserSettingsCloudStore cloud,
@@ -74,6 +76,15 @@ public sealed class FirebaseSettingsSyncService : IUserSettingsSyncService
 
         var justSignedIn = !wasSignedIn;
         wasSignedIn = true;
+
+        // Sign-up sets SeedLocalSettingsOnNextSync and uploads from Login — don't race it
+        // with a prefer-cloud adopt that can wipe guest settings.
+        if (prefs.GetBool(PrefKeys.SeedLocalSettingsOnNextSync, false))
+        {
+            SyncStateChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
         await PullAndMergeAsync(preferCloud: justSignedIn);
     }
 
@@ -83,7 +94,8 @@ public sealed class FirebaseSettingsSyncService : IUserSettingsSyncService
             return;
 
         var owner = prefs.Get(PrefKeys.CloudOwnerUid);
-        if (!string.IsNullOrEmpty(owner) && owner != auth.CurrentUserId)
+        var seeding = prefs.GetBool(PrefKeys.SeedLocalSettingsOnNextSync, false);
+        if (!seeding && !string.IsNullOrEmpty(owner) && owner != auth.CurrentUserId)
             return;
 
         prefs.SetBool(PrefKeys.CloudPending, true);
@@ -120,5 +132,28 @@ public sealed class FirebaseSettingsSyncService : IUserSettingsSyncService
     {
         await engine.PullAndMergeAsync(preferCloud, cancellationToken);
         SyncStateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public async Task SyncOnAppOpenAsync(CancellationToken cancellationToken = default)
+    {
+        if (!bootstrapped || !auth.IsSignedIn || string.IsNullOrWhiteSpace(auth.CurrentUserId))
+            return;
+
+        var now = DateTimeOffset.UtcNow;
+        if (now - lastAppOpenSyncStarted < TimeSpan.FromSeconds(10)
+            || Interlocked.CompareExchange(ref appOpenSyncInFlight, 1, 0) != 0)
+            return;
+
+        lastAppOpenSyncStarted = now;
+        try
+        {
+            // Timestamp merge applies newer Firebase settings while preserving any
+            // local edits that were still pending when this device was backgrounded.
+            await PullAndMergeAsync(preferCloud: false, cancellationToken);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref appOpenSyncInFlight, 0);
+        }
     }
 }

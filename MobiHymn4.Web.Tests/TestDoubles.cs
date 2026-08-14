@@ -138,6 +138,12 @@ sealed class StubLyricsSource : IHymnLyricsSource
     public void InvalidateLocalCaches() { }
     public Task<HymnCatalogMeta> GetCatalogMetaFreshAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(new HymnCatalogMeta());
+
+    public Task SyncCatalogFromNetworkAsync(
+        IProgress<(int Completed, int Total)>? progress = null,
+        CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public Task HydrateLocalCatalogAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
 
 sealed class StubSyncService : IUserSettingsSyncService

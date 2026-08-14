@@ -56,7 +56,7 @@ public static class RolePermissions
         HasLeadershipRole(roles);
 
     /// <summary>
-    /// Leadership roles get board notifications on by default; congregants start muted.
+    /// Projector and accompaniment get board notifications on by default; others start muted.
     /// </summary>
     public static bool GetDefaultNotificationsMuted(IEnumerable<UserRole> roles)
     {
@@ -64,9 +64,7 @@ public static class RolePermissions
             return true;
 
         return !roles.Any(r =>
-            r is UserRole.Pastor
-                or UserRole.WorshipLeader
-                or UserRole.Projector
+            r is UserRole.Projector
                 or UserRole.Accompaniment);
     }
 

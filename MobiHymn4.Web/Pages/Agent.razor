@@ -1,8 +1,11 @@
 @page "/agent"
+@using Newtonsoft.Json
 @inject IAgentApi AgentApi
 @inject AppState State
 @inject AgentUiState AgentUi
+@inject IAppPreferences Prefs
 @inject NavigationManager Nav
+@inject BoardNavigationContext BoardNav
 @inject IJSRuntime Js
 @implements IAsyncDisposable
 
@@ -10,6 +13,7 @@
 
 <div class="selah-page">
     <div class="selah-messages" @ref="messagesEl">
+        <div class="selah-messages-inner">
         @foreach (var msg in Messages)
         {
             <div class="selah-msg">
@@ -86,6 +90,7 @@
                 }
             </div>
         }
+        </div>
     </div>
 
     @if (!string.IsNullOrEmpty(Error))
@@ -163,18 +168,7 @@
     static readonly string Greeting =
         "Hi, I'm Selah! — I can help you pick hymns for your gathering. Tell me a bit about the service: theme, season, mood, key, or a Bible idea, and we'll narrow it together.";
 
-    List<UiMessage> Messages = new()
-    {
-        CreateGreeting()
-    };
-
-    static UiMessage CreateGreeting()
-    {
-        var msg = new UiMessage { Role = "assistant", Content = Greeting };
-        msg.FinishRichFormat();
-        return msg;
-    }
-
+    List<UiMessage> Messages = new();
     string Draft = "";
     string? SessionId;
     bool Busy;
@@ -190,6 +184,14 @@
     CancellationTokenSource? typeCts;
     DotNetObjectReference<Agent>? selfRef;
     IJSObjectReference? netSub;
+    bool sessionLoaded;
+
+    static UiMessage CreateGreeting()
+    {
+        var msg = new UiMessage { Role = "assistant", Content = Greeting };
+        msg.FinishRichFormat();
+        return msg;
+    }
 
     string DeleteBookmarkMessage =>
         string.IsNullOrWhiteSpace(pendingDeleteNumber)
@@ -216,6 +218,10 @@
     {
         AgentUi.OpenSettingsRequested += OnOpenSettings;
         State.Changed += OnStateChanged;
+        LoadSession();
+        if (Messages.Count == 0)
+            Messages.Add(CreateGreeting());
+        sessionLoaded = true;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -234,6 +240,7 @@
             IsOnline = true;
         }
 
+        await ScrollToBottom();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -274,6 +281,7 @@
         var text = Draft.Trim();
         Draft = "";
         Messages.Add(new UiMessage { Role = "user", Content = text, VisibleContent = text });
+        PersistSession();
         var typing = new UiMessage { Role = "assistant", IsTyping = true };
         Messages.Add(typing);
         Busy = true;
@@ -316,11 +324,13 @@
             bubble.FinishRichFormat();
             bubble.Suggestions = suggestions;
             bubble.ShowSuggestions = true;
+            PersistSession();
         }
         catch (Exception ex)
         {
             Messages.Remove(typing);
             Error = ex.Message;
+            PersistSession();
         }
         finally
         {
@@ -416,9 +426,116 @@
         catch { }
     }
 
+    void LoadSession()
+    {
+        try
+        {
+            var raw = Prefs.Get(PrefKeys.SelahSessionJson, "");
+            if (string.IsNullOrWhiteSpace(raw))
+                return;
+
+            var saved = JsonConvert.DeserializeObject<SelahSessionDoc>(raw);
+            if (saved?.Messages == null || saved.Messages.Count == 0)
+                return;
+
+            SessionId = string.IsNullOrWhiteSpace(saved.SessionId) ? null : saved.SessionId;
+            var restored = new List<UiMessage>();
+            foreach (var m in saved.Messages)
+            {
+                if (m == null || string.IsNullOrWhiteSpace(m.Role) || string.IsNullOrWhiteSpace(m.Content))
+                    continue;
+                if (m.Role is not ("user" or "assistant"))
+                    continue;
+
+                var ui = new UiMessage
+                {
+                    Role = m.Role,
+                    Content = m.Content,
+                    Suggestions = m.Suggestions is { Count: > 0 } ? m.Suggestions : null,
+                    ShowSuggestions = true
+                };
+                ui.FinishRichFormat();
+                restored.Add(ui);
+            }
+
+            if (restored.Count > 0)
+                Messages = restored;
+        }
+        catch
+        {
+            // Corrupt cache — start fresh.
+            Prefs.Remove(PrefKeys.SelahSessionJson);
+        }
+    }
+
+    void PersistSession()
+    {
+        if (!sessionLoaded) return;
+        try
+        {
+            var store = Messages
+                .Where(m => !m.IsTyping && !string.IsNullOrWhiteSpace(m.Content) && m.Role is "user" or "assistant")
+                .TakeLast(40)
+                .Select(m => new SelahStoredMessage
+                {
+                    Role = m.Role,
+                    Content = m.Content,
+                    Suggestions = m.Suggestions
+                })
+                .ToList();
+
+            // Only greeting → keep a light footprint (or clear).
+            if (store.Count == 0
+                || (store.Count == 1
+                    && store[0].Role == "assistant"
+                    && store[0].Content == Greeting))
+            {
+                Prefs.Remove(PrefKeys.SelahSessionJson);
+                return;
+            }
+
+            var doc = new SelahSessionDoc
+            {
+                SessionId = SessionId,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                Messages = store
+            };
+            Prefs.Set(PrefKeys.SelahSessionJson, JsonConvert.SerializeObject(doc));
+        }
+        catch
+        {
+            // Ignore quota / serialization issues.
+        }
+    }
+
+    sealed class SelahSessionDoc
+    {
+        [JsonProperty("sessionId")]
+        public string? SessionId { get; set; }
+
+        [JsonProperty("updatedAt")]
+        public DateTimeOffset UpdatedAt { get; set; }
+
+        [JsonProperty("messages")]
+        public List<SelahStoredMessage> Messages { get; set; } = new();
+    }
+
+    sealed class SelahStoredMessage
+    {
+        [JsonProperty("role")]
+        public string Role { get; set; } = "assistant";
+
+        [JsonProperty("content")]
+        public string Content { get; set; } = "";
+
+        [JsonProperty("suggestions")]
+        public List<AgentSearchResult>? Suggestions { get; set; }
+    }
+
     async Task Open(AgentSearchResult s)
     {
         if (string.IsNullOrWhiteSpace(s.Number)) return;
+        BoardNav.Clear();
         var hymn = await State.OpenHymnAsync(s.Number);
         if (hymn != null)
             Nav.NavigateTo($"read/{Uri.EscapeDataString(hymn.Number)}");

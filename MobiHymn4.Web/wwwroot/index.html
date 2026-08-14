@@ -8,9 +8,45 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="description" content="MobiHymn — read hymns in your browser." />
+    <meta name="description" content="MobiHymn - your pocket hymn companion. Read hymns anytime on your phone or tablet." />
+    <meta name="application-name" content="MobiHymn" />
+    <link rel="canonical" href="https://mobihymn.web.app/" />
+
+    <!-- Open Graph / social share preview (crawlers read static HTML only) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="MobiHymn" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content="https://mobihymn.web.app/" />
+    <meta property="og:title" content="MobiHymn" />
+    <meta property="og:description" content="Your pocket hymn companion. Read hymns anytime on your phone or tablet." />
+    <meta property="og:image" content="https://mobihymn.web.app/og-image.png" />
+    <meta property="og:image:secure_url" content="https://mobihymn.web.app/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="MobiHymn - your pocket hymn companion" />
+
+    <!-- Twitter / X card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="MobiHymn" />
+    <meta name="twitter:description" content="Your pocket hymn companion. Read hymns anytime on your phone or tablet." />
+    <meta name="twitter:image" content="https://mobihymn.web.app/og-image.png" />
+    <meta name="twitter:image:alt" content="MobiHymn - your pocket hymn companion" />
+
     <title>MobiHymn</title>
     <base href="/" />
+    <script>
+      // If Hosting SPA-fallback serves Firebase's /__/auth/action URL, apply the code in-app.
+      (function () {
+        try {
+          var path = location.pathname || "";
+          var q = location.search || "";
+          if (path.indexOf("/__/auth/action") === 0 && /[?&]oobCode=/.test(q)) {
+            location.replace("/auth/action" + q + (location.hash || ""));
+          }
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
     <!-- Paint splash + access gate immediately (before Blazor). -->
     <style>
       html, body {
@@ -36,6 +72,8 @@
         height: auto;
         max-height: 90px;
         object-fit: contain;
+        /* SVG is already yellow-on-transparent; avoid any browser dark plate. */
+        background: transparent;
       }
       /* Access gate — outside #app so Blazor cannot clear it */
       #mh-pwa-gate {
@@ -95,17 +133,17 @@
       }
     </style>
     <link rel="preload" href="logo-mark.svg" as="image" fetchpriority="high" />
-    <link rel="stylesheet" href="css/app.css?v=selah105" />
+    <link rel="stylesheet" href="css/app.css?v=selah139" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" media="print" onload="this.media='all'" />
     <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" /></noscript>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- Roboto only from Google — other reader faces are local MAUI TTFs in /fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
-    <link rel="icon" type="image/png" href="icon-512-maskable.png?v=splash2" />
+    <link rel="icon" type="image/png" href="icon-512-maskable.png?v=splash6" />
     <link href="manifest.webmanifest" rel="manifest" />
-    <link rel="apple-touch-icon" sizes="512x512" href="icon-512-maskable.png?v=splash2" />
-    <link rel="apple-touch-icon" sizes="192x192" href="icon-192-maskable.png?v=splash2" />
+    <link rel="apple-touch-icon" sizes="512x512" href="icon-512-maskable.png?v=splash6" />
+    <link rel="apple-touch-icon" sizes="192x192" href="icon-192-maskable.png?v=splash6" />
 </head>
 
 <body>
@@ -133,8 +171,8 @@
                     <li>Tap <strong>Add</strong>, then open <strong>MobiHymn</strong> from your home screen.</li>
                 </ol>
                 <ol id="mh-pwa-install-steps-other" class="mh-gate-steps" hidden>
-                    <li>Open your browser menu (⋮ or ⋯).</li>
-                    <li>Choose <strong>Install app</strong> or <strong>Add to Home screen</strong>.</li>
+                    <li>Open the browser menu (⋮).</li>
+                    <li>Choose <strong>Install</strong> or <strong>Add to Home screen</strong>.</li>
                     <li>Open <strong>MobiHymn</strong> from your home screen.</li>
                 </ol>
             </div>
@@ -157,15 +195,16 @@
     <script src="https://unpkg.com/@lottiefiles/lottie-player@2.0.4/dist/lottie-player.js" defer></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/prefs.js?v=4"></script>
-    <script src="js/audio.js?v=midi10"></script>
-    <script src="js/firebase.js?v=fcm5"></script>
-    <script src="js/board-drag.js?v=4"></script>
-    <script src="js/pwa.js?v=selah96"></script>
+    <script src="js/audio.js?v=midi12"></script>
+    <script src="js/firebase.js?v=fcm27"></script>
+    <script src="js/board-drag.js?v=6"></script>
+    <script src="js/pwa.js?v=install8"></script>
     <script src="js/speech.js?v=1"></script>
     <script src="js/net.js?v=1"></script>
     <script src="js/wake-lock.js?v=1"></script>
     <script src="js/scrollbars.js?v=1"></script>
     <script src="js/read-pinch.js?v=4"></script>
+    <script src="js/verify.js?v=1"></script>
     <script src="js/hymn-catalog.js?v=selah86"></script>
     <script src="_framework/blazor.webassembly.js"></script>
     <script>
@@ -198,7 +237,7 @@
         });
         window.addEventListener('focus', checkForUpdate);
 
-        navigator.serviceWorker.register('service-worker.js').then(function (reg) {
+        navigator.serviceWorker.register('/service-worker.js').then(function (reg) {
           checkForUpdate();
           if (reg.waiting) askSkip(reg.waiting);
           reg.addEventListener('updatefound', function () {

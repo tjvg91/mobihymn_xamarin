@@ -8,10 +8,11 @@
             <h2 id="confirm-dialog-title" class="confirm-dialog-title">@Title</h2>
             <p class="confirm-dialog-message">@Message</p>
             <div class="confirm-dialog-actions">
-                <button type="button" class="confirm-dialog-btn" @onclick="Cancel">@CancelLabel</button>
+                <button type="button" class="confirm-dialog-btn" disabled="@confirming" @onclick="Cancel">@CancelLabel</button>
                 <button type="button"
                         class="confirm-dialog-btn @(DangerConfirm ? "confirm-dialog-btn-danger" : "confirm-dialog-btn-primary")"
-                        @onclick="Confirm">@ConfirmLabel</button>
+                        disabled="@confirming"
+                        @onclick="Confirm">@(confirming ? "…" : ConfirmLabel)</button>
             </div>
         </div>
     </div>
@@ -32,6 +33,7 @@
     bool show;
     bool animOpen;
     bool closing;
+    bool confirming;
 
     protected override void OnParametersSet()
     {
@@ -39,6 +41,7 @@
         {
             show = true;
             animOpen = false;
+            confirming = false;
             _ = EnterAsync();
         }
         else if (!Visible && show && !closing)
@@ -64,6 +67,7 @@
         await Task.Delay(CloseMs);
         show = false;
         closing = false;
+        confirming = false;
         if (notifyParent || Visible)
             await VisibleChanged.InvokeAsync(false);
         await InvokeAsync(StateHasChanged);
@@ -71,9 +75,25 @@
 
     async Task Confirm()
     {
-        await OnConfirmed.InvokeAsync();
+        if (confirming || closing) return;
+        confirming = true;
+        await InvokeAsync(StateHasChanged);
+        // Close first so slow OnConfirmed work (e.g. boardUpdateList) does not
+        // leave the popup frozen on "Remove" with no feedback.
         await ExitAsync(notifyParent: true);
+        try
+        {
+            await OnConfirmed.InvokeAsync();
+        }
+        finally
+        {
+            confirming = false;
+        }
     }
 
-    Task Cancel() => ExitAsync(notifyParent: true);
+    Task Cancel()
+    {
+        if (confirming) return Task.CompletedTask;
+        return ExitAsync(notifyParent: true);
+    }
 }

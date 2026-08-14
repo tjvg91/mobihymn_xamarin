@@ -78,13 +78,17 @@ public sealed class FirebaseProfileService : IProfileService
 
     public async Task SetNotificationsMutedAsync(bool muted)
     {
-        if (!auth.IsSignedIn) return;
+        if (!auth.IsSignedIn)
+            throw new InvalidOperationException("Sign in to change notification settings.");
         await firebase.EnsureReadyAsync();
         await firebase.SetDocAsync($"{FirestorePaths.Users}/{auth.CurrentUserId}", new
         {
             notificationsMuted = muted,
             notificationsPreferenceSet = true
         });
+
+        if (CurrentProfile == null)
+            await RefreshCurrentProfileAsync();
 
         if (CurrentProfile != null)
         {
@@ -113,8 +117,22 @@ public sealed class FirebaseProfileService : IProfileService
             DisplayName = GetString(d, "displayName") ?? "",
             Roles = GetStringList(d, "roles"),
             GroupIds = GetStringList(d, "groupIds"),
-            NotificationsMuted = d.TryGetProperty("notificationsMuted", out var m) && m.ValueKind == JsonValueKind.True,
-            NotificationsPreferenceSet = d.TryGetProperty("notificationsPreferenceSet", out var p) && p.ValueKind == JsonValueKind.True
+            NotificationsMuted = IsTruthy(d, "notificationsMuted"),
+            NotificationsPreferenceSet = IsTruthy(d, "notificationsPreferenceSet")
+        };
+    }
+
+    static bool IsTruthy(JsonElement d, string name)
+    {
+        if (!d.TryGetProperty(name, out var p))
+            return false;
+        return p.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.String => bool.TryParse(p.GetString(), out var b) && b,
+            JsonValueKind.Number => p.TryGetInt32(out var n) && n != 0,
+            _ => false
         };
     }
 
@@ -150,6 +168,7 @@ public sealed class FirebaseGroupService : IGroupService
 
     public async Task<IReadOnlyList<WorshipGroupDoc>> GetMyGroupsAsync()
     {
+        EnsureSignedInVerified();
         await profiles.RefreshCurrentProfileAsync();
         var uid = auth.CurrentUserId;
         var idSet = new HashSet<string>(StringComparer.Ordinal);
@@ -261,6 +280,7 @@ public sealed class FirebaseGroupService : IGroupService
 
     public async Task<WorshipGroupDoc> CreateGroupAsync(string name)
     {
+        await EnsureSignedInVerifiedAsync();
         await firebase.EnsureReadyAsync();
         var id = Guid.NewGuid().ToString("N")[..20];
         var code = Random.Shared.Next(100000, 999999).ToString();
@@ -302,8 +322,22 @@ public sealed class FirebaseGroupService : IGroupService
 
     public async Task<WorshipGroupDoc> JoinGroupAsync(string joinCode)
     {
+        await EnsureSignedInVerifiedAsync();
         await firebase.EnsureReadyAsync();
-        var matches = await firebase.QueryCollectionAsync(FirestorePaths.Groups, "joinCode", "==", joinCode.Trim());
+        var code = joinCode?.Trim() ?? "";
+        if (string.IsNullOrEmpty(code))
+            throw new InvalidOperationException("Enter an invite code.");
+
+        JsonElement[] matches;
+        try
+        {
+            matches = await firebase.QueryCollectionAsync(FirestorePaths.Groups, "joinCode", "==", code);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(FormatFirestorePermissionError(ex, "Looking up that invite code"), ex);
+        }
+
         if (matches.Length == 0)
             throw new InvalidOperationException("No group found for that join code.");
 
@@ -318,26 +352,44 @@ public sealed class FirebaseGroupService : IGroupService
 
         var group = MapGroup(id, doc);
         var profile = profiles.CurrentProfile ?? new UserProfileDoc { Id = auth.CurrentUserId, Email = auth.CurrentEmail };
+
+        // Create membership first (source of truth for board access), then update profile.
+        try
+        {
+            await firebase.SetDocAsync($"{FirestorePaths.Groups}/{id}/{FirestorePaths.Members}/{auth.CurrentUserId}", new
+            {
+                email = auth.CurrentEmail,
+                firstName = profile.FirstName,
+                lastName = profile.LastName,
+                nickname = profile.Nickname,
+                roles = profile.Roles,
+                joinedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                isAdmin = false
+            });
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(FormatFirestorePermissionError(ex, "Joining the group"), ex);
+        }
+
         if (!profile.GroupIds.Contains(id))
             profile.GroupIds.Add(id);
-        await profiles.SaveProfileAsync(profile);
-
-        await firebase.SetDocAsync($"{FirestorePaths.Groups}/{id}/{FirestorePaths.Members}/{auth.CurrentUserId}", new
+        try
         {
-            email = auth.CurrentEmail,
-            firstName = profile.FirstName,
-            lastName = profile.LastName,
-            nickname = profile.Nickname,
-            roles = profile.Roles,
-            joinedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            isAdmin = false
-        });
+            await profiles.SaveProfileAsync(profile);
+        }
+        catch (Exception ex)
+        {
+            // Membership already written — surface a softer message.
+            Console.WriteLine($"JoinGroup profile update failed: {ex.Message}");
+        }
 
         return group;
     }
 
     public async Task LeaveGroupAsync(string groupId)
     {
+        EnsureSignedInVerified();
         await firebase.EnsureReadyAsync();
         var members = (await GetMembersAsync(groupId)).ToList();
         await PromoteSuccessorIfNeededAsync(groupId, members, auth.CurrentUserId);
@@ -353,6 +405,7 @@ public sealed class FirebaseGroupService : IGroupService
 
     public async Task<IReadOnlyList<GroupMemberDoc>> GetMembersAsync(string groupId)
     {
+        EnsureSignedInVerified();
         await firebase.EnsureReadyAsync();
         var rows = await firebase.QueryCollectionAsync($"{FirestorePaths.Groups}/{groupId}/{FirestorePaths.Members}");
         var members = rows.Select(MapMember).ToList();
@@ -362,6 +415,7 @@ public sealed class FirebaseGroupService : IGroupService
 
     public async Task SetMemberAdminAsync(string groupId, string memberId, bool isAdmin)
     {
+        EnsureSignedInVerified();
         await firebase.EnsureReadyAsync();
         var gid = groupId?.Trim() ?? "";
         var uid = memberId?.Trim() ?? "";
@@ -376,6 +430,7 @@ public sealed class FirebaseGroupService : IGroupService
 
     public async Task RemoveMemberAsync(string groupId, string memberId)
     {
+        EnsureSignedInVerified();
         await firebase.EnsureReadyAsync();
         var gid = groupId?.Trim() ?? "";
         var uid = memberId?.Trim() ?? "";
@@ -515,6 +570,50 @@ public sealed class FirebaseGroupService : IGroupService
         {
             return "";
         }
+    }
+
+    void EnsureSignedInVerified()
+    {
+        if (!auth.IsSignedIn)
+            throw new InvalidOperationException("Sign in to continue.");
+        if (!auth.IsEmailVerified)
+            throw new InvalidOperationException("Verify your email to continue.");
+    }
+
+    /// <summary>
+    /// Force-refresh the Firebase ID token so Firestore rules see email_verified.
+    /// reload() alone is not enough — rules use the JWT claim.
+    /// </summary>
+    async Task EnsureSignedInVerifiedAsync()
+    {
+        if (!auth.IsSignedIn)
+            throw new InvalidOperationException("Sign in to continue.");
+
+        try
+        {
+            await auth.RefreshEmailVerificationStatusAsync();
+        }
+        catch
+        {
+            try { await firebase.RefreshIdTokenAsync(true); }
+            catch { /* best-effort */ }
+        }
+
+        if (!auth.IsEmailVerified)
+            throw new InvalidOperationException("Verify your email to continue.");
+    }
+
+    static string FormatFirestorePermissionError(Exception ex, string action)
+    {
+        var raw = ex.Message ?? "";
+        if (raw.Contains("permission", StringComparison.OrdinalIgnoreCase)
+            || raw.Contains("PERMISSION_DENIED", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{action} was blocked (permission denied). "
+                + "Open Account, confirm your email shows Verified, then try again. "
+                + "If it still fails, sign out and sign back in.";
+        }
+        return raw;
     }
 
     static GroupMemberDoc MapMember(JsonElement r)

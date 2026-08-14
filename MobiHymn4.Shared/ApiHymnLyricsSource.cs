@@ -216,7 +216,7 @@ public sealed class ApiHymnLyricsSource : IHymnLyricsSource
     public async Task<IReadOnlyList<HymnSearchHit>> SearchLyricsAsync(
         string query, CancellationToken cancellationToken = default)
     {
-        var needle = (query ?? "").Trim();
+        var needle = StripPunctuation((query ?? "").Trim());
         if (needle.Length < 2)
             return Array.Empty<HymnSearchHit>();
 
@@ -228,7 +228,7 @@ public sealed class ApiHymnLyricsSource : IHymnLyricsSource
         {
             foreach (var line in doc.Lines)
             {
-                if (line.IndexOf(needle, StringComparison.OrdinalIgnoreCase) < 0)
+                if (StripPunctuation(line).IndexOf(needle, StringComparison.OrdinalIgnoreCase) < 0)
                     continue;
 
                 var key = $"{doc.Number}\0{SortKey(line)}";

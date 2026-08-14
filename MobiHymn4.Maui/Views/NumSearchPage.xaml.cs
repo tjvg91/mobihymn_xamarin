@@ -21,7 +21,6 @@ namespace MobiHymn4.Views
         bool isNewInput = true;
 
         NumSearchViewModel model;
-        readonly IAddToBoardService addToBoardService = ServiceHelper.Get<IAddToBoardService>();
         CancellationTokenSource voicePulseCts;
         CancellationTokenSource voiceListenCts;
 
@@ -46,7 +45,6 @@ namespace MobiHymn4.Views
             UpdateToolbarIcons();
             UpdateInputModeBar();
             UpdateBackIcon();
-            UpdateBoardToolbar();
             UpdateVoiceListeningAnimation();
             ShowDownloadPopupIfNeeded();
             ScheduleDownloadPopupRetries();
@@ -106,35 +104,6 @@ namespace MobiHymn4.Views
                 };
             }
 
-            if (tbAddBoard != null)
-            {
-                tbAddBoard.IconImageSource = new FontImageSource
-                {
-                    FontFamily = "FAS",
-                    Glyph = FontAwesomeIcons.Plus,
-                    Size = 17,
-                    Color = iconColor,
-                };
-            }
-        }
-
-        void UpdateBoardToolbar()
-        {
-            if (tbAddBoard == null)
-                return;
-
-            ToolbarItems.Remove(tbAddBoard);
-            if (addToBoardService.CanAddToBoard)
-                ToolbarItems.Insert(0, tbAddBoard);
-        }
-
-        async void tbAddBoard_Clicked(object sender, EventArgs e)
-        {
-            var number = model?.HymnNum ?? globalInstance.ActiveHymn?.Number;
-            if (string.IsNullOrWhiteSpace(number))
-                return;
-
-            await addToBoardService.TryAddHymnAsync(number, this);
         }
 
         void UpdateInputModeBar()

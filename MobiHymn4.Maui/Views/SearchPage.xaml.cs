@@ -34,6 +34,8 @@ namespace MobiHymn4.Views
         int searchCascadeIndex;
         int searchCascadeToken;
 
+        public bool CanAddToBoard => addToBoardService.CanAddToBoard;
+
         public SearchPage ()
         {
             InitializeComponent();

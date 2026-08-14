@@ -115,7 +115,10 @@ public interface IBoardNotificationService
 {
     Task StartAsync();
     Task StopAsync();
-    Task RegisterTokenAsync();
+    /// <returns>True when an FCM token was obtained and saved.</returns>
+    Task<bool> RegisterTokenAsync(bool force = false);
+    /// <summary>Last RegisterTokenAsync failure detail (empty when last call succeeded).</summary>
+    string? LastRegisterError { get; }
     Task MarkAllReadAsync();
     Task MarkListReadAsync(string groupId, string listId);
 }
@@ -162,6 +165,8 @@ public interface IUserSettingsSyncService
     Task PullAndMergeAsync(CancellationToken cancellationToken = default);
     /// <param name="preferCloud">When true (e.g. after login), reader prefs come from Firestore even if local looks newer.</param>
     Task PullAndMergeAsync(bool preferCloud, CancellationToken cancellationToken = default);
+    /// <summary>Fetch and apply current cloud settings when the app opens or returns to foreground.</summary>
+    Task SyncOnAppOpenAsync(CancellationToken cancellationToken = default);
     void SchedulePush();
 }
 

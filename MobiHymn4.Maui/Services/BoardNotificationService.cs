@@ -327,6 +327,13 @@ public sealed class BoardNotificationService : IBoardNotificationService
                 continue;
 
             currentIds.Add(doc.Id);
+
+            // Same account on another device — ignore own board edits.
+            var isOwnAction = !string.IsNullOrWhiteSpace(doc.UpdatedBy)
+                && string.Equals(doc.UpdatedBy, auth.CurrentUserId, StringComparison.Ordinal);
+            if (isOwnAction)
+                continue;
+
             if (unreadSnapshotSeeded && !knownUnreadNotificationIds.Contains(doc.Id))
                 newlyArrived.Add(doc);
 
@@ -451,6 +458,9 @@ public sealed class BoardNotificationService : IBoardNotificationService
         foreach (var doc in newlyArrived)
         {
             if (doc.SuppressPush || ShouldSuppressPush(doc.GroupId))
+                continue;
+            if (!string.IsNullOrWhiteSpace(doc.UpdatedBy)
+                && string.Equals(doc.UpdatedBy, auth.CurrentUserId, StringComparison.Ordinal))
                 continue;
 
             var who = string.IsNullOrWhiteSpace(doc.UpdatedByName) ? "Someone" : doc.UpdatedByName.Trim();

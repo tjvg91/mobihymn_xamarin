@@ -1,6 +1,7 @@
 @page "/history"
 @inject AppState State
 @inject NavigationManager Nav
+@inject BoardNavigationContext BoardNav
 @implements IDisposable
 
 <PageTitle>History</PageTitle>
@@ -45,6 +46,7 @@ else
 
     async Task Open(string number)
     {
+        BoardNav.Clear();
         var hymn = await State.OpenHymnAsync(number);
         if (hymn != null) Nav.NavigateTo($"read/{Uri.EscapeDataString(hymn.Number)}");
     }

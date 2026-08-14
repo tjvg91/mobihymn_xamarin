@@ -1,5 +1,5 @@
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
-const { onRequest } = require("firebase-functions/v2/https");
+const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp, getApps } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
@@ -192,6 +192,199 @@ exports.midiProxy = onRequest(
 );
 
 /**
+ * Longest-common-subsequence of two id arrays (same multiset of ids in each).
+ * Ids NOT part of the LCS are the ones whose *relative* order changed — i.e.
+ * they were actually dragged/reordered, as opposed to merely shifting position
+ * because something else was added/removed elsewhere in the list.
+ */
+function computeMovedIds(oldSeq, newSeq) {
+  const n = oldSeq.length;
+  const m = newSeq.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      dp[i][j] = oldSeq[i - 1] === newSeq[j - 1]
+        ? dp[i - 1][j - 1] + 1
+        : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+
+  const inLcs = new Set();
+  let i = n;
+  let j = m;
+  while (i > 0 && j > 0) {
+    if (oldSeq[i - 1] === newSeq[j - 1]) {
+      inLcs.add(oldSeq[i - 1]);
+      i--;
+      j--;
+    } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+      i--;
+    } else {
+      j--;
+    }
+  }
+
+  const moved = new Set();
+  for (const id of oldSeq) {
+    if (!inLcs.has(id)) moved.add(id);
+  }
+  return moved;
+}
+
+function hymnLabel(h) {
+  if (!h) return "this entry";
+  if (h.isSection) return `the "${h.sectionName || "section"}" section`;
+  return `hymn #${h.hymnNumber || "?"}`;
+}
+
+function contentChanged(oldEntry, newEntry) {
+  return (
+    Boolean(oldEntry.isSection) !== Boolean(newEntry.isSection) ||
+    (oldEntry.sectionName || null) !== (newEntry.sectionName || null) ||
+    (oldEntry.hymnNumber || null) !== (newEntry.hymnNumber || null) ||
+    (oldEntry.notes || null) !== (newEntry.notes || null)
+  );
+}
+
+/**
+ * Callable — the ONLY sanctioned way to write groups/{groupId}/boards/{listId}
+ * (Firestore rules deny direct client create/update on that path). Enforces:
+ *   - anyone in the group may add new hymns/sections;
+ *   - only the group admin or the original adder may edit/remove/reorder an
+ *     existing entry;
+ *   - authorship (addedBy/addedByName) is stamped server-side and can never
+ *     be spoofed or rewritten by a later editor, even an admin.
+ * This mirrors (and backstops) the client-side checks in BoardPane.razor /
+ * MobiHymn4.Maui BoardService, closing the gap where a technically-savvy
+ * member could otherwise write straight to Firestore and bypass the UI.
+ */
+exports.boardUpdateList = onCall({ region: "us-central1", invoker: "public" }, async (request) => {
+  const auth = request.auth;
+  if (!auth || !auth.uid) {
+    throw new HttpsError("unauthenticated", "Sign in to continue.");
+  }
+  if (auth.token?.email_verified !== true) {
+    throw new HttpsError("failed-precondition", "Verify your email to continue.");
+  }
+
+  const data = request.data || {};
+  const groupId = typeof data.groupId === "string" ? data.groupId : "";
+  const listId = typeof data.listId === "string" ? data.listId : "";
+  const hymns = Array.isArray(data.hymns) ? data.hymns : null;
+  if (!groupId || !listId || !hymns) {
+    throw new HttpsError("invalid-argument", "groupId, listId and hymns are required.");
+  }
+
+  const uid = auth.uid;
+  const db = getFirestore();
+  const groupRef = db.collection("groups").doc(groupId);
+  const boardRef = groupRef.collection("boards").doc(listId);
+
+  const [groupSnap, memberSnap, boardSnap] = await Promise.all([
+    groupRef.get(),
+    groupRef.collection("members").doc(uid).get(),
+    boardRef.get(),
+  ]);
+
+  if (!groupSnap.exists) {
+    throw new HttpsError("not-found", "Group not found.");
+  }
+  if (!memberSnap.exists) {
+    throw new HttpsError("permission-denied", "You are not a member of this group.");
+  }
+
+  const group = groupSnap.data() || {};
+  const member = memberSnap.data() || {};
+  const isAdmin = member.isAdmin === true || group.createdBy === uid;
+
+  const before = boardSnap.exists ? boardSnap.data() || {} : null;
+  const oldHymns = Array.isArray(before?.hymns) ? before.hymns : [];
+  const oldById = new Map(oldHymns.filter((h) => h && h.id).map((h) => [String(h.id), h]));
+
+  const oldSeq = oldHymns.filter((h) => h && h.id).map((h) => String(h.id));
+  const newSeqAll = hymns.filter((h) => h && h.id).map((h) => String(h.id));
+  const newIdSet = new Set(newSeqAll);
+  const commonOldSeq = oldSeq.filter((id) => newIdSet.has(id));
+  const commonNewSeq = newSeqAll.filter((id) => oldById.has(id));
+  const movedIds = isAdmin
+    ? new Set()
+    : computeMovedIds(commonOldSeq, commonNewSeq);
+
+  let callerName = null;
+  const finalHymns = [];
+  for (const raw of hymns) {
+    if (!raw || typeof raw !== "object" || !raw.id) continue;
+    const id = String(raw.id);
+    const old = oldById.get(id);
+    const entry = {
+      id,
+      isSection: raw.isSection === true,
+      sectionName: raw.sectionName ?? null,
+      hymnNumber: raw.hymnNumber ?? null,
+      sortOrder: typeof raw.sortOrder === "number" ? raw.sortOrder : 0,
+      notes: raw.notes ?? null,
+      updatedAt: raw.updatedAt ?? null,
+    };
+
+    if (!old) {
+      // New entry — any group member may add one, but authorship is stamped
+      // from the verified caller so it can never be spoofed.
+      if (callerName === null) {
+        const userSnap = await db.collection("users").doc(uid).get();
+        callerName = pickName(userSnap.exists ? userSnap.data() : null) || pickName(member) || "";
+      }
+      entry.addedBy = uid;
+      entry.addedByName = callerName;
+      // Always stamp server time so onBoardWrite can detect adds/edits reliably
+      // (client clocks / missing updatedAt previously caused silent notifications).
+      entry.updatedAt = Date.now();
+    } else {
+      const needsOwnership = contentChanged(old, entry) || movedIds.has(id);
+      if (needsOwnership && !isAdmin && old.addedBy !== uid) {
+        throw new HttpsError(
+          "permission-denied",
+          `Only the group admin or ${old.addedByName || "the person who added it"} can change ${hymnLabel(old)}.`
+        );
+      }
+      // Authorship can never be rewritten by whoever is editing, not even an admin.
+      entry.addedBy = old.addedBy ?? null;
+      entry.addedByName = old.addedByName ?? null;
+      if (contentChanged(old, entry)) {
+        entry.updatedAt = Date.now();
+      } else {
+        // Preserve prior updatedAt (number or Timestamp) when only sortOrder moved.
+        entry.updatedAt = old.updatedAt ?? entry.updatedAt ?? null;
+      }
+    }
+
+    finalHymns.push(entry);
+  }
+
+  for (const [id, old] of oldById) {
+    if (newIdSet.has(id)) continue;
+    if (!isAdmin && old.addedBy !== uid) {
+      throw new HttpsError(
+        "permission-denied",
+        `Only the group admin or ${old.addedByName || "the person who added it"} can remove ${hymnLabel(old)}.`
+      );
+    }
+  }
+
+  await boardRef.set({
+    name: typeof data.name === "string" ? data.name : "",
+    createdAt: typeof data.createdAt === "number" ? data.createdAt : Date.now(),
+    createdBy: typeof data.createdBy === "string" && data.createdBy ? data.createdBy : uid,
+    updatedBy: uid,
+    updatedAt: Date.now(),
+    hymns: finalHymns,
+    hymnCount: finalHymns.filter((h) => !h.isSection).length,
+    entryCount: finalHymns.length,
+  });
+
+  return { ok: true };
+});
+
+/**
  * Phase 4 — notify group members when a hymn list (board) changes.
  * Skips the actor for FCM.
  * Always writes in-app notification docs for other members (badges).
@@ -211,7 +404,8 @@ exports.onBoardWrite = onDocumentWritten(
     const db = getFirestore();
     const groupSnap = await db.collection("groups").doc(groupId).get();
     const groupName = groupSnap.exists ? groupSnap.data().name || "Your group" : "Your group";
-    const actorUid = after.updatedBy || "";
+    const before = event.data?.before?.data() || null;
+    const actorUid = resolveActorUid(before, after);
     const actorName = await resolveActorName(db, actorUid, groupId);
 
     const membersSnap = await db.collection("groups").doc(groupId).collection("members").get();
@@ -220,7 +414,8 @@ exports.onBoardWrite = onDocumentWritten(
     }
 
     const listLabel = formatListLabel(after.name, listId);
-    const change = describeHymnChange(event.data?.before?.data(), after);
+    const change = describeHymnChange(before, after);
+    console.log(`[BoardNotify] ${groupId}/${listId} action=${change.action} count=${change.count} silent=${change.silent} actor=${actorUid}`);
     if (change.silent) {
       return; // reorder / section-move only — no content change
     }
@@ -228,13 +423,13 @@ exports.onBoardWrite = onDocumentWritten(
     const title = `${who} ${change.verb} ${change.object}`;
     const body = `${groupName} · ${listLabel}`;
     const newHymnCount = Math.max(1, change.count);
-    const unmutedRoles = ["pastor", "worshipLeader", "projector", "accompaniment"];
+    const unmutedRoles = ["projector", "accompaniment"];
     const channelId = "com.tjapps.mobihymn.board";
 
     const sends = [];
     for (const memberDoc of membersSnap.docs) {
       const uid = memberDoc.id;
-      if (!uid || uid === actorUid) {
+      if (!uid || (actorUid && uid === actorUid)) {
         continue;
       }
 
@@ -246,11 +441,17 @@ exports.onBoardWrite = onDocumentWritten(
       const user = userSnap.data() || {};
       const roles = Array.isArray(user.roles) ? user.roles : [];
       const member = memberDoc.data() || {};
+      const memberRoles = Array.isArray(member.roles) ? member.roles : [];
+      // Prefer group member roles, fall back to profile roles (leadership = unmuted by default).
+      const effectiveRoles = memberRoles.length > 0 ? memberRoles : roles;
+      const preferenceSet = user.notificationsPreferenceSet === true
+        || user.notificationsPreferenceSet === "true";
       // Explicit Account mute always wins. Otherwise use role default (leadership unmuted).
       const userMuted = user.notificationsMuted === true
-        || (!user.notificationsPreferenceSet
-          && !roles.some((r) => unmutedRoles.includes(r)));
-      const groupMuted = member.notificationsMuted === true;
+        || user.notificationsMuted === "true"
+        || (!preferenceSet && !effectiveRoles.some((r) => unmutedRoles.includes(r)));
+      const groupMuted = member.notificationsMuted === true
+        || member.notificationsMuted === "true";
       const muted = userMuted || groupMuted;
 
       // In-app badges for every other member; tray/FCM only when not muted.
@@ -277,6 +478,7 @@ exports.onBoardWrite = onDocumentWritten(
       await notifRef.set(notif);
 
       if (muted) {
+        console.log(`[BoardNotify] skip ${uid}: muted (user=${userMuted} group=${groupMuted})`);
         continue;
       }
 
@@ -284,66 +486,92 @@ exports.onBoardWrite = onDocumentWritten(
       const seenTokens = new Set();
       const tokens = [];
       for (const d of tokensSnap.docs) {
-        const token = d.data()?.token;
+        const row = d.data() || {};
+        const token = row.token;
         if (typeof token !== "string" || token.length === 0 || seenTokens.has(token)) {
           continue;
         }
         seenTokens.add(token);
-        tokens.push({ token, ref: d.ref });
+        const platform = typeof row.platform === "string" ? row.platform : "Web";
+        tokens.push({ token, ref: d.ref, platform });
       }
+      console.log(`[BoardNotify] ${uid}: ${tokens.length} token(s) to send (${tokens.map((t) => t.platform).join(",")})`);
 
       const collapseKey = `board-${listId}`;
-      for (const { token, ref } of tokens) {
+      const boardPath = `/read?groupId=${encodeURIComponent(groupId)}&listId=${encodeURIComponent(listId)}`;
+      for (const { token, ref, platform } of tokens) {
+        const isWeb = !platform || /^web$/i.test(platform);
+        // Web tokens: also send a visible webpush.notification so Chrome paints the
+        // tray even when the push subscription was recently recreated. Keep title/body
+        // in `data` for our SW click handler. Do NOT set fcmOptions.link (Firebase's
+        // default click handler would hijack taps).
+        const message = {
+          token,
+          data: {
+            type: "boardUpdate",
+            title,
+            body,
+            groupId,
+            listId,
+            date: listId,
+            groupName,
+            updatedBy: actorUid || "",
+            updatedByName: actorName || "",
+            changeAction: change.action,
+            newHymnCount: String(newHymnCount),
+            boardPath,
+            is_silent_in_foreground: "true",
+          },
+        };
+        if (!isWeb) {
+          message.android = {
+            priority: "high",
+            collapseKey,
+            notification: {
+              title,
+              body,
+              channelId,
+              tag: collapseKey,
+              priority: "high",
+              defaultSound: true,
+            },
+          };
+          message.apns = {
+            headers: { "apns-priority": "10" },
+            payload: {
+              aps: {
+                alert: { title, body },
+                sound: "default",
+              },
+            },
+          };
+        } else {
+          // Visible web tray again (data-only alone needs a healthy SW + token;
+          // after cleared browsing data that often fails silently). No fcmOptions.link
+          // — that made Firebase's SW click handler hijack taps. Our SW registers
+          // notificationclick BEFORE firebase.messaging() and stops propagation.
+          message.webpush = {
+            headers: { Urgency: "high", TTL: "86400" },
+            notification: {
+              title,
+              body,
+              icon: "/icon-192.png",
+              badge: "/icon-192.png",
+              tag: collapseKey,
+              renotify: true,
+            },
+          };
+        }
+
         sends.push(
           getMessaging()
-            .send({
-              token,
-              notification: { title, body },
-              data: {
-                type: "boardUpdate",
-                groupId,
-                listId,
-                date: listId,
-                groupName,
-                updatedBy: actorUid || "",
-                updatedByName: actorName || "",
-                changeAction: change.action,
-                newHymnCount: String(newHymnCount),
-                // Plugin.Firebase: skip its foreground local Notify (BoardLocalNotifier handles it).
-                is_silent_in_foreground: "true",
-              },
-              android: {
-                priority: "high",
-                collapseKey,
-                notification: {
-                  channelId,
-                  tag: collapseKey,
-                  priority: "high",
-                  defaultSound: true,
-                },
-              },
-              webpush: {
-                headers: { Urgency: "high" },
-                notification: {
-                  title,
-                  body,
-                  icon: "/icon-192.png",
-                  badge: "/icon-192.png",
-                  tag: collapseKey,
-                  renotify: true,
-                },
-                fcmOptions: {
-                  // Relative deep-link handled by firebase-messaging-sw.js click handler via data.
-                  link: "/",
-                },
-              },
-            })
-            .then(() => {
-              console.log(`FCM sent to ${uid}`);
+            .send(message)
+            .then((id) => {
+              console.log(`FCM sent to ${uid} (${platform}) id=${id}`);
             })
             .catch(async (err) => {
               const code = err?.code || err?.errorInfo?.code || "";
-              console.warn(`FCM send failed for ${uid}: ${code || err?.message}`);
+              console.warn(`FCM send failed for ${uid} (${platform}): ${code || err?.message}`);
               if (
                 code === "messaging/registration-token-not-registered" ||
                 code === "messaging/invalid-registration-token" ||
@@ -359,6 +587,38 @@ exports.onBoardWrite = onDocumentWritten(
     await Promise.all(sends);
   }
 );
+
+function asUid(value) {
+  if (typeof value === "string") return value.trim();
+  if (value && typeof value === "object" && typeof value.id === "string")
+    return value.id.trim();
+  return "";
+}
+
+/** Who made this board write — never the original list creator unless they actually wrote it. */
+function resolveActorUid(before, after) {
+  const updatedBy = asUid(after && after.updatedBy);
+  if (updatedBy) return updatedBy;
+
+  const hymns = Array.isArray(after && after.hymns) ? after.hymns : [];
+  const oldIds = new Set(
+    (Array.isArray(before && before.hymns) ? before.hymns : [])
+      .filter((h) => h && h.id)
+      .map((h) => String(h.id))
+  );
+  const addedBys = [];
+  for (const h of hymns) {
+    if (!h || !h.id || oldIds.has(String(h.id))) continue;
+    const by = asUid(h.addedBy);
+    if (by) addedBys.push(by);
+  }
+  if (addedBys.length > 0 && addedBys.every((u) => u === addedBys[0]))
+    return addedBys[0];
+
+  // Brand-new list only — using createdBy on later edits would notify the adder.
+  if (!before) return asUid(after && after.createdBy);
+  return "";
+}
 
 async function resolveActorName(db, actorUid, groupId) {
   if (!actorUid) {
@@ -449,23 +709,28 @@ function describeHymnChange(before, after) {
     afterHymns.filter((h) => h.id).map((h) => [String(h.id), h])
   );
 
-  let added = 0;
-  let updated = 0;
+  const addedHymns = [];
+  const updatedHymns = [];
   const deletedHymns = [];
 
   for (const hymn of afterHymns) {
     const id = hymn.id ? String(hymn.id) : "";
     if (!id) {
-      added += 1;
+      addedHymns.push(hymn);
       continue;
     }
     const prev = beforeMap.get(id);
     if (!prev) {
-      added += 1;
+      addedHymns.push(hymn);
       continue;
     }
-    if (toMillis(hymn.updatedAt) > toMillis(prev.updatedAt)) {
-      updated += 1;
+    // Prefer content diff over updatedAt — client clocks / null stamps used to
+    // make real edits look like silent renumbers and skip FCM entirely.
+    if (
+      contentChanged(prev, hymn) ||
+      toMillis(hymn.updatedAt) > toMillis(prev.updatedAt)
+    ) {
+      updatedHymns.push(hymn);
     }
   }
 
@@ -481,6 +746,8 @@ function describeHymnChange(before, after) {
     });
   }
 
+  const added = addedHymns.length;
+  const updated = updatedHymns.length;
   const deleted = deletedHymns.length;
 
   if (!before) {
@@ -489,7 +756,7 @@ function describeHymnChange(before, after) {
       silent: false,
       action: "added",
       verb: "added",
-      object: count === 1 ? "a hymn" : `${count} hymns`,
+      object: formatHymnObject(afterHymns),
       count,
       deletedHymns: [],
     };
@@ -497,15 +764,19 @@ function describeHymnChange(before, after) {
 
   let action = "updated";
   let count = updated;
+  let hymnsForLabel = updatedHymns;
   if (deleted > 0) {
     action = "deleted";
     count = deleted;
+    hymnsForLabel = deletedHymns;
   } else if (added > 0) {
     action = "added";
     count = added;
+    hymnsForLabel = addedHymns;
   } else if (updated > 0) {
     action = "updated";
     count = updated;
+    hymnsForLabel = updatedHymns;
   } else {
     // Sort-order / section moves only — nothing to notify about.
     return {
@@ -518,14 +789,179 @@ function describeHymnChange(before, after) {
     };
   }
 
-  const singular = count === 1;
   return {
     silent: false,
     action,
     verb: action,
-    object: singular ? "a hymn" : `${count} hymns`,
+    object: formatHymnObject(hymnsForLabel),
     count,
     deletedHymns,
   };
 }
+
+/** e.g. "hymn #12" or "hymns #12, #34, #56" (cap listed numbers). */
+function formatHymnObject(hymns) {
+  const nums = [];
+  for (const h of hymns || []) {
+    const n = h && (h.hymnNumber != null && String(h.hymnNumber).trim() !== "")
+      ? String(h.hymnNumber).trim()
+      : "";
+    if (n) nums.push(n);
+  }
+  if (nums.length === 0) {
+    const count = (hymns && hymns.length) || 0;
+    return count <= 1 ? "a hymn" : `${count} hymns`;
+  }
+  if (nums.length === 1) return `hymn #${nums[0]}`;
+  const shown = nums.slice(0, 3);
+  const extra = nums.length - shown.length;
+  const list = shown.map((n) => `#${n}`).join(", ");
+  return extra > 0 ? `hymns ${list} +${extra}` : `hymns ${list}`;
+}
+
+const { getAuth } = require("firebase-admin/auth");
+
+/** Comma-separated override via env DASHBOARD_ADMIN_EMAILS. */
+const DEFAULT_DASHBOARD_ADMINS = ["tim.gandionco@gmail.com"];
+
+function dashboardAdminEmails() {
+  const fromEnv = String(process.env.DASHBOARD_ADMIN_EMAILS || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  return fromEnv.length > 0 ? fromEnv : DEFAULT_DASHBOARD_ADMINS;
+}
+
+function assertDashboardAdmin(auth) {
+  if (!auth || !auth.uid) {
+    throw new HttpsError("unauthenticated", "Sign in to continue.");
+  }
+  if (auth.token?.admin === true) {
+    return;
+  }
+  const email = typeof auth.token?.email === "string"
+    ? auth.token.email.trim().toLowerCase()
+    : "";
+  if (!email || !dashboardAdminEmails().includes(email)) {
+    throw new HttpsError("permission-denied", "You don’t have access to the dashboard.");
+  }
+}
+
+function normalizeDeviceId(raw) {
+  const id = typeof raw === "string" ? raw.trim() : "";
+  if (!id || id.length < 8 || id.length > 128 || !/^[A-Za-z0-9_-]+$/.test(id)) {
+    return null;
+  }
+  return id;
+}
+
+function normalizePlatform(raw) {
+  const p = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (["pwa", "twa", "android", "ios", "web"].includes(p)) {
+    return p;
+  }
+  return "web";
+}
+
+/**
+ * Upsert a device/install record. Callable without auth (guests / pre-sign-in installs).
+ * When signed in, links the device to the account.
+ */
+exports.registerDevice = onCall({ region: "us-central1", invoker: "public" }, async (request) => {
+  const data = request.data || {};
+  const deviceId = normalizeDeviceId(data.deviceId);
+  if (!deviceId) {
+    throw new HttpsError("invalid-argument", "A valid deviceId is required.");
+  }
+
+  const platform = normalizePlatform(data.platform);
+  // Trust explicit installed flag; never demote a previously installed device.
+  const uid = request.auth?.uid || null;
+  const now = new Date();
+  const db = getFirestore();
+  const ref = db.collection("devices").doc(deviceId);
+  const snap = await ref.get();
+  const prev = snap.exists ? snap.data() || {} : {};
+  const installed = data.installed === true || prev.installed === true;
+
+  const next = {
+    deviceId,
+    platform,
+    installed,
+    uid: uid || prev.uid || null,
+    hasAccount: !!(uid || prev.uid),
+    userAgent: typeof data.userAgent === "string"
+      ? data.userAgent.slice(0, 400)
+      : (prev.userAgent || null),
+    lastSeenAt: now,
+    firstSeenAt: prev.firstSeenAt || now,
+  };
+
+  await ref.set(next, { merge: true });
+  return {
+    ok: true,
+    deviceId,
+    installed: next.installed,
+    hasAccount: next.hasAccount,
+  };
+});
+
+/**
+ * Admin-only census for /dashboard.
+ * - accounts: Firebase Auth users
+ * - withProfile: Firestore users/{uid} docs
+ * - installs: devices with installed=true
+ * - withoutAccounts: installed devices not linked to a uid
+ */
+exports.adminGetDashboardStats = onCall({ region: "us-central1", invoker: "public" }, async (request) => {
+  assertDashboardAdmin(request.auth);
+
+  const db = getFirestore();
+  const authApi = getAuth();
+
+  let accountTotal = 0;
+  let accountVerified = 0;
+  let pageToken;
+  do {
+    const page = await authApi.listUsers(1000, pageToken);
+    for (const user of page.users) {
+      accountTotal += 1;
+      if (user.emailVerified) accountVerified += 1;
+    }
+    pageToken = page.pageToken;
+  } while (pageToken);
+
+  const [profileCountSnap, installCountSnap, guestInstallSnap, deviceTotalSnap] = await Promise.all([
+    db.collection("users").count().get(),
+    db.collection("devices").where("installed", "==", true).count().get(),
+    db.collection("devices").where("installed", "==", true).where("hasAccount", "==", false).count().get(),
+    db.collection("devices").count().get(),
+  ]);
+
+  const platforms = { pwa: 0, twa: 0, android: 0, ios: 0, web: 0, other: 0 };
+  const platformSnap = await db.collection("devices").where("installed", "==", true).select("platform").get();
+  platformSnap.forEach((doc) => {
+    const p = normalizePlatform(doc.get("platform"));
+    if (Object.prototype.hasOwnProperty.call(platforms, p)) {
+      platforms[p] += 1;
+    } else {
+      platforms.other += 1;
+    }
+  });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    accounts: {
+      total: accountTotal,
+      verified: accountVerified,
+      withProfile: profileCountSnap.data().count || 0,
+    },
+    installs: {
+      total: installCountSnap.data().count || 0,
+      byPlatform: platforms,
+    },
+    withoutAccounts: guestInstallSnap.data().count || 0,
+    devicesTracked: deviceTotalSnap.data().count || 0,
+  };
+});
 

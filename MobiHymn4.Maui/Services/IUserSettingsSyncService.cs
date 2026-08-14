@@ -21,6 +21,9 @@ public interface IUserSettingsSyncService
     /// <summary>Full sync: pull+merge then ensure cloud matches local.</summary>
     Task SyncNowAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Fetch and apply current cloud settings when the app opens or returns to foreground.</summary>
+    Task SyncOnAppOpenAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Debounced push after local SaveSettings (no-op if signed out).</summary>
     void SchedulePush();
 }

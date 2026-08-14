@@ -189,7 +189,8 @@ window.mobihymnAudio = (function () {
     const pc = ((base + midiTranspose) % 12 + 12) % 12;
     const useFlats = preferFlats(midiKeyRoot) || (midiTranspose < 0 && !/#/.test(midiKeyRoot));
     const root = (useFlats ? NOTE_NAMES_FLAT : NOTE_NAMES)[pc];
-    return root + " " + midiKeyMode;
+    // Major: "C" / "Eb". Minor: "Am" / "Ebm".
+    return midiKeyMode === "Minor" ? root + "m" : root;
   }
 
   /**
@@ -469,6 +470,25 @@ window.mobihymnAudio = (function () {
         try { midiPlayer.stop(); } catch { /* ignore */ }
       });
 
+      // Keep playhead in sync even if rAF is throttled (background tab / heavy Blazor renders).
+      midiPlayer.on("playing", (payload) => {
+        try {
+          const tick = payload && typeof payload.tick === "number"
+            ? payload.tick
+            : (typeof midiPlayer.getCurrentTick === "function"
+              ? midiPlayer.getCurrentTick()
+              : (midiPlayer.tick || 0));
+          const totalTicks = midiPlayer.totalTicks || 0;
+          if (typeof midiPlayer.getSongTime === "function") {
+            const total = midiPlayer.getSongTime();
+            if (isFinite(total) && total > 0)
+              midiDuration = total;
+          }
+          if (totalTicks > 0 && midiDuration > 0)
+            midiCurrent = Math.max(0, Math.min(midiDuration, (tick / totalTicks) * midiDuration));
+        } catch { /* ignore */ }
+      });
+
       mode = "midi";
       midiPaused = true;
       midiCurrent = 0;
@@ -584,6 +604,8 @@ window.mobihymnAudio = (function () {
 
     getState(el) {
       if (mode === "midi") {
+        // Always refresh from the player clock — UI polls this for the seek thumb.
+        syncMidiTimesFromTicks();
         return {
           current: isFinite(midiCurrent) ? midiCurrent : 0,
           duration: isFinite(midiDuration) ? midiDuration : 0,

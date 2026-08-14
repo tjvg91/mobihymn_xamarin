@@ -2,43 +2,126 @@
 @page "/auth"
 @inject IAuthService Auth
 @inject AuthNavigation AuthNav
+@inject NavigationManager Nav
 
-<PageTitle>Continuing…</PageTitle>
+<PageTitle>@Title</PageTitle>
 
-<div class="login-page">
-    <div class="login-card">
-        <h1 class="login-title">Almost there</h1>
-        <p class="login-lead muted">@Status</p>
+<div class="login-page verify-page">
+    <div class="login-card verify-card verify-card--status @CardToneClass">
+        <div class="verify-hero" aria-hidden="true">
+            <span class="verify-hero-ring @RingClass">
+                @if (Phase == UiPhase.Busy)
+                {
+                    <span class="verify-spinner"></span>
+                }
+                else
+                {
+                    <i class="fa-solid @HeroIcon"></i>
+                }
+            </span>
+        </div>
+
+        <h1 class="login-title verify-title">@Title</h1>
+        <p class="verify-lead muted">@Status</p>
+
+        @if (Phase == UiPhase.Busy || Phase == UiPhase.Success)
+        {
+            <p class="verify-progress" aria-live="polite">
+                <span class="verify-progress-dot"></span>
+                @(Phase == UiPhase.Success ? "Taking you in…" : "Checking your account…")
+            </p>
+        }
+
         @if (!string.IsNullOrEmpty(Error))
         {
             <p class="error">@Error</p>
-            <a class="btn block" href="@AuthNav.LoginUrl()" style="margin-top:12px">Go to log in</a>
+            <a class="btn block verify-resend" href="@(Auth.IsSignedIn ? AuthNav.VerifyUrl() : AuthNav.LoginUrl())">
+                @(Auth.IsSignedIn ? "Request a new link" : "Go to log in")
+            </a>
         }
     </div>
 </div>
 
 @code {
-    string Status = "Checking your account…";
+    enum UiPhase { Busy, Success, Error }
+
+    UiPhase Phase = UiPhase.Busy;
+    string Title = "Verifying email";
+    string Status = "Almost there — confirming your account.";
+    string HeroIcon = "fa-envelope-open-text";
     string? Error;
+
+    string RingClass => Phase switch
+    {
+        UiPhase.Success => "verify-hero-ring--success",
+        UiPhase.Error => "verify-hero-ring--error",
+        _ => "verify-hero-ring--busy"
+    };
+
+    string CardToneClass => Phase switch
+    {
+        UiPhase.Success => "is-success",
+        UiPhase.Error => "is-error",
+        _ => "is-busy"
+    };
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            // Mirror MAUI HandleAuthEmailContinueCoreAsync.
+            var uri = Nav.ToAbsoluteUri(Nav.Uri);
+            var query = ParseQuery(uri.Query);
+            if (query.TryGetValue("oobCode", out var oob) && !string.IsNullOrWhiteSpace(oob))
+            {
+                Nav.NavigateTo("auth/action" + uri.Query, forceLoad: false, replace: true);
+                return;
+            }
+
             if (Auth.IsSignedIn)
             {
                 Status = "Refreshing verification status…";
                 await Auth.RefreshEmailVerificationStatusAsync();
             }
 
-            Status = "Redirecting…";
+            if (Auth.IsSignedIn && !Auth.IsEmailVerified)
+            {
+                Phase = UiPhase.Error;
+                Title = "Email not verified";
+                Status = "If your email link said it expired, request a new one — only the newest link works.";
+                HeroIcon = "fa-clock";
+                Error = "Open the latest verification email, or request a new link below.";
+                return;
+            }
+
+            Phase = UiPhase.Success;
+            Title = Auth.IsEmailVerified ? "Email verified" : "Welcome back";
+            Status = "You’re all set. Continuing to MobiHymn…";
+            HeroIcon = "fa-circle-check";
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(1100);
             await AuthNav.NavigateForAuthStateAsync(replace: true);
         }
         catch (Exception ex)
         {
-            Error = ex.Message;
-            Status = "Couldn’t finish sign-in.";
+            Phase = UiPhase.Error;
+            Title = "Couldn’t continue";
+            Status = "Something went wrong while finishing sign-in.";
+            HeroIcon = "fa-triangle-exclamation";
+            Error = AuthErrorMessages.From(ex);
         }
+    }
+
+    static Dictionary<string, string> ParseQuery(string query)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrEmpty(query)) return map;
+        foreach (var part in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = part.IndexOf('=');
+            var key = Uri.UnescapeDataString(eq >= 0 ? part[..eq] : part);
+            var val = eq >= 0 ? Uri.UnescapeDataString(part[(eq + 1)..]) : "";
+            map[key] = val;
+        }
+        return map;
     }
 }

@@ -6,6 +6,8 @@
 @using MobiHymn4.Shared.Services
 @inject AppState State
 @inject NavigationManager Nav
+@inject BoardNavigationContext BoardNav
+@inject BoardUiState BoardUi
 @inject IAppPreferences Prefs
 @inject IHymnLyricsSource Lyrics
 @inject IJSRuntime Js
@@ -156,7 +158,16 @@
     static readonly Regex SuffixRegex = new("[fst]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     string Mode = "numpad";
-    string HymnNum = "";
+    string hymnNum = "";
+    string HymnNum
+    {
+        get => hymnNum;
+        set
+        {
+            hymnNum = value ?? "";
+            BoardUi.NumSearchHymnNumber = hymnNum;
+        }
+    }
     bool Busy;
     string? Error;
     /// <summary>Next digit replaces the seeded hymn (mirrors MAUI isNewInput).</summary>
@@ -554,6 +565,7 @@
         await StopVoiceListeningAsync();
         try
         {
+            BoardNav.Clear();
             var hymn = await State.OpenHymnAsync(HymnNum);
             if (hymn == null)
             {

@@ -30,6 +30,24 @@
                 </button>
             </div>
         </div>
+        @if (IsSignUp)
+        {
+            <div class="field">
+                <label>Confirm Password</label>
+                <div class="password-field">
+                    <input type="@(ShowConfirmPassword ? "text" : "password")"
+                           @bind="ConfirmPassword"
+                           autocomplete="new-password" />
+                    <button type="button"
+                            class="password-toggle"
+                            title="@(ShowConfirmPassword ? "Hide password" : "Show password")"
+                            aria-label="@(ShowConfirmPassword ? "Hide password" : "Show password")"
+                            @onclick="() => ShowConfirmPassword = !ShowConfirmPassword">
+                        <i class="fa-solid @(ShowConfirmPassword ? "fa-eye-slash" : "fa-eye")" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+        }
 
         @if (!string.IsNullOrEmpty(Error))
         {
@@ -45,7 +63,7 @@
         </button>
 
         <div class="login-links">
-            <button type="button" class="login-link" @onclick="Toggle">
+            <button type="button" class="login-link" disabled="@Busy" @onclick="Toggle">
                 @(IsSignUp ? "Have an account? Log in" : "Need an account? Sign up")
             </button>
             @if (!IsSignUp)
@@ -67,8 +85,10 @@
 
     bool IsSignUp;
     bool ShowPassword;
+    bool ShowConfirmPassword;
     string Email = "";
     string Password = "";
+    string ConfirmPassword = "";
     string? Error;
     string? Info;
     bool Busy;
@@ -82,13 +102,30 @@
 
     void Toggle()
     {
+        if (Busy) return;
         IsSignUp = !IsSignUp;
+        ConfirmPassword = "";
+        ShowConfirmPassword = false;
         Error = Info = null;
     }
 
     async Task Submit()
     {
         Error = Info = null;
+        if (IsSignUp)
+        {
+            if (string.IsNullOrWhiteSpace(ConfirmPassword))
+            {
+                Error = "Confirm your password.";
+                return;
+            }
+            if (Password != ConfirmPassword)
+            {
+                Error = "Passwords do not match.";
+                return;
+            }
+        }
+
         Busy = true;
         try
         {
@@ -98,6 +135,13 @@
                 Prefs.SetBool(PrefKeys.SeedLocalSettingsOnNextSync, true);
                 await Auth.SignUpWithEmailAsync(Email, Password);
                 await Sync.PullAndMergeAsync(preferCloud: false);
+                if (Prefs.GetBool(PrefKeys.SeedLocalSettingsOnNextSync, false)
+                    || Prefs.GetBool(PrefKeys.CloudPending, false))
+                {
+                    // First attempt failed — retry a direct push while local prefs are intact.
+                    await Sync.PushAsync();
+                }
+                Prefs.SetBool(PrefKeys.SeedLocalSettingsOnNextSync, false);
                 Nav.NavigateTo("verify");
             }
             else
@@ -112,7 +156,7 @@
         }
         catch (Exception ex)
         {
-            Error = FriendlyAuthError(ex);
+            Error = AuthErrorMessages.From(ex);
         }
         finally
         {
@@ -137,58 +181,11 @@
         }
         catch (Exception ex)
         {
-            Error = FriendlyAuthError(ex);
+            Error = AuthErrorMessages.From(ex);
         }
         finally
         {
             Busy = false;
         }
-    }
-
-    static string FriendlyAuthError(Exception ex)
-    {
-        var raw = (ex.GetBaseException().Message ?? ex.Message ?? "").ToLowerInvariant();
-
-        if (raw.Contains("auth/wrong-password")
-            || raw.Contains("auth/invalid-password")
-            || raw.Contains("auth/user-not-found")
-            || raw.Contains("auth/invalid-credential")
-            || raw.Contains("auth/invalid-login-credentials"))
-            return "Incorrect email or password.";
-
-        if (raw.Contains("auth/invalid-email"))
-            return "Enter a valid email address.";
-
-        if (raw.Contains("auth/email-already-in-use"))
-            return "An account with this email already exists.";
-
-        if (raw.Contains("auth/weak-password"))
-            return "Password should be at least 6 characters.";
-
-        if (raw.Contains("auth/too-many-requests"))
-            return "Too many attempts. Try again later.";
-
-        if (raw.Contains("auth/network-request-failed") || raw.Contains("failed to fetch"))
-            return "Network error. Check your connection and try again.";
-
-        if (raw.Contains("auth/user-disabled"))
-            return "This account has been disabled.";
-
-        if (raw.Contains("firebase is not configured"))
-            return "Sign-in isn’t configured in this build.";
-
-        if (raw.Contains("auth/missing-email") || raw.Contains("auth/missing-password"))
-            return "Enter your email and password.";
-
-        // Prefer a short Firebase code line over a full stack dump.
-        if (raw.Contains("auth/", StringComparison.Ordinal))
-            return "Couldn’t complete sign-in. Please try again.";
-
-        var firstLine = (ex.GetBaseException().Message ?? ex.Message ?? "")
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .FirstOrDefault() ?? "Something went wrong. Please try again.";
-        if (firstLine.Length > 120)
-            firstLine = firstLine[..117] + "…";
-        return firstLine;
     }
 }

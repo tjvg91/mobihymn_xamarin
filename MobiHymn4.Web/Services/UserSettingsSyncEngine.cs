@@ -72,13 +72,12 @@ public sealed class UserSettingsSyncEngine
             var switched = !string.IsNullOrEmpty(owner) && owner != uid;
 
             var seedLocal = prefs.GetBool(PrefKeys.SeedLocalSettingsOnNextSync, false);
-            if (seedLocal)
-                prefs.SetBool(PrefKeys.SeedLocalSettingsOnNextSync, false);
 
             if (switched || seedLocal || (preferCloud && string.IsNullOrEmpty(owner)))
             {
                 prefs.SetBool(PrefKeys.CloudPending, false);
 
+                // Sign-up seed must keep guest/device prefs. Only wipe on a true account switch.
                 if (switched && !seedLocal)
                 {
                     prefs.Remove(PrefKeys.CloudUpdatedAt);
@@ -93,6 +92,9 @@ public sealed class UserSettingsSyncEngine
                     await cloud.SetSettingsAsync(uid, created);
                     prefs.Set(PrefKeys.CloudOwnerUid, uid);
                     prefs.Set(PrefKeys.CloudUpdatedAt, created.UpdatedAt.ToString("O"));
+                    // Clear only after a successful upload so a failed attempt can retry.
+                    if (seedLocal)
+                        prefs.SetBool(PrefKeys.SeedLocalSettingsOnNextSync, false);
                     LastSyncStatus = seedLocal
                         ? "Local settings saved to new account."
                         : switched
@@ -111,6 +113,8 @@ public sealed class UserSettingsSyncEngine
                     var merged = state.BuildCloudDocument();
                     merged.UpdatedAt = stamp;
                     await cloud.SetSettingsAsync(uid, merged);
+                    if (seedLocal)
+                        prefs.SetBool(PrefKeys.SeedLocalSettingsOnNextSync, false);
                     LastSyncStatus = "Settings synced from cloud.";
                 }
 
@@ -171,7 +175,9 @@ public sealed class UserSettingsSyncEngine
 
         var uid = currentUserId();
         var owner = prefs.Get(PrefKeys.CloudOwnerUid);
-        if (!string.IsNullOrEmpty(owner) && owner != uid)
+        var seeding = prefs.GetBool(PrefKeys.SeedLocalSettingsOnNextSync, false);
+        // Block cross-account flush — except explicit sign-up seed into the new uid.
+        if (!seeding && !string.IsNullOrEmpty(owner) && owner != uid)
         {
             prefs.SetBool(PrefKeys.CloudPending, false);
             return;
@@ -188,7 +194,10 @@ public sealed class UserSettingsSyncEngine
             prefs.Set(PrefKeys.CloudOwnerUid, uid);
             prefs.Set(PrefKeys.CloudUpdatedAt, doc.UpdatedAt.ToString("O"));
             prefs.SetBool(PrefKeys.CloudPending, false);
-            LastSyncStatus = "Local settings uploaded to cloud.";
+            prefs.SetBool(PrefKeys.SeedLocalSettingsOnNextSync, false);
+            LastSyncStatus = seeding
+                ? "Local settings saved to new account."
+                : "Local settings uploaded to cloud.";
         }
         catch (Exception ex)
         {

@@ -97,6 +97,15 @@ public sealed class AuthService : IAuthService
         await User.SendEmailVerificationAsync(AuthEmailActionSettings.Create());
     }
 
+    public async Task<string> GetIdTokenAsync(bool forceRefresh = false)
+    {
+        if (User == null)
+            return null;
+
+        var tokenResult = await User.GetIdTokenResultAsync(forceRefresh);
+        return tokenResult?.Token;
+    }
+
     public async Task RefreshEmailVerificationStatusAsync()
     {
         if (User == null || signedInWithGoogle)

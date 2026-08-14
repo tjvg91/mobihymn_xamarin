@@ -1,11 +1,14 @@
 @page "/account"
 @inject IAuthService Auth
 @inject IProfileService Profiles
+@inject IGroupService Groups
 @inject IUserSettingsSyncService Sync
 @inject IBoardNotificationService BoardNotifications
 @inject IAppPreferences Prefs
 @inject AuthNavigation AuthNav
 @inject NavigationManager Nav
+@inject FirebaseJs Firebase
+@inject BoardNavigationContext BoardNav
 
 <PageTitle>Account</PageTitle>
 
@@ -81,10 +84,25 @@ else
         <label class="switch" title="Board notifications">
             <input type="checkbox"
                    checked="@NotificationsEnabled"
-                   disabled="@Busy"
                    @onchange="OnNotificationsToggled" />
             <span class="switch-slider"></span>
         </label>
+    </div>
+
+    <div class="account-push-status">
+        <div class="account-push-line">
+            Browser permission: <strong>@BrowserPermissionLabel</strong>
+        </div>
+        <div class="account-push-line">
+            Device push: <strong>@DevicePushLabel</strong>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(PushStatusDetail))
+        {
+            <div class="account-push-detail">@PushStatusDetail</div>
+        }
+        <button type="button" class="btn block" disabled="@Busy" @onclick="RegisterPushAsync">
+            @(Busy ? "Registering…" : (PushOk ? "Re-register this device" : "Register this device for push"))
+        </button>
     </div>
     <div class="list-divider"></div>
 
@@ -108,6 +126,18 @@ else
     bool showSignOutConfirm;
     bool NotificationsEnabled = true;
     bool suppressNotifToggle;
+    bool PushOk;
+    string BrowserPermission = "unknown";
+    string DevicePushLabel = "checking…";
+    string PushStatusDetail = "";
+    string BrowserPermissionLabel => BrowserPermission switch
+    {
+        "granted" => "allowed",
+        "denied" => "blocked — enable in Android/Chrome settings for this site",
+        "default" => "not asked yet",
+        "unsupported" => "unsupported on this browser",
+        _ => BrowserPermission
+    };
     string Initials => string.IsNullOrWhiteSpace(Profiles.CurrentProfile?.DisplayName)
         ? (Auth.CurrentEmail?.Substring(0, 1) ?? "?").ToUpperInvariant()
         : string.Concat(Profiles.CurrentProfile.DisplayName.Split(' ').Take(2).Select(w => w[0])).ToUpperInvariant();
@@ -118,6 +148,7 @@ else
         {
             await Profiles.RefreshCurrentProfileAsync();
             LoadNotificationsFromProfile();
+            await RefreshPushStatusAsync();
         }
     }
 
@@ -134,34 +165,175 @@ else
             NotificationsEnabled = !profile.NotificationsMuted;
         else
         {
-            var leadership = profile.Roles.Any(r =>
-                r is "pastor" or "preacher" or "worshipLeader" or "projector" or "accompaniment");
-            NotificationsEnabled = leadership;
+            var notifyByDefault = profile.Roles.Any(r =>
+                r is "projector" or "accompaniment");
+            NotificationsEnabled = notifyByDefault;
+        }
+    }
+
+    async Task RefreshPushStatusAsync()
+    {
+        try
+        {
+            await Firebase.EnsureReadyAsync();
+            BrowserPermission = await Firebase.GetNotificationPermissionAsync();
+            var raw = await Firebase.DiagnosePushAsync();
+            using var diag = JsonDocument.Parse(string.IsNullOrWhiteSpace(raw) ? "{}" : raw);
+            var root = diag.RootElement;
+            var push = root.TryGetProperty("push", out var p) ? p.GetString() ?? "" : "";
+            var supported = root.TryGetProperty("messagingSupported", out var s) && s.ValueKind == JsonValueKind.True;
+            var err = root.TryGetProperty("error", out var e) ? e.GetString() ?? "" : "";
+            if (BrowserPermission != "granted")
+            {
+                PushOk = false;
+                DevicePushLabel = "not registered";
+                PushStatusDetail = BrowserPermission == "denied"
+                    ? "Notifications are blocked for this site. Open Chrome site settings → Notifications → Allow, then tap Register."
+                    : "Tap Register so Android can ask for notification permission.";
+            }
+            else if (!supported)
+            {
+                PushOk = false;
+                DevicePushLabel = "not supported";
+                PushStatusDetail = string.IsNullOrWhiteSpace(err)
+                    ? "This browser cannot receive web push."
+                    : err;
+            }
+            else if (push == "subscribed")
+            {
+                PushOk = false;
+                DevicePushLabel = "needs sync";
+                PushStatusDetail = "Tap Register to save this device’s push token.";
+            }
+            else
+            {
+                PushOk = false;
+                DevicePushLabel = "not registered";
+                PushStatusDetail = string.IsNullOrWhiteSpace(err)
+                    ? "No push subscription yet. Tap Register (required after clearing browsing data)."
+                    : err;
+            }
+        }
+        catch (Exception ex)
+        {
+            DevicePushLabel = "error";
+            PushStatusDetail = ex.Message;
+            PushOk = false;
+        }
+    }
+
+    async Task RegisterPushAsync()
+    {
+        if (Busy) return;
+        Busy = true;
+        DevicePushLabel = "registering…";
+        PushStatusDetail = "Requesting push token…";
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            // Force=true so Re-register always rewrites Firestore (no silent no-op).
+            await RegisterPushCoreAsync(force: true);
+        }
+        finally
+        {
+            Busy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task RegisterPushCoreAsync(bool force = false)
+    {
+        try
+        {
+            var perm = await Firebase.RequestNotificationPermissionAsync();
+            BrowserPermission = perm;
+            if (perm != "granted")
+            {
+                PushOk = false;
+                DevicePushLabel = "not registered";
+                PushStatusDetail = perm == "denied"
+                    ? "Permission blocked. Enable Notifications for mobihymn.web.app in Android settings, then try again."
+                    : "Permission was not granted.";
+                return;
+            }
+
+            PushStatusDetail = "Saving push token…";
+            await InvokeAsync(StateHasChanged);
+
+            var ok = await BoardNotifications.RegisterTokenAsync(force);
+            PushOk = ok;
+            DevicePushLabel = ok ? "registered" : "failed";
+            if (ok)
+            {
+                PushStatusDetail = $"Registered {DateTime.Now:h:mm:ss tt}. Prefer the installed app (not Chrome tabs). Keep it closed to receive board alerts.";
+            }
+            else
+            {
+                var detail = BoardNotifications.LastRegisterError
+                    ?? Firebase.LastFcmTokenError;
+                PushStatusDetail = string.IsNullOrWhiteSpace(detail)
+                    ? "Could not get a push token. Fully close the app, reopen, then tap Register again."
+                    : detail;
+            }
+        }
+        catch (Exception ex)
+        {
+            PushOk = false;
+            DevicePushLabel = "failed";
+            PushStatusDetail = ex.Message;
         }
     }
 
     async Task OnNotificationsToggled(ChangeEventArgs e)
     {
+        // Ignoring while Busy/suppress stops a second phantom change event (common when
+        // Android disables/re-enables the checkbox mid-save) from writing mute again.
         if (suppressNotifToggle || Busy) return;
         var enabled = e.Value is bool b ? b : string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
         var muted = !enabled;
         Busy = true;
+        suppressNotifToggle = true;
+        NotificationsEnabled = enabled;
+        await InvokeAsync(StateHasChanged);
         try
         {
-            NotificationsEnabled = enabled;
+            if (!Auth.IsEmailVerified)
+            {
+                try { await Auth.RefreshEmailVerificationStatusAsync(); }
+                catch { /* keep current claim */ }
+            }
+
+            if (!Auth.IsEmailVerified)
+                throw new InvalidOperationException("Verify your email before changing notification settings.");
+
             await Profiles.SetNotificationsMutedAsync(muted);
+
+            // Account enable should clear per-group mutes so congregants actually get FCM.
+            if (enabled && Profiles.CurrentProfile?.GroupIds is { Count: > 0 } groupIds)
+            {
+                foreach (var gid in groupIds)
+                {
+                    try { await Groups.SetGroupNotificationsMutedAsync(gid, false); }
+                    catch { /* best-effort */ }
+                }
+            }
+
             if (enabled)
-                await BoardNotifications.RegisterTokenAsync();
+                await RegisterPushCoreAsync(force: true);
         }
-        catch
+        catch (Exception ex)
         {
-            suppressNotifToggle = true;
             LoadNotificationsFromProfile();
-            suppressNotifToggle = false;
+            PushStatusDetail = ex.Message;
+            PushOk = false;
         }
         finally
         {
             Busy = false;
+            await InvokeAsync(StateHasChanged);
+            // Swallow late change events from the switch after Busy flips off.
+            await Task.Delay(300);
+            suppressNotifToggle = false;
         }
     }
 
@@ -173,6 +345,7 @@ else
             if (Auth.IsSignedIn && Prefs.GetBool(PrefKeys.CloudPending, false))
                 await Sync.PushAsync();
             await Auth.SignOutAsync();
+            BoardNav.Clear();
             Nav.NavigateTo("");
         }
         finally { Busy = false; }

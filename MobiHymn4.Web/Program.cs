@@ -31,6 +31,8 @@ builder.Services.AddScoped<IBoardService, FirebaseBoardService>();
 builder.Services.AddScoped<IUserSettingsCloudStore, FirestoreUserSettingsCloudStore>();
 builder.Services.AddScoped<IUserSettingsSyncService, FirebaseSettingsSyncService>();
 builder.Services.AddScoped<BoardUiState>();
+builder.Services.AddScoped<BoardNavigationContext>();
+builder.Services.AddScoped<BoardDeepLinkService>();
 builder.Services.AddScoped<IBoardNotificationService, FirebaseBoardNotificationService>();
 builder.Services.AddScoped<FirebaseJs>();
 builder.Services.AddScoped<AuthNavigation>();
@@ -64,6 +66,14 @@ static async Task WarmUpAfterUiAsync(WebAssemblyHost host)
 {
     // Yield so RunAsync can start rendering first.
     await Task.Yield();
+
+    // Wire notification taps before slower warm-up so SW postMessage isn't dropped.
+    try
+    {
+        _ = host.Services.GetRequiredService<IBoardNotificationService>().StartAsync();
+    }
+    catch { /* ignore */ }
+
     try
     {
         var settingsSync = host.Services.GetRequiredService<IUserSettingsSyncService>();
@@ -71,12 +81,6 @@ static async Task WarmUpAfterUiAsync(WebAssemblyHost host)
             await firebaseSettingsSync.BootstrapAsync();
     }
     catch { /* offline / slow Firebase */ }
-
-    try
-    {
-        _ = host.Services.GetRequiredService<IBoardNotificationService>().StartAsync();
-    }
-    catch { /* ignore */ }
 
     try
     {

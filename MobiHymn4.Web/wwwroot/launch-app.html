@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#2D2D2D" />
+  <title>Opening MobiHymn…</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #2D2D2D;
+      color: #f2f2f2;
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      display: grid;
+      place-items: center;
+    }
+  </style>
+</head>
+<body>
+  <p>Opening MobiHymn…</p>
+  <script>
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var to = params.get("to") || "/";
+      try { to = decodeURIComponent(to); } catch (e) { /* keep raw */ }
+      if (!to.startsWith("/")) to = "/";
+      // Block open redirects
+      if (to.indexOf("://") >= 0 || to.indexOf("//") === 0) to = "/";
+
+      var httpsUrl = location.origin + to;
+      var pkg = "com.tjapps.mobihymn.twa";
+      // Service-worker openWindow cannot use intent: URLs — this page bridges into the TWA.
+      var intent =
+        "intent://" + location.host + to +
+        "#Intent;scheme=https;package=" + encodeURIComponent(pkg) +
+        ";S.browser_fallback_url=" + encodeURIComponent(httpsUrl) +
+        ";end";
+
+      location.replace(intent);
+      setTimeout(function () {
+        location.replace(httpsUrl);
+      }, 1400);
+    })();
+  </script>
+</body>
+</html>

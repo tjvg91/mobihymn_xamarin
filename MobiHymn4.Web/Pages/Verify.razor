@@ -1,77 +1,210 @@
 @page "/verify"
+@implements IAsyncDisposable
 @inject IAuthService Auth
 @inject AuthNavigation AuthNav
 @inject NavigationManager Nav
+@inject IJSRuntime Js
 
-<h1>Verify email</h1>
-<p class="muted">We sent a verification link to <strong>@Auth.CurrentEmail</strong>.</p>
+<PageTitle>Verify email</PageTitle>
 
-@if (!string.IsNullOrEmpty(Error))
-{
-    <p class="error">@Error</p>
-}
-@if (!string.IsNullOrEmpty(Info))
-{
-    <p class="success">@Info</p>
-}
+<div class="login-page verify-page">
+    <div class="login-card verify-card">
+        <div class="verify-hero" aria-hidden="true">
+            <span class="verify-hero-ring">
+                <i class="fa-solid fa-envelope-open-text"></i>
+            </span>
+        </div>
 
-<button class="btn block" disabled="@Busy" @onclick="Refresh">I've verified — continue</button>
-<button class="btn secondary block" style="margin-top:8px" disabled="@Busy" @onclick="Resend">Resend email</button>
+        <h1 class="login-title verify-title">Check your email</h1>
+        <p class="verify-lead muted">
+            We sent a verification link to
+            <strong class="verify-email">@Auth.CurrentEmail</strong>.
+            Open it, then return here — we’ll continue automatically.
+        </p>
+        <p class="verify-tip">
+            <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+            Can’t find it? Check spam/junk. If you resend, only the newest email link works — older ones expire.
+        </p>
+
+        @if (!string.IsNullOrEmpty(Error))
+        {
+            <p class="error">@Error</p>
+        }
+        @if (!string.IsNullOrEmpty(Info))
+        {
+            <p class="success">@Info</p>
+        }
+
+        <button type="button"
+                class="btn block verify-resend"
+                disabled="@(Busy || ResendCooldownSec > 0)"
+                @onclick="Resend">
+            @ResendLabel
+        </button>
+    </div>
+</div>
 
 @code {
+    const int CooldownSeconds = 60;
+
     [SupplyParameterFromQuery(Name = "returnUrl")]
     public string? ReturnUrl { get; set; }
 
     bool Busy;
     string? Error;
     string? Info;
+    int ResendCooldownSec;
+    CancellationTokenSource? pollCts;
+    CancellationTokenSource? cooldownCts;
+    DotNetObjectReference<Verify>? selfRef;
+
+    string ResendLabel =>
+        Busy ? "Please wait…"
+        : ResendCooldownSec > 0 ? $"Resend in {ResendCooldownSec}s"
+        : "Resend verification email";
 
     protected override async Task OnInitializedAsync()
     {
         if (!Auth.IsSignedIn)
+        {
             Nav.NavigateTo(AuthNav.LoginUrl(ReturnUrl), forceLoad: false, replace: true);
-        else if (Auth.IsEmailVerified)
+            return;
+        }
+
+        if (Auth.IsEmailVerified)
+        {
             await AuthNav.NavigateForAuthStateAsync(ReturnUrl);
+            return;
+        }
+
+        // Signup already triggered one send — avoid immediate double-tap.
+        StartResendCooldown(CooldownSeconds);
+        pollCts = new CancellationTokenSource();
+        _ = PollVerificationAsync(pollCts.Token);
     }
 
-    async Task Refresh()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        Busy = true;
-        Error = null;
+        if (!firstRender || !Auth.IsSignedIn || Auth.IsEmailVerified)
+            return;
+
+        selfRef = DotNetObjectReference.Create(this);
+        try
+        {
+            await Js.InvokeVoidAsync("mobihymnVerify.onVisible", selfRef);
+        }
+        catch
+        {
+            // Optional helper — polling still covers return-from-mail.
+        }
+    }
+
+    [JSInvokable]
+    public Task OnBecameVisible() => RefreshQuietAsync();
+
+    async Task PollVerificationAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(4));
+            while (await timer.WaitForNextTickAsync(ct))
+                await RefreshQuietAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // Page left.
+        }
+    }
+
+    async Task RefreshQuietAsync()
+    {
+        if (Busy || !Auth.IsSignedIn || Auth.IsEmailVerified)
+            return;
+
         try
         {
             await Auth.RefreshEmailVerificationStatusAsync();
             if (Auth.IsEmailVerified)
+            {
+                pollCts?.Cancel();
                 await AuthNav.NavigateForAuthStateAsync(ReturnUrl);
-            else
-                Error = "Email is not verified yet.";
+            }
         }
-        catch (Exception ex)
+        catch
         {
-            Error = ex.Message;
-        }
-        finally
-        {
-            Busy = false;
+            // Quiet poll — user can still resend.
         }
     }
 
     async Task Resend()
     {
+        if (Busy || ResendCooldownSec > 0)
+            return;
+
         Busy = true;
-        Error = null;
+        Error = Info = null;
         try
         {
             await Auth.SendEmailVerificationAsync();
-            Info = "Verification email sent.";
+            Info = "Verification email sent. Check your inbox and spam.";
+            StartResendCooldown(CooldownSeconds);
         }
         catch (Exception ex)
         {
-            Error = ex.Message;
+            Error = AuthErrorMessages.From(ex);
+            // Longer pause after rate-limit so we don't keep hammering Firebase.
+            var raw = (ex.GetBaseException().Message ?? ex.Message ?? "").ToLowerInvariant();
+            StartResendCooldown(raw.Contains("too-many-requests") ? 180 : CooldownSeconds);
         }
         finally
         {
             Busy = false;
         }
+    }
+
+    void StartResendCooldown(int seconds)
+    {
+        cooldownCts?.Cancel();
+        cooldownCts?.Dispose();
+        cooldownCts = new CancellationTokenSource();
+        ResendCooldownSec = seconds;
+        _ = RunCooldownAsync(cooldownCts.Token);
+    }
+
+    async Task RunCooldownAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (ResendCooldownSec > 0 && !ct.IsCancellationRequested)
+            {
+                await Task.Delay(1000, ct);
+                ResendCooldownSec--;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Replaced or disposed.
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        pollCts?.Cancel();
+        pollCts?.Dispose();
+        pollCts = null;
+        cooldownCts?.Cancel();
+        cooldownCts?.Dispose();
+        cooldownCts = null;
+        try
+        {
+            await Js.InvokeVoidAsync("mobihymnVerify.offVisible");
+        }
+        catch
+        {
+            // Ignore if already torn down.
+        }
+        selfRef?.Dispose();
+        selfRef = null;
     }
 }

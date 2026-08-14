@@ -1,0 +1,207 @@
+@page "/auth/action"
+@inject FirebaseJs Firebase
+@inject IAuthService Auth
+@inject AuthNavigation AuthNav
+@inject NavigationManager Nav
+
+<PageTitle>@Title</PageTitle>
+
+<div class="login-page verify-page">
+    <div class="login-card verify-card verify-card--status @CardToneClass">
+        <div class="verify-hero" aria-hidden="true">
+            <span class="verify-hero-ring @RingClass">
+                @if (Phase == UiPhase.Busy)
+                {
+                    <span class="verify-spinner"></span>
+                }
+                else
+                {
+                    <i class="fa-solid @HeroIcon"></i>
+                }
+            </span>
+        </div>
+
+        <h1 class="login-title verify-title">@Title</h1>
+        <p class="verify-lead muted">@Message</p>
+
+        @if (Phase == UiPhase.Busy || Phase == UiPhase.Success)
+        {
+            <p class="verify-progress" aria-live="polite">
+                <span class="verify-progress-dot"></span>
+                @(Phase == UiPhase.Success ? "Taking you in…" : "Confirming your email…")
+            </p>
+        }
+
+        @if (!string.IsNullOrEmpty(Error))
+        {
+            <p class="error">@Error</p>
+        }
+
+        @if (ShowVerifyCta)
+        {
+            <a class="btn block verify-resend" href="@AuthNav.VerifyUrl()">Request a new link</a>
+        }
+        else if (ShowLoginCta)
+        {
+            <a class="btn block verify-resend" href="@AuthNav.LoginUrl()">Go to log in</a>
+        }
+    </div>
+</div>
+
+@code {
+    enum UiPhase { Busy, Success, Error, Info }
+
+    [SupplyParameterFromQuery(Name = "mode")]
+    public string? Mode { get; set; }
+
+    [SupplyParameterFromQuery(Name = "oobCode")]
+    public string? OobCode { get; set; }
+
+    [SupplyParameterFromQuery(Name = "continueUrl")]
+    public string? ContinueUrl { get; set; }
+
+    UiPhase Phase = UiPhase.Busy;
+    string Title = "Verifying email";
+    string Message = "Hang tight — we’re confirming your link.";
+    string HeroIcon = "fa-envelope-open-text";
+    string? Error;
+    bool ShowVerifyCta;
+    bool ShowLoginCta;
+
+    string RingClass => Phase switch
+    {
+        UiPhase.Success => "verify-hero-ring--success",
+        UiPhase.Error => "verify-hero-ring--error",
+        UiPhase.Info => "verify-hero-ring--info",
+        _ => "verify-hero-ring--busy"
+    };
+
+    string CardToneClass => Phase switch
+    {
+        UiPhase.Success => "is-success",
+        UiPhase.Error => "is-error",
+        _ => "is-busy"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var mode = (Mode ?? "").Trim().ToLowerInvariant();
+        var code = (OobCode ?? "").Trim();
+
+        if (Auth.IsSignedIn && Auth.IsEmailVerified && mode is "" or "verifyemail")
+        {
+            await ShowSuccessAsync("Email verified", "You’re all set. Continuing to MobiHymn…");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(code))
+        {
+            ShowError(
+                "Link incomplete",
+                "This email link is missing its confirmation code.",
+                "fa-triangle-exclamation",
+                "Open the latest verification email, or request a new link.");
+            return;
+        }
+
+        if (mode is "resetpassword" or "recoveremail")
+        {
+            Phase = UiPhase.Info;
+            Title = "Almost done";
+            Message = "Finish password reset in your browser, then return here to sign in.";
+            HeroIcon = "fa-key";
+            ShowLoginCta = true;
+            return;
+        }
+
+        try
+        {
+            await Firebase.EnsureReadyAsync();
+            await Firebase.ApplyActionCodeAsync(code);
+            await Auth.RefreshEmailVerificationStatusAsync();
+            await ShowSuccessAsync("Email verified", "Thanks — your email is confirmed.");
+        }
+        catch (Exception ex)
+        {
+            var raw = (ex.GetBaseException().Message ?? ex.Message ?? "").ToLowerInvariant();
+            await TryRefreshQuietAsync();
+            if (Auth.IsEmailVerified)
+            {
+                await ShowSuccessAsync("Email verified", "Your email is already confirmed.");
+                return;
+            }
+
+            if (raw.Contains("expired-action-code") || raw.Contains("invalid-action-code"))
+            {
+                ShowError(
+                    "Link expired",
+                    "This verification link expired or was already used. Request a new one — only the newest email works.",
+                    "fa-clock");
+            }
+            else
+            {
+                ShowError(
+                    "Couldn’t verify",
+                    "We couldn’t confirm that email link.",
+                    "fa-triangle-exclamation",
+                    AuthErrorMessages.From(ex));
+            }
+        }
+    }
+
+    void ShowError(string title, string message, string icon, string? error = null)
+    {
+        Phase = UiPhase.Error;
+        Title = title;
+        Message = message;
+        HeroIcon = icon;
+        Error = error;
+        ShowVerifyCta = Auth.IsSignedIn;
+        ShowLoginCta = !Auth.IsSignedIn;
+    }
+
+    async Task ShowSuccessAsync(string title, string message)
+    {
+        Phase = UiPhase.Success;
+        Title = title;
+        Message = message;
+        HeroIcon = "fa-circle-check";
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(1400);
+        var ret = TryReturnPathFromContinueUrl();
+        await AuthNav.NavigateForAuthStateAsync(ret, replace: true);
+    }
+
+    async Task TryRefreshQuietAsync()
+    {
+        try
+        {
+            if (Auth.IsSignedIn)
+                await Auth.RefreshEmailVerificationStatusAsync();
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    string? TryReturnPathFromContinueUrl()
+    {
+        if (string.IsNullOrWhiteSpace(ContinueUrl))
+            return null;
+        try
+        {
+            if (!Uri.TryCreate(ContinueUrl, UriKind.Absolute, out var uri))
+                return AuthNav.SanitizeReturnUrl(ContinueUrl);
+
+            var path = uri.AbsolutePath.TrimStart('/');
+            if (path.StartsWith("auth", StringComparison.OrdinalIgnoreCase))
+                return null;
+            return AuthNav.SanitizeReturnUrl(path + uri.Query);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+}

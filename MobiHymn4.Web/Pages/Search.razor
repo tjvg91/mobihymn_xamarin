@@ -3,7 +3,12 @@
 @inject IHymnLyricsSource Lyrics
 @inject AppState State
 @inject NavigationManager Nav
+@inject BoardNavigationContext BoardNav
+@inject BoardUiState BoardUi
+@inject IProfileService Profiles
+@inject IAuthService Auth
 @inject IJSRuntime Js
+@implements IDisposable
 
 <PageTitle>Search</PageTitle>
 
@@ -113,10 +118,23 @@
                                 <div class="search-group-hymns">
                                     @foreach (var hymn in group.Hymns)
                                     {
-                                        <button type="button" class="search-group-hymn" @onclick="() => Open(hymn)">
-                                            <span class="search-group-hymn-num">#@hymn.Number</span>
-                                            <span class="search-group-hymn-line">@hymn.Line</span>
-                                        </button>
+                                        <div class="search-group-hymn-row">
+                                            <button type="button" class="search-group-hymn" @onclick="() => Open(hymn)">
+                                                <span class="search-group-hymn-num">#@hymn.Number</span>
+                                                <span class="search-group-hymn-line">@hymn.Line</span>
+                                            </button>
+                                            @if (CanAddToBoard)
+                                            {
+                                                <button type="button"
+                                                        class="search-add-board"
+                                                        title="Add to board"
+                                                        aria-label="Add #@hymn.Number to board"
+                                                        @onclick="() => AddToBoard(hymn.Number)"
+                                                        @onclick:stopPropagation="true">
+                                                    <BoardPlusIcon />
+                                                </button>
+                                            }
+                                        </div>
                                     }
                                 </div>
                             </div>
@@ -129,19 +147,30 @@
                 @foreach (var item in Results)
                 {
                     var enterIdx = resultsEnterAnim ? Results.IndexOf(item) : -1;
-                    <button type="button"
-                            class="search-hit board-cascade-item"
-                            style="@EnterDelayStyle(enterIdx)"
-                            @onclick="() => Open(item)">
-                        <span class="search-hit-top">
-                            <span class="search-hit-line">@item.Line</span>
-                            <span class="search-hit-badge">#@item.Number</span>
-                        </span>
-                        @if (!string.IsNullOrWhiteSpace(item.Reason))
+                    <div class="search-hit board-cascade-item"
+                         style="@EnterDelayStyle(enterIdx)">
+                        <button type="button" class="search-hit-main" @onclick="() => Open(item)">
+                            <span class="search-hit-top">
+                                <span class="search-hit-line">@item.Line</span>
+                                <span class="search-hit-badge">#@item.Number</span>
+                            </span>
+                            @if (!string.IsNullOrWhiteSpace(item.Reason))
+                            {
+                                <span class="search-hit-reason">@item.Reason</span>
+                            }
+                        </button>
+                        @if (CanAddToBoard)
                         {
-                            <span class="search-hit-reason">@item.Reason</span>
+                            <button type="button"
+                                    class="search-add-board"
+                                    title="Add to board"
+                                    aria-label="Add #@item.Number to board"
+                                    @onclick="() => AddToBoard(item.Number)"
+                                    @onclick:stopPropagation="true">
+                                <BoardPlusIcon />
+                            </button>
                         }
-                    </button>
+                    </div>
                 }
             }
         }
@@ -198,6 +227,8 @@
     {
         // Prefetch catalog so the first Lyrics/metadata search isn't cold
         _ = Lyrics.WarmSearchIndexAsync();
+        Profiles.ProfileChanged += OnProfileChanged;
+        Auth.AuthStateChanged += OnAuthChanged;
     }
 
     async Task OnSelectTypeAsync(string id)
@@ -338,11 +369,38 @@
     async Task Open(HymnSearchHit item)
     {
         if (string.IsNullOrWhiteSpace(item.Number)) return;
+        BoardNav.Clear();
         var hymn = await State.OpenHymnAsync(item.Number);
         if (hymn != null)
             Nav.NavigateTo($"read/{Uri.EscapeDataString(hymn.Number)}");
         else
             Error = State.StatusMessage;
+    }
+
+    void AddToBoard(string? number)
+    {
+        if (!CanAddToBoard || string.IsNullOrWhiteSpace(number)) return;
+        BoardUi.RequestAddHymn(number);
+    }
+
+    bool CanAddToBoard =>
+        Auth.IsSignedIn && RoleHelper.CanAddToBoard(Profiles.CurrentProfile);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+        if (Auth.IsSignedIn)
+            await Profiles.RefreshCurrentProfileAsync();
+    }
+
+    void OnProfileChanged(object? s, EventArgs e) => InvokeAsync(StateHasChanged);
+    void OnAuthChanged(object? s, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Profiles.ProfileChanged -= OnProfileChanged;
+        Auth.AuthStateChanged -= OnAuthChanged;
     }
 
     async Task ToggleVoice()
