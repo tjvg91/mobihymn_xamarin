@@ -30,6 +30,7 @@ app.MapGet("/api/midi", async (
     string? n,
     IHttpClientFactory httpClientFactory,
     IConfiguration config,
+    IWebHostEnvironment env,
     CancellationToken cancellationToken) =>
 {
     var client = httpClientFactory.CreateClient("FirebaseStorage");
@@ -37,24 +38,33 @@ app.MapGet("/api/midi", async (
 
     // Prefer hymn number — same contract as Firebase Hosting midiProxy (?n=).
     // Local Host fetches the public media URL; production Cloud Function uses Admin SDK.
-    if (!string.IsNullOrWhiteSpace(n) && System.Text.RegularExpressions.Regex.IsMatch(n.Trim(), @"^\d{1,6}$"))
+    // In Development, prefer midi-custom/ (hand-edited) then midi-satb/ then midi/
+    // so the player works when Storage rules block unauthenticated media (403).
+    if (!string.IsNullOrWhiteSpace(n)
+        && System.Text.RegularExpressions.Regex.IsMatch(n.Trim(), @"^[0-9A-Za-z]{1,12}$"))
     {
-        var objectPath = "midi/h" + n.Trim() + ".mid";
-        var encoded = Uri.EscapeDataString(objectPath);
-        var mediaUrl = $"https://firebasestorage.googleapis.com/v0/b/{bucket}/o/{encoded}?alt=media";
-        using var byNumber = await client.GetAsync(mediaUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        if (byNumber.StatusCode == System.Net.HttpStatusCode.NotFound)
-            return Results.NotFound();
-        if (byNumber.IsSuccessStatusCode)
+        if (env.IsDevelopment() && TryReadLocalMidi(env, n.Trim(), out var localBytes))
+            return Results.File(localBytes, "audio/midi");
+
+        if (System.Text.RegularExpressions.Regex.IsMatch(n.Trim(), @"^\d{1,6}$"))
         {
-            var midiBytes = await byNumber.Content.ReadAsByteArrayAsync(cancellationToken);
-            if (midiBytes.Length == 0)
+            var objectPath = "midi/h" + n.Trim() + ".mid";
+            var encoded = Uri.EscapeDataString(objectPath);
+            var mediaUrl = $"https://firebasestorage.googleapis.com/v0/b/{bucket}/o/{encoded}?alt=media";
+            using var byNumber = await client.GetAsync(mediaUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (byNumber.StatusCode == System.Net.HttpStatusCode.NotFound)
                 return Results.NotFound();
-            return Results.File(midiBytes, "audio/midi");
+            if (byNumber.IsSuccessStatusCode)
+            {
+                var midiBytes = await byNumber.Content.ReadAsByteArrayAsync(cancellationToken);
+                if (midiBytes.Length == 0)
+                    return Results.NotFound();
+                return Results.File(midiBytes, "audio/midi");
+            }
+            // Fall through to ?u= if rules block unauthenticated media (403).
+            if (string.IsNullOrWhiteSpace(u))
+                return Results.StatusCode((int)byNumber.StatusCode);
         }
-        // Fall through to ?u= if rules block unauthenticated media (403).
-        if (string.IsNullOrWhiteSpace(u))
-            return Results.StatusCode((int)byNumber.StatusCode);
     }
 
     if (string.IsNullOrWhiteSpace(u) || !Uri.TryCreate(u, UriKind.Absolute, out var uri))
@@ -130,3 +140,27 @@ app.Map("/api/hymn/{**path}", async (HttpContext context, IHttpClientFactory htt
 app.MapFallbackToFile("index.html");
 
 app.Run();
+
+static bool TryReadLocalMidi(IWebHostEnvironment env, string number, out byte[] bytes)
+{
+    bytes = Array.Empty<byte>();
+    var repoRoot = Path.GetFullPath(Path.Combine(env.ContentRootPath, ".."));
+    var names = new List<string> { $"h{number}.mid" };
+    var baseNum = System.Text.RegularExpressions.Regex.Replace(number, @"[stf]+$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    if (!string.Equals(baseNum, number, StringComparison.OrdinalIgnoreCase))
+        names.Add($"h{baseNum}.mid");
+
+    foreach (var folder in new[] { "midi-custom", "midi-satb", "midi" })
+    {
+        foreach (var name in names)
+        {
+            var path = Path.Combine(repoRoot, folder, name);
+            if (!File.Exists(path))
+                continue;
+            bytes = File.ReadAllBytes(path);
+            if (bytes.Length > 0)
+                return true;
+        }
+    }
+    return false;
+}

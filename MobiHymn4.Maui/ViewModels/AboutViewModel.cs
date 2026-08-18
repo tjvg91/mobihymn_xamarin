@@ -117,7 +117,7 @@ namespace MobiHymn4.ViewModels
             }
             catch
             {
-                AppVersion = "Version 0.9.0";
+                AppVersion = "Version 0.9.2";
             }
 
             Revisions = new ObservableRangeCollection<Timeline>();
@@ -170,6 +170,17 @@ namespace MobiHymn4.ViewModels
                 return;
             }
 
+            Revisions.Add(new Timeline
+            {
+                Header = "0.9.2",
+                Details =
+                {
+                    "MIDI files modification",
+                    "MIDI panel UI improvements",
+                    "MIDI soundfonts"
+                },
+                Height = 90
+            });
             Revisions.Add(new Timeline
             {
                 Header = "0.9.0",
@@ -236,18 +247,6 @@ namespace MobiHymn4.ViewModels
                 Header = "0.7.4",
                 Details = { "New app icon", "Initial MIDI player" },
                 Height = 70
-            });
-            Revisions.Add(new Timeline
-            {
-                Header = "0.7.2",
-                Details = { "Can select lyrics", "Can opt for app-provided font size", "Splash screen disabled" },
-                Height = 90
-            });
-            Revisions.Add(new Timeline
-            {
-                Header = "0.7.0",
-                Details = { "Slider intro", "Splash Screen", "Can play MIDI" },
-                Height = 90
             });
 
             IsLoadingRevisions = false;

@@ -3927,11 +3927,22 @@ body.dark .mode-btn.active i {
   transform: translateY(0);
   opacity: 1;
   overflow: hidden;
-  max-height: 280px;
+  max-height: 56px; /* exactly the transport row when the panel is collapsed */
   transition:
     transform .32s cubic-bezier(.22, 1, .36, 1),
-    max-height .32s cubic-bezier(.22, 1, .36, 1),
+    max-height .34s cubic-bezier(.22, 1, .36, 1),
     opacity .2s ease;
+}
+.read-player.midi-open {
+  max-height: 520px;
+}
+.read-player.midi-expanded {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 210;
+  max-height: 56px;
 }
 .read-shell.read-chrome-hidden .read-player {
   transform: translateY(100%);
@@ -3947,9 +3958,11 @@ body.dark .mode-btn.active i {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px 10px 8px;
-  min-height: 52px;
+  gap: 4px;
+  /* Even vertical padding so the row sits in the optical middle of the bar. */
+  padding: 0 8px 0 6px;
+  height: 56px;
+  min-height: 56px;
   box-sizing: border-box;
 }
 .read-player audio { display: none; }
@@ -3987,6 +4000,56 @@ body.dark .mode-btn.active i {
   font-variant-numeric: tabular-nums;
   color: #fff;
   line-height: 1;
+}
+
+.player-tool {
+  flex-shrink: 0;
+  min-width: 34px;
+  height: 34px;
+  border: 0;
+  padding: 0 4px;
+  margin: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 0.95rem;
+  border-radius: 8px;
+  -webkit-tap-highlight-color: transparent;
+}
+.player-tool:hover,
+.player-tool.is-on,
+.player-tool.is-open {
+  color: var(--primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+.player-tool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.player-tool:disabled:hover {
+  color: rgba(255, 255, 255, 0.75);
+  background: transparent;
+}
+.player-skip {
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+  font-size: 0.72rem;
+  line-height: 1;
+  min-width: 30px;
+  height: 34px;
+  padding: 0;
+}
+.player-skip i { font-size: 0.78rem; }
+.player-skip span {
+  font-size: 0.58rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }
 
 .player-seek-wrap {
@@ -4089,21 +4152,22 @@ body.dark .mode-btn.active i {
 }
 
 .player-midi-toggle {
+  /* inherits .player-tool; kept for specificity with focus rules */
+  margin: 0;
+}
+.player-mode-label {
   flex-shrink: 0;
-  width: 34px;
+  min-width: 34px;
   height: 34px;
-  border: 0;
-  padding: 0;
-  margin: 0 2px 0 0;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.75);
-  cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.95rem;
-  border-radius: 8px;
-  -webkit-tap-highlight-color: transparent;
+  padding: 0 4px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--primary);
+  user-select: none;
 }
 .player-midi-toggle:hover,
 .player-midi-toggle.is-open {
@@ -4111,98 +4175,662 @@ body.dark .mode-btn.active i {
   background: rgba(255, 255, 255, 0.08);
 }
 
+/* Fullscreen overlay when expanded — overrides the collapsed/partial states. */
+.read-midi-panel.is-expanded {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 56px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  grid-template-rows: unset;
+  max-height: none;
+  overflow: hidden;
+  opacity: 1;
+  padding: max(env(safe-area-inset-top, 0px), 16px) 0 12px;
+  pointer-events: auto;
+  background: rgba(20, 20, 20, 0.97);
+  border-bottom: none;
+  transition: none;
+}
+.read-midi-panel.is-expanded .read-midi-panel-inner {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  transform: none;
+  transition: none;
+  contain: unset;
+  margin: 0 12px;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.read-midi-panel.is-expanded .midi-panel-content {
+  flex: 0 1 auto;
+  max-height: 100%;
+  overflow-y: auto;
+  margin-top: auto;
+}
+
 .read-midi-panel {
   display: grid;
   grid-template-rows: 0fr;
+  /* min-height/overflow keep a collapsed panel at exactly 0 so it can't push
+     the transport row off-centre. */
+  min-height: 0;
+  overflow: hidden;
   opacity: 0;
-  border-top: 1px solid transparent;
+  padding: 0;
+  border-bottom: 0 solid transparent;
   pointer-events: none;
   transition:
     grid-template-rows .34s cubic-bezier(.22, 1, .36, 1),
+    padding .34s cubic-bezier(.22, 1, .36, 1),
     opacity .26s ease,
-    border-top-color .26s ease;
+    border-bottom-color .26s ease;
 }
 .read-midi-panel.is-open {
   grid-template-rows: 1fr;
   opacity: 1;
-  border-top-color: rgba(255, 255, 255, 0.12);
+  /* Insets the card evenly and leaves a gap above the player bar. */
+  padding: 10px 0 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   pointer-events: auto;
 }
 .read-midi-panel-inner {
   overflow: hidden;
   min-height: 0;
-  padding: 0 12px;
+  /* Keeps the reflow of the resizing row inside the card while it animates. */
+  contain: layout paint;
+  margin: 0 8px;
+  padding: 0 10px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  transform: translateY(-6px);
+  gap: 12px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.22);
+  transform: translateY(6px);
   transition:
     padding .34s cubic-bezier(.22, 1, .36, 1),
-    transform .34s cubic-bezier(.22, 1, .36, 1);
+    transform .34s cubic-bezier(.22, 1, .36, 1),
+    background .26s ease;
 }
 .read-midi-panel.is-open .read-midi-panel-inner {
-  padding: 12px;
+  padding: 12px 10px 12px;
   transform: translateY(0);
 }
-.midi-control-row {
+
+/* Panel header: title + expand/collapse button */
+.midi-panel-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-width: 0;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 4px;
 }
-.midi-control-label {
-  flex-shrink: 0;
-  width: 52px;
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
+.midi-panel-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.45);
 }
-.midi-control-value {
-  flex-shrink: 0;
-  min-width: 3.5ch;
-  text-align: right;
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-  color: #fff;
-  white-space: nowrap;
-}
-.midi-reset {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.65);
-  font-size: 0.75rem;
-  cursor: pointer;
+.midi-panel-expand-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  -webkit-tap-highlight-color: transparent;
+  width: 28px; height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background .18s, color .18s;
 }
-.midi-reset:hover:not(:disabled) {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.1);
+.midi-panel-expand-btn:hover { background: rgba(255,255,255,.13); color: #fff; }
+
+.midi-panel-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
 }
-.midi-reset:disabled {
-  opacity: 0.28;
+
+.midi-panel-tools {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  min-width: 0;
+}
+
+.midi-panel-channel-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.midi-panel-action-btn {
+  min-width: 0;
+  height: 46px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: background .18s ease, color .18s ease, opacity .18s ease;
+}
+
+.midi-panel-action-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.midi-panel-action-btn:disabled {
+  opacity: 0.45;
   cursor: default;
 }
-.midi-reset:focus,
-.midi-reset:focus-visible {
-  outline: none;
+
+.midi-panel-action-btn--icon {
+  width: 46px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.midi-step {
+
+@property --stem-level {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 0%;
+}
+@property --dial-fill {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+.midi-panel-content.is-entering .midi-stem {
+  animation: midi-stem-fill .55s cubic-bezier(.22, 1, .36, 1) both;
+}
+.midi-panel-content.is-entering .midi-stem:nth-child(1) { animation-delay: 0ms; }
+.midi-panel-content.is-entering .midi-stem:nth-child(2) { animation-delay: 40ms; }
+.midi-panel-content.is-entering .midi-stem:nth-child(3) { animation-delay: 80ms; }
+.midi-panel-content.is-entering .midi-stem:nth-child(4) { animation-delay: 120ms; }
+.midi-panel-content.is-entering .midi-stem:nth-child(5) { animation-delay: 160ms; }
+.midi-panel-content.is-entering .midi-stem:nth-child(6) { animation-delay: 200ms; }
+.midi-panel-content.is-entering .midi-stem:nth-child(7) { animation-delay: 240ms; }
+.midi-panel-content.is-entering .midi-stem:nth-child(8) { animation-delay: 280ms; }
+@keyframes midi-stem-fill {
+  from { --stem-level: 0%; }
+}
+
+.midi-panel-content.is-entering .midi-dial {
+  animation: midi-dial-fill .55s cubic-bezier(.22, 1, .36, 1) both;
+}
+.midi-panel-content.is-entering .midi-dial-wrap.tone-key .midi-dial {
+  animation-delay: 70ms;
+}
+@keyframes midi-dial-fill {
+  from { --dial-fill: 0; }
+}
+
+.midi-panel-content.is-entering:not(.is-entering-expanded) .midi-dial-wrap {
+  animation: midi-wipe-up .5s cubic-bezier(.22, 1, .36, 1) both;
+}
+.midi-panel-content.is-entering:not(.is-entering-expanded) .midi-dial-wrap.tone-key {
+  animation-delay: 70ms;
+}
+@keyframes midi-wipe-up {
+  from { clip-path: inset(100% 0 0 0); opacity: 0.35; }
+  to { clip-path: inset(0); opacity: 1; }
+}
+
+.midi-panel-content.is-entering-expanded .midi-dial-wrap {
+  animation: midi-wipe-down .5s cubic-bezier(.22, 1, .36, 1) both;
+}
+.midi-panel-content.is-entering-expanded .midi-dial-wrap.tone-key {
+  animation-delay: 70ms;
+}
+@keyframes midi-wipe-down {
+  from { clip-path: inset(0 0 100% 0); opacity: 0.35; }
+  to { clip-path: inset(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .midi-panel-content.is-entering .midi-stem,
+  .midi-panel-content.is-entering .midi-dial,
+  .midi-panel-content.is-entering .midi-dial-wrap {
+    animation: none;
+  }
+}
+
+.midi-stems {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(48px, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+/* Vertical stems layout in expanded panel */
+.midi-stems.is-vertical {
+  grid-template-columns: 1fr;
+  grid-auto-flow: row;
+}
+.midi-stems.is-vertical .midi-stem {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 10px;
+}
+.midi-stems.is-vertical .midi-stem-body {
+  flex: 1;
+  height: 72px;
+  flex-direction: row;
+  justify-content: flex-start;
+  padding: 0 12px;
+  cursor: ew-resize;
+  background:
+    linear-gradient(
+      90deg,
+      var(--stem) 0 var(--stem-level, 100%),
+      var(--stem-soft) var(--stem-level, 100%) 100%
+    );
+}
+.midi-stem-wave {
+  display: none !important;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.midi-stems.is-vertical .midi-stem-body::after {
+  display: none;
+}
+.midi-stems.is-vertical .midi-stem-ops {
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+/* Voices share one instrument, so they ramp across the app palette
+   (primary yellow → brown) instead of using per-instrument hues. */
+.midi-stem {
+  --stem: var(--brown);
+  --stem-text: #fff;
+  --stem-soft: color-mix(in srgb, var(--stem) 26%, #1f1f1f);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.midi-stem.tone-s,
+.midi-stem.tone-0 { --stem: var(--primary); --stem-text: var(--primary-text); }
+.midi-stem.tone-a,
+.midi-stem.tone-1 { --stem: #e0b90a; --stem-text: var(--primary-text); }
+.midi-stem.tone-t,
+.midi-stem.tone-2 { --stem: #b98a16; --stem-text: #fff; }
+.midi-stem.tone-b,
+.midi-stem.tone-3 { --stem: var(--brown); --stem-text: #fff; }
+.midi-stem.tone-salt,
+.midi-stem.tone-4 { --stem: var(--primary-light); --stem-text: var(--primary-text); }
+.midi-stem.tone-balt,
+.midi-stem.tone-5 { --stem: #6e5426; --stem-text: #fff; }
+
+.midi-stem-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 88px;
+  padding: 10px 4px 10px;
+  border-radius: 12px;
+  background:
+    linear-gradient(
+      180deg,
+      var(--stem-soft) 0 calc(100% - var(--stem-level, 100%)),
+      var(--stem) calc(100% - var(--stem-level, 100%)) 100%
+    );
+  color: var(--stem-text);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  cursor: ns-resize;
+  transition: opacity .2s ease, filter .2s ease, background .12s linear;
+}
+.midi-stem-body::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  left: 3px;
+  right: 3px;
+  top: clamp(2px, calc(100% - var(--stem-level, 100%)), calc(100% - 2px));
+  height: 4px;
+  border-radius: 999px;
+  background: var(--stem);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.38);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.midi-stem-name {
+  position: relative;
+  z-index: 2;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+  pointer-events: none;
+}
+.midi-stem-level {
+  position: relative;
+  z-index: 2;
+  font-size: 0.58rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.72;
+  line-height: 1;
+  pointer-events: none;
+}
+input[type=range].midi-stem-volume {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
   border: 0;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: transparent;
+  opacity: 0;
+  cursor: ns-resize;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  -webkit-appearance: slider-vertical;
+  appearance: slider-vertical;
+  -webkit-tap-highlight-color: transparent;
+  /* Pointer gestures are handled by mobihymnDial so a tap never jumps the
+     value; the input stays for keyboard and screen readers. */
+  pointer-events: none;
+}
+.midi-stem.is-muted .midi-stem-body {
+  opacity: 0.38;
+  filter: grayscale(0.35);
+}
+.midi-stem.is-solo .midi-stem-body {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 0 0 2px color-mix(in srgb, var(--stem) 55%, transparent);
+}
+
+.midi-stem-ops {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.midi-stem-btn {
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--stem) 20%, #2a2a2a);
+  color: color-mix(in srgb, var(--stem) 55%, #fff);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.midi-stem-btn.is-on {
+  background: var(--stem);
+  color: var(--stem-text);
+}
+.midi-stem-btn:active {
+  filter: brightness(1.08);
+}
+
+/* Soundfont picker: single-patch choices and per-voice SATB combinations. */
+.midi-instrument-select-wrap {
+  flex: 1 1 auto;
+  position: relative;
+  display: grid;
+  /* The select spans through the caret area so a tap on the chevron opens it. */
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-height: 38px;
+  padding: 0 10px 0 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.midi-instrument-select-wrap.is-loading { opacity: 0.72; }
+.midi-instrument-select {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  border: 0;
+  padding: 0 20px 0 0;
+  background: transparent;
   color: #fff;
-  font-size: 1rem;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: right;
+  text-align-last: right;
+  direction: rtl;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.midi-instrument-select option {
+  background: #2d2d2d;
+  color: #fff;
+  direction: ltr;
+  text-align: left;
+}
+.midi-instrument-select:focus,
+.midi-instrument-select:focus-visible { outline: none; }
+/* Both are centred without transform: the spinner's keyframes animate transform,
+   so a translateY offset here would interpolate away every rotation. */
+.midi-instrument-select-wrap > i,
+.midi-instrument-select-wrap > .midi-instrument-spinner {
+  position: absolute;
+  right: 10px;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+/* The icon has no intrinsic height, so it fills the row and centres its glyph. */
+.midi-instrument-select-wrap > i {
+  display: flex;
+  align-items: center;
+  color: var(--primary);
+  font-size: 0.68rem;
+  line-height: 1;
+}
+/* The spinner is a fixed 14px box, so auto margins centre it. */
+.midi-instrument-select-wrap > .midi-instrument-spinner {
+  margin-block: auto;
+}
+.midi-instrument-spinner {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+  border-top-color: var(--primary);
+}
+
+/* Tempo / key as 270° ring dials, tinted from the app palette. */
+.midi-dials {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.midi-dial-wrap {
+  --dial: var(--primary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 6px 8px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+}
+.midi-dial-wrap.tone-tempo { --dial: var(--primary); }
+.midi-dial-wrap.tone-key { --dial: #d9a520; }
+
+.midi-dial {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  flex-shrink: 0;
+  cursor: ew-resize;
+}
+[data-drag-dial] {
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.midi-dial-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 135deg,
+    var(--dial) 0 calc(var(--dial-fill, 0) * 0.75turn),
+    rgba(255, 255, 255, 0.14) calc(var(--dial-fill, 0) * 0.75turn) 0.75turn,
+    transparent 0.75turn
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 7px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 7px));
+  transition: background .18s linear;
+}
+.midi-dial-core {
+  position: absolute;
+  inset: 13px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.34);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  pointer-events: none;
+}
+.midi-dial-cap {
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1;
+}
+.midi-dial-value {
+  font-size: 1.02rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--dial);
+  line-height: 1.05;
+  white-space: nowrap;
+}
+.midi-dial-value--tap {
+  cursor: text;
+  border-bottom: 1px dashed rgba(255,255,255,0.25);
+  transition: border-color .18s;
+}
+.midi-dial-value--tap:hover { border-bottom-color: var(--dial); }
+/* Inline edit field inside the dial */
+.midi-dial-edit {
+  width: 58px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid var(--dial);
+  border-radius: 6px;
+  color: var(--dial);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-align: center;
+  padding: 2px 4px;
+  outline: none;
+  appearance: textfield;
+  -moz-appearance: textfield;
+  pointer-events: auto;
+}
+.midi-dial-edit::-webkit-inner-spin-button,
+.midi-dial-edit::-webkit-outer-spin-button { -webkit-appearance: none; }
+.midi-dial-edit--select {
+  width: 72px;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+/* Transparent range over the dial keeps native drag + keyboard control. */
+input[type=range].midi-dial-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  opacity: 0;
+  cursor: ew-resize;
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: none;
+}
+
+.midi-dial-ops {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  width: 100%;
+}
+.midi-dial-sub {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.62);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.midi-dial-nudge,
+.midi-dial-reset {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.95rem;
   line-height: 1;
   cursor: pointer;
   display: flex;
@@ -4210,93 +4838,42 @@ body.dark .mode-btn.active i {
   justify-content: center;
   -webkit-tap-highlight-color: transparent;
 }
-.midi-step:active { background: rgba(255, 255, 255, 0.18); }
-.midi-range {
-  flex: 1 1 auto;
-  min-width: 0;
-  width: 100%;
-  height: 22px;
-  margin: 0;
-  accent-color: var(--primary);
-  cursor: pointer;
-  outline: none;
-  border: 0;
-  box-shadow: none;
-  -webkit-tap-highlight-color: transparent;
-  /* Beat the global input[type=range] gray-thumb rule (higher specificity). */
-  background: linear-gradient(to right, var(--primary) 0%, rgba(255, 255, 255, 0.28) 0%);
+.midi-dial-reset { font-size: 0.7rem; }
+.midi-dial-nudge:active,
+.midi-dial-reset:hover:not(:disabled) {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
 }
-input[type=range].midi-range:not(.player-seek)::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--primary);
-  border: 2px solid var(--primary);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
-  cursor: pointer;
+.midi-dial-reset:disabled {
+  opacity: 0.28;
+  cursor: default;
 }
-input[type=range].midi-range:not(.player-seek)::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--primary);
-  border: 2px solid var(--primary);
-  box-shadow: none;
-  cursor: pointer;
-}
-.midi-range:focus,
-.midi-range:focus-visible {
-  outline: none;
-  border: 0;
-  box-shadow: none;
-}
-.midi-step:focus,
-.midi-step:focus-visible,
-.midi-channel-chip:focus,
-.midi-channel-chip:focus-visible,
+.midi-dial-input:focus,
+.midi-dial-input:focus-visible,
+.midi-dial-nudge:focus,
+.midi-dial-nudge:focus-visible,
+.midi-dial-reset:focus,
+.midi-dial-reset:focus-visible,
+.midi-stem-btn:focus,
+.midi-stem-btn:focus-visible,
 .player-midi-toggle:focus,
-.player-midi-toggle:focus-visible {
+.player-midi-toggle:focus-visible,
+.player-tool:focus,
+.player-tool:focus-visible {
   outline: none;
-}
-.midi-channels-row { align-items: flex-start; }
-.midi-channels-row .midi-control-label { padding-top: 6px; }
-.midi-channel-chips {
-  flex: 1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-}
-.midi-channel-chip {
-  min-width: 30px;
-  height: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--primary);
-  border-radius: 6px;
-  background: var(--primary);
-  color: var(--primary-text);
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-.midi-channel-chip.is-muted {
-  opacity: 1;
-  text-decoration: line-through;
-  border-color: rgba(255, 255, 255, 0.28);
-  background: transparent;
-  color: rgba(255, 255, 255, 0.55);
-  font-weight: 400;
 }
 
-/* Yellow circular FAB â€” mirrors Button-FAB AbsoluteLayout 0.95,0.96, 60Ã—60 CornerRadius=30 */
+/* --read-player-h is measured by mobihymnPlayerMetrics; the fallbacks are the
+   approximate collapsed / MIDI-open heights in case the observer never runs. */
+.read-shell.midi-panel-open .read-fab {
+  bottom: calc(var(--read-player-h, 372px) + 14px);
+}
+
+/* Yellow circular FAB — mirrors Button-FAB AbsoluteLayout 0.95,0.96, 60×60 CornerRadius=30 */
 .read-fab {
   position: absolute;
   right: max(16px, env(safe-area-inset-right, 0px));
-  bottom: 68px;   /* just above the player bar when audio is available */
+  bottom: calc(var(--read-player-h, 56px) + 14px);   /* clears the player */
   width: 56px; height: 56px;
   border-radius: 28px;
   background: var(--primary);
@@ -4306,18 +4883,16 @@ input[type=range].midi-range:not(.player-seek)::-moz-range-thumb {
   box-shadow: 0 3px 12px rgba(0,0,0,.35);
   display: flex; align-items: center; justify-content: center;
   transform: scale(1);
-  transition:
-    transform .28s cubic-bezier(.22, 1, .36, 1),
-    bottom .28s cubic-bezier(.22, 1, .36, 1);
+  /* bottom is deliberately not transitioned: --read-player-h already tracks the
+     panel animation frame by frame, and a transition on top of that restarts on
+     every frame instead of easing. */
+  transition: transform .28s cubic-bezier(.22, 1, .36, 1);
   z-index: 5;
 }
 /* No player (or chrome-hidden): pin to bottom-right like MAUI .95,.96 */
 .read-fab.read-fab-no-player,
 .read-shell.read-chrome-hidden .read-fab {
   bottom: max(16px, env(safe-area-inset-bottom, 0px));
-}
-.read-fab.read-fab-above-midi {
-  bottom: 210px; /* clear expanded MIDI controls panel */
 }
 .read-fab:active:not(.read-fab-chrome-out) { transform: scale(.91); }
 .read-fab-hidden { display: none !important; }

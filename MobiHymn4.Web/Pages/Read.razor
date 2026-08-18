@@ -30,7 +30,7 @@ else
 {
     var h = State.ActiveHymn;
 
-    <div class="read-shell @(State.IsReadView ? null : "read-chrome-hidden")"
+    <div class="read-shell @(State.IsReadView ? null : "read-chrome-hidden") @(ShowPlayer && MidiPanelOpen ? "midi-panel-open" : null)"
          style="--reader-theme:@State.ReaderTheme;background:@State.ReaderTheme"
          @onclick="OnReadShellClick">
         <div class="read-body"
@@ -81,12 +81,45 @@ else
 
         @if (ShowPlayer)
         {
-            <div class="read-player @(UsesLightPlayerBar ? "read-player-on-dark-theme" : null)"
+            @* Fullscreen expanded panel lives outside .read-player so overflow:hidden
+               on the player cannot clip it. *@
+            @* Fullscreen overlay is kept as a sibling of .read-player and
+               hoisted to <body> by JS after each render so it escapes every
+               overflow:hidden / contain ancestor. When not expanded it is
+               inert (no interactivity) and invisible. *@
+            @if (AudioMode == "midi")
+            {
+                <div id="midi-overlay"
+                     class="read-midi-panel @(MidiPanelOpen && MidiPanelExpanded ? "is-open is-expanded" : null)"
+                     aria-hidden="@(!(MidiPanelOpen && MidiPanelExpanded))"
+                     inert="@(!(MidiPanelOpen && MidiPanelExpanded))"
+                     @onclick:stopPropagation="true">
+                    <div class="read-midi-panel-inner">
+                        @MidiPanelComponent(expanded: true)
+                    </div>
+                </div>
+            }
+
+            <div class="read-player @(UsesLightPlayerBar ? "read-player-on-dark-theme" : null) @(MidiPanelOpen ? "midi-open" : null) @(MidiPanelExpanded ? "midi-expanded" : null)"
                  style="@PlayerBarStyle"
                  @onclick:stopPropagation="true">
+                @if (AudioMode == "midi")
+                {
+                    @* inert takes every control out of the tab order in one
+                       attribute, instead of re-patching a tabindex on each of
+                       them while the panel is mid-animation. *@
+                    <div class="read-midi-panel @(MidiPanelOpen && !MidiPanelExpanded ? "is-open" : null)"
+                         aria-hidden="@(!MidiPanelOpen || MidiPanelExpanded)"
+                         inert="@(!MidiPanelOpen || MidiPanelExpanded)"
+                         @onclick:stopPropagation="true">
+                        <div class="read-midi-panel-inner">
+                            @MidiPanelComponent(expanded: false)
+                        </div>
+                    </div>
+                }
                 <div class="read-player-bar">
-                    <button type="button" class="player-play" @onclick="TogglePlay" title="@(IsPlaying ? "Pause" : "Play")" aria-label="@(IsPlaying ? "Pause" : "Play")" disabled="@AudioLoading">
-                        @if (AudioLoading)
+                    <button type="button" class="player-play" @onclick="TogglePlay" title="@(IsPlaying ? "Pause" : "Play")" aria-label="@(IsPlaying ? "Pause" : "Play")" disabled="@PlayDisabled">
+                        @if (PlayDisabled)
                         {
                             <span class="spinner player-spinner"></span>
                         }
@@ -98,6 +131,15 @@ else
                         {
                             <i class="fa-solid fa-play"></i>
                         }
+                    </button>
+                    <button type="button"
+                            class="player-tool player-skip"
+                            @onclick="() => SeekByAsync(-10)"
+                            title="Back 10 seconds"
+                            aria-label="Back 10 seconds"
+                            disabled="@(Duration <= 0)">
+                        <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+                        <span>10</span>
                     </button>
                     <span class="player-time">@FormatTime(CurrentTime)</span>
                     <div class="player-seek-wrap" style="--seek-pct:@SeekPct.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)%">
@@ -112,16 +154,37 @@ else
                                @oninput="OnSeekInput" />
                     </div>
                     <span class="player-time">@FormatTime(Duration)</span>
+                    <button type="button"
+                            class="player-tool player-skip"
+                            @onclick="() => SeekByAsync(10)"
+                            title="Forward 10 seconds"
+                            aria-label="Forward 10 seconds"
+                            disabled="@(Duration <= 0)">
+                        <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+                        <span>10</span>
+                    </button>
+                    <button type="button"
+                            class="player-tool @(AudioLoop ? "is-on" : null)"
+                            @onclick="ToggleLoop"
+                            title="@(AudioLoop ? "Disable loop" : "Loop")"
+                            aria-label="@(AudioLoop ? "Disable loop" : "Enable loop")"
+                            aria-pressed="@AudioLoop">
+                        <i class="fa-solid fa-repeat" aria-hidden="true"></i>
+                    </button>
                     @if (AudioMode == "midi")
                     {
                         <button type="button"
-                                class="player-midi-toggle @(MidiPanelOpen ? "is-open" : null)"
+                                class="player-tool player-midi-toggle @(MidiPanelOpen ? "is-open" : null)"
                                 @onclick="ToggleMidiPanel"
                                 title="MIDI controls"
                                 aria-label="MIDI controls"
                                 aria-expanded="@MidiPanelOpen">
                             <i class="fa-solid fa-sliders"></i>
                         </button>
+                    }
+                    else if (AudioMode == "mp3")
+                    {
+                        <span class="player-mode-label" title="MP3" aria-label="MP3 playback">MP3</span>
                     }
                     @if (AudioMode == "mp3" && !string.IsNullOrEmpty(AudioUrl))
                     {
@@ -139,93 +202,25 @@ else
                     }
                 </div>
 
-                @if (AudioMode == "midi")
-                {
-                    <div class="read-midi-panel @(MidiPanelOpen ? "is-open" : null)"
-                         aria-hidden="@(!MidiPanelOpen)">
-                        <div class="read-midi-panel-inner">
-                            @if (MidiChannels.Count > 0)
-                            {
-                                <div class="midi-control-row midi-channels-row">
-                                    <span class="midi-control-label">Channel</span>
-                                    <div class="midi-channel-chips">
-                                        @foreach (var ch in MidiChannels)
-                                        {
-                                            var muted = MidiMuted.Contains(ch);
-                                            <button type="button"
-                                                    class="midi-channel-chip @(muted ? "is-muted" : null)"
-                                                    @onclick="() => ToggleChannel(ch)"
-                                                    title="@(muted ? $"Unmute channel {ch + 1}" : $"Mute channel {ch + 1}")"
-                                                    aria-pressed="@muted"
-                                                    tabindex="@(MidiPanelOpen ? 0 : -1)">
-                                                @(ch + 1)
-                                            </button>
-                                        }
-                                    </div>
-                                </div>
-                            }
-                            <div class="midi-control-row">
-                                <span class="midi-control-label">Tempo</span>
-                                <button type="button" class="midi-step" @onclick="() => NudgeTempo(-0.05)" aria-label="Slower" tabindex="@(MidiPanelOpen ? 0 : -1)">−</button>
-                                <input class="midi-range" type="range" min="0.5" max="1.5" step="0.05"
-                                       value="@MidiTempoScale.ToString(System.Globalization.CultureInfo.InvariantCulture)"
-                                       @oninput="OnTempoInput"
-                                       aria-label="Tempo"
-                                       tabindex="@(MidiPanelOpen ? 0 : -1)" />
-                                <button type="button" class="midi-step" @onclick="() => NudgeTempo(0.05)" aria-label="Faster" tabindex="@(MidiPanelOpen ? 0 : -1)">+</button>
-                                <span class="midi-control-value">@MidiTempoBpmLabel</span>
-                                <button type="button"
-                                        class="midi-reset"
-                                        @onclick="ResetTempo"
-                                        disabled="@MidiTempoIsDefault"
-                                        title="Reset tempo"
-                                        aria-label="Reset tempo"
-                                        tabindex="@(MidiPanelOpen ? 0 : -1)">
-                                    <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
-                                </button>
-                            </div>
-                            <div class="midi-control-row">
-                                <span class="midi-control-label">Key</span>
-                                <button type="button" class="midi-step" @onclick="() => NudgeKey(-1)" aria-label="Down a semitone" tabindex="@(MidiPanelOpen ? 0 : -1)">−</button>
-                                <input class="midi-range" type="range" min="-12" max="12" step="1"
-                                       value="@MidiTranspose"
-                                       @oninput="OnTransposeInput"
-                                       aria-label="Transpose"
-                                       tabindex="@(MidiPanelOpen ? 0 : -1)" />
-                                <button type="button" class="midi-step" @onclick="() => NudgeKey(1)" aria-label="Up a semitone" tabindex="@(MidiPanelOpen ? 0 : -1)">+</button>
-                                <span class="midi-control-value">@MidiKeyName</span>
-                                <button type="button"
-                                        class="midi-reset"
-                                        @onclick="ResetKey"
-                                        disabled="@MidiKeyIsDefault"
-                                        title="Reset key"
-                                        aria-label="Reset key"
-                                        tabindex="@(MidiPanelOpen ? 0 : -1)">
-                                    <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                }
             </div>
         }
 
         @* Three FABs like MAUI ReadPage — visibility follows HymnInputType + IsReadView *@
-        <button class="read-fab @(State.HymnInputType == 0 ? "" : "read-fab-hidden") @(State.IsReadView ? null : "read-fab-chrome-out") @(ShowPlayer ? null : "read-fab-no-player") @(ShowPlayer && MidiPanelOpen ? "read-fab-above-midi" : null)"
+        <button class="read-fab @(State.HymnInputType == 0 ? "" : "read-fab-hidden") @(State.IsReadView ? null : "read-fab-chrome-out") @(ShowPlayer ? null : "read-fab-no-player")"
                 @onclick='() => Nav.NavigateTo("/number")'
                 @onclick:stopPropagation="true"
                 title="Enter hymn number (grid)"
                 aria-hidden="@(State.HymnInputType != 0 || !State.IsReadView)">
             <i class="fa-solid fa-grip-vertical"></i>
         </button>
-        <button class="read-fab @(State.HymnInputType == 1 ? "" : "read-fab-hidden") @(State.IsReadView ? null : "read-fab-chrome-out") @(ShowPlayer ? null : "read-fab-no-player") @(ShowPlayer && MidiPanelOpen ? "read-fab-above-midi" : null)"
+        <button class="read-fab @(State.HymnInputType == 1 ? "" : "read-fab-hidden") @(State.IsReadView ? null : "read-fab-chrome-out") @(ShowPlayer ? null : "read-fab-no-player")"
                 @onclick='() => Nav.NavigateTo("/number")'
                 @onclick:stopPropagation="true"
                 title="Enter hymn number (keyboard)"
                 aria-hidden="@(State.HymnInputType != 1 || !State.IsReadView)">
             <i class="fa-solid fa-keyboard"></i>
         </button>
-        <button class="read-fab @(State.HymnInputType == 2 ? "" : "read-fab-hidden") @(State.IsReadView ? null : "read-fab-chrome-out") @(ShowPlayer ? null : "read-fab-no-player") @(ShowPlayer && MidiPanelOpen ? "read-fab-above-midi" : null)"
+        <button class="read-fab @(State.HymnInputType == 2 ? "" : "read-fab-hidden") @(State.IsReadView ? null : "read-fab-chrome-out") @(ShowPlayer ? null : "read-fab-no-player")"
                 @onclick='() => Nav.NavigateTo("/number")'
                 @onclick:stopPropagation="true"
                 title="Enter hymn number (voice)"
@@ -254,6 +249,7 @@ else
 
     ElementReference audioRef;
     bool IsPlaying;
+    bool AudioLoop;
     bool AudioLoading;
     bool ShowPlayer;
     bool IsOnline = true;
@@ -265,6 +261,7 @@ else
     int resolveGeneration;
     CancellationTokenSource? midiPollCts;
     DotNetObjectReference<Read>? netRef;
+    DotNetObjectReference<Read>? dialRef;
     IJSObjectReference? netSub;
     double CurrentTime;
     double Duration;
@@ -273,11 +270,105 @@ else
     int MidiTempoBpm = 120;
     string MidiKeyName = "C";
     List<int> MidiChannels = new();
+    Dictionary<int, string> MidiChannelNames = new();
+    Dictionary<int, double> MidiChannelVolumes = new();
+    Dictionary<int, double> MidiChannelActivity = new();
     HashSet<int> MidiMuted = new();
+    int? MidiSoloChannel;
+    string MidiInstrumentId = "acoustic_grand_piano";
+    bool MidiInstrumentLoading;
+    bool MidiPanelExpanded;
+    bool MidiEnterAnim;
+    int midiEnterToken;
+    bool TempoEditing;
+    bool KeyEditing;
+    List<MidiInstrumentOption> MidiInstruments = DefaultMidiInstruments();
+    // The transport renders before the soundfont finishes streaming, so play
+    // stays busy until there is actually something to sound.
+    bool PlayDisabled => AudioLoading || (AudioMode == "midi" && MidiInstrumentLoading);
+
+    RenderFragment MidiPanelComponent(bool expanded) =>
+        @<MidiPanelInner
+            Expanded="@expanded"
+            Entering="@MidiEnterAnim"
+            InstrumentLoading="@MidiInstrumentLoading"
+            InstrumentId="@MidiInstrumentId"
+            Instruments="@MidiInstruments.Select(i => new MidiPanelInner.InstrumentOption(i.Id, i.Label)).ToList()"
+            Channels="@MidiChannels"
+            Muted="@MidiMuted"
+            SoloChannel="@MidiSoloChannel"
+            MuteAllDisabled="@AllVoicesMuted"
+            ResetChannelStateDisabled="@ChannelStateIsDefault"
+            ChannelNames="@MidiChannelNames"
+            ChannelVolumes="@MidiChannelVolumes"
+            ChannelActivity="@MidiChannelActivity"
+            TempoDialFill="@MidiTempoDialFill"
+            KeyDialFill="@MidiKeyDialFill"
+            TempoMin="@TempoMinBpm"
+            TempoMax="@TempoMaxBpm"
+            TempoStep="@TempoStepBpm"
+            TempoOffset="@MidiTempoOffset"
+            TempoBpm="@MidiTempoBpm"
+            TempoOffsetLabel="@MidiTempoOffsetLabel"
+            TempoIsDefault="@MidiTempoIsDefault"
+            TempoEditing="@TempoEditing"
+            KeyMin="@KeyMinSemitones"
+            KeyMax="@KeyMaxSemitones"
+            Transpose="@MidiTranspose"
+            KeyName="@MidiKeyName"
+            TransposeLabel="@MidiTransposeLabel"
+            KeyIsDefault="@MidiKeyIsDefault"
+            KeyEditing="@KeyEditing"
+            KeyNameForSemitoneFunc="@MidiKeyForSemitone"
+            OnExpandToggle="@ToggleMidiExpand"
+            OnInstrumentChange="@(id => OnInstrumentChanged(new ChangeEventArgs { Value = id }))"
+            OnChannelVolume="@(t => OnChannelVolumeInput(t.ch, t.e))"
+            OnMuteToggle="@ToggleChannel"
+            OnSoloToggle="@ToggleSolo"
+            OnMuteAll="@MuteAllChannels"
+            OnResetChannelState="@ResetChannelState"
+            OnTempoChange="@OnTempoInput"
+            OnTempoNudge="@NudgeTempo"
+            OnTempoReset="@ResetTempo"
+            OnTempoEditStart="@StartTempoEdit"
+            OnTempoEditEnd="@(() => TempoEditing = false)"
+            OnTempoBpmType="@(bpm => OnTempoBpmTyped(new ChangeEventArgs { Value = bpm.ToString() }))"
+            OnTransposeChange="@OnTransposeInput"
+            OnKeyNudge="@NudgeKey"
+            OnKeyReset="@ResetKey"
+            OnKeyEditStart="@StartKeyEdit"
+            OnKeyEditEnd="@(() => KeyEditing = false)"
+            OnKeySelect="@(semi => OnKeyTyped(new ChangeEventArgs { Value = semi.ToString() }))" />;
+    bool AllVoicesMuted => MidiChannels.Count > 0 && MidiChannels.TrueForAll(ch => MidiMuted.Contains(ch));
+    bool NoVoicesMuted => MidiChannels.Count == 0 || MidiChannels.TrueForAll(ch => !MidiMuted.Contains(ch));
+    bool ChannelStateIsDefault => NoVoicesMuted && MidiSoloChannel is null;
     double SeekMax => Duration > 0 ? Duration : 1;
     double SeekPct => Duration > 0 ? Math.Clamp(CurrentTime / Duration * 100, 0, 100) : 0;
     string MidiTempoBpmLabel => MidiTempoBpm.ToString(System.Globalization.CultureInfo.InvariantCulture);
-    bool MidiTempoIsDefault => Math.Abs(MidiTempoScale - 1) < 0.001;
+    // Tempo dial is a BPM delta from the file tempo, snapped to ±5.
+    const int TempoMinBpm = -60;
+    const int TempoMaxBpm = 60;
+    const int TempoStepBpm = 5;
+    int MidiFileBpm =>
+        MidiTempoScale > 0.01
+            ? Math.Max(1, (int)Math.Round(MidiTempoBpm / MidiTempoScale))
+            : 120;
+    int MidiTempoOffset => ScaleToTempoOffset(MidiTempoBpm, MidiFileBpm);
+    string MidiTempoOffsetLabel =>
+        (MidiTempoOffset > 0 ? "+" : "") + MidiTempoOffset;
+    // One octave of distinct keys: -6..+5 keeps both ends unique instead of
+    // repeating the home key an octave away at -12 / +12.
+    const int KeyMinSemitones = -6;
+    const int KeyMaxSemitones = 5;
+    string MidiTransposeLabel =>
+        (MidiTranspose > 0 ? "+" : "") + MidiTranspose + " st";
+    string MidiTempoDialFill => Math.Clamp(
+            (MidiTempoOffset - TempoMinBpm) / (double)(TempoMaxBpm - TempoMinBpm), 0, 1)
+        .ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+    string MidiKeyDialFill => Math.Clamp(
+            (MidiTranspose - KeyMinSemitones) / (double)(KeyMaxSemitones - KeyMinSemitones), 0, 1)
+        .ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+    bool MidiTempoIsDefault => MidiTempoOffset == 0;
     bool MidiKeyIsDefault => MidiTranspose == 0;
     bool ShowBoardNav => Auth.IsSignedIn && BoardNav.IsActive && State.ActiveHymn != null;
 
@@ -464,10 +555,35 @@ else
     async Task OnSeekInput(ChangeEventArgs e)
     {
         if (!double.TryParse(e.Value?.ToString(), out var t)) return;
+        await SeekToAsync(t);
+    }
+
+    async Task SeekByAsync(double deltaSeconds)
+    {
+        if (Duration <= 0) return;
+        await SeekToAsync(CurrentTime + deltaSeconds);
+    }
+
+    async Task SeekToAsync(double seconds)
+    {
+        var t = Math.Clamp(seconds, 0, Duration > 0 ? Duration : 0);
         seeking = true;
         CurrentTime = t;
-        await Js.InvokeVoidAsync("mobihymnAudio.seek", audioRef, t);
+        try { await Js.InvokeVoidAsync("mobihymnAudio.seek", audioRef, t); }
+        catch { /* ignore */ }
         seeking = false;
+    }
+
+    async Task ToggleLoop()
+    {
+        try
+        {
+            AudioLoop = await Js.InvokeAsync<bool>("mobihymnAudio.setLoop", !AudioLoop);
+        }
+        catch
+        {
+            AudioLoop = !AudioLoop;
+        }
     }
 
     async Task SyncFromElement()
@@ -488,7 +604,13 @@ else
     async Task OnAudioTime() => await SyncFromElement();
     void OnAudioPlay() { IsPlaying = true; AudioLoading = false; }
     void OnAudioPause() { IsPlaying = false; AudioLoading = false; }
-    void OnAudioEnded() { IsPlaying = false; AudioLoading = false; CurrentTime = 0; }
+    void OnAudioEnded()
+    {
+        if (AudioLoop) return;
+        IsPlaying = false;
+        AudioLoading = false;
+        CurrentTime = 0;
+    }
     void OnAudioWaiting() => AudioLoading = true;
     void OnAudioPlaying() { IsPlaying = true; AudioLoading = false; }
 
@@ -519,7 +641,123 @@ else
         await Js.InvokeVoidAsync("mobihymnAudio.stop");
     }
 
-    void ToggleMidiPanel() => MidiPanelOpen = !MidiPanelOpen;
+    void ToggleMidiPanel()
+    {
+        MidiPanelOpen = !MidiPanelOpen;
+        if (!MidiPanelOpen)
+        {
+            MidiPanelExpanded = false;
+            MidiEnterAnim = false;
+            return;
+        }
+        BeginMidiEnter();
+    }
+
+    void ToggleMidiExpand()
+    {
+        MidiPanelExpanded = !MidiPanelExpanded;
+        if (MidiPanelExpanded) BeginMidiEnter();
+    }
+
+    void BeginMidiEnter()
+    {
+        var token = ++midiEnterToken;
+        MidiEnterAnim = true;
+        _ = EndMidiEnterAsync(token);
+    }
+
+    async Task EndMidiEnterAsync(int token)
+    {
+        try { await Task.Delay(700); }
+        catch { return; }
+        if (token != midiEnterToken) return;
+        MidiEnterAnim = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    static Dictionary<int, string> ParseChannelNames(Dictionary<string, string>? raw)
+    {
+        var map = new Dictionary<int, string>();
+        if (raw == null) return map;
+        foreach (var kv in raw)
+        {
+            if (!int.TryParse(kv.Key, out var ch)) continue;
+            var name = kv.Value?.Trim();
+            if (!string.IsNullOrEmpty(name))
+                map[ch] = name;
+        }
+        return map;
+    }
+
+    static Dictionary<int, double> ParseChannelVolumes(Dictionary<string, double>? raw)
+    {
+        var map = new Dictionary<int, double>();
+        if (raw == null) return map;
+        foreach (var kv in raw)
+        {
+            if (!int.TryParse(kv.Key, out var ch)) continue;
+            map[ch] = Math.Clamp(kv.Value, 0, 1);
+        }
+        return map;
+    }
+
+    static Dictionary<int, double> ParseChannelActivity(Dictionary<string, double>? raw)
+    {
+        var map = new Dictionary<int, double>();
+        if (raw == null) return map;
+        foreach (var kv in raw)
+        {
+            if (!int.TryParse(kv.Key, out var ch)) continue;
+            map[ch] = Math.Clamp(kv.Value, 0, 1);
+        }
+        return map;
+    }
+
+    string ChannelLabel(int ch) =>
+        MidiChannelNames.TryGetValue(ch, out var name) && !string.IsNullOrWhiteSpace(name)
+            ? name
+            : (ch + 1).ToString();
+
+    string ChannelShortLabel(int ch)
+    {
+        var label = ChannelLabel(ch).Trim();
+        if (label.StartsWith("Soprano Alt", StringComparison.OrdinalIgnoreCase)) return "S+";
+        if (label.StartsWith("Bass Alt", StringComparison.OrdinalIgnoreCase)) return "B+";
+        if (label.StartsWith("Soprano", StringComparison.OrdinalIgnoreCase)) return "S";
+        if (label.StartsWith("Alto", StringComparison.OrdinalIgnoreCase)) return "A";
+        if (label.StartsWith("Tenor", StringComparison.OrdinalIgnoreCase)) return "T";
+        if (label.StartsWith("Bass", StringComparison.OrdinalIgnoreCase)) return "B";
+        if (label.Length <= 3) return label;
+        return label[..1].ToUpperInvariant();
+    }
+
+    // S+ (Soprano Alt) leads the stem row when present; other voices keep
+    // natural channel order so SATB still reads left-to-right after it.
+    List<int> OrderChannelsForDisplay(List<int> channels) =>
+        channels
+            .OrderBy(ch => ChannelShortLabel(ch) == "S+" ? 0 : 1)
+            .ThenBy(ch => ch)
+            .ToList();
+
+    double ChannelVolume(int ch) =>
+        MidiChannelVolumes.TryGetValue(ch, out var volume)
+            ? Math.Clamp(volume, 0, 1)
+            : 1;
+
+    int ChannelVolumePercent(int ch) =>
+        (int)Math.Round(ChannelVolume(ch) * 100);
+
+    string ChannelToneClass(int ch)
+    {
+        var label = ChannelLabel(ch);
+        if (label.Contains("Soprano Alt", StringComparison.OrdinalIgnoreCase)) return "tone-salt";
+        if (label.Contains("Bass Alt", StringComparison.OrdinalIgnoreCase)) return "tone-balt";
+        if (label.Contains("Soprano", StringComparison.OrdinalIgnoreCase) || ch == 0) return "tone-s";
+        if (label.Contains("Alto", StringComparison.OrdinalIgnoreCase) || ch == 1) return "tone-a";
+        if (label.Contains("Tenor", StringComparison.OrdinalIgnoreCase) || ch == 2) return "tone-t";
+        if (label.Contains("Bass", StringComparison.OrdinalIgnoreCase) || ch == 3) return "tone-b";
+        return "tone-" + (ch % 6);
+    }
 
     void ApplyMidiControls(MidiControlsDto? c)
     {
@@ -529,7 +767,22 @@ else
         MidiTempoBpm = c.TempoBpm > 0 ? c.TempoBpm : (int)Math.Round(120 * MidiTempoScale);
         MidiKeyName = FormatMidiKeyLabel(c.KeyName);
         MidiChannels = c.Channels?.ToList() ?? new List<int>();
+        MidiChannelNames = ParseChannelNames(c.ChannelNames);
+        MidiChannelVolumes = ParseChannelVolumes(c.ChannelVolumes);
+        MidiChannelActivity = ParseChannelActivity(c.ChannelActivity);
+        MidiChannels = OrderChannelsForDisplay(MidiChannels);
         MidiMuted = c.Muted != null ? new HashSet<int>(c.Muted) : new HashSet<int>();
+        if (!string.IsNullOrWhiteSpace(c.Instrument))
+            MidiInstrumentId = c.Instrument;
+        MidiInstrumentLoading = c.InstrumentLoading;
+        if (c.Instruments is { Count: > 0 })
+            MidiInstruments = c.Instruments
+                .Where(i => !string.IsNullOrWhiteSpace(i.Id))
+                .Select(i => new MidiInstrumentOption(i.Id!, string.IsNullOrWhiteSpace(i.Label) ? i.Id! : i.Label!))
+                .ToList();
+        if (MidiSoloChannel is int solo
+            && (MidiMuted.Contains(solo) || !MidiChannels.Contains(solo)))
+            MidiSoloChannel = null;
     }
 
     async Task RefreshMidiControlsAsync()
@@ -544,85 +797,290 @@ else
         catch { /* ignore */ }
     }
 
-    async Task OnTempoInput(ChangeEventArgs e)
+    static int ScaleToTempoOffset(int currentBpm, int fileBpm)
     {
-        if (!double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out var scale))
-            return;
+        var delta = currentBpm - Math.Max(fileBpm, 1);
+        var stepped = (int)(Math.Round(delta / (double)TempoStepBpm) * TempoStepBpm);
+        return Math.Clamp(stepped, TempoMinBpm, TempoMaxBpm);
+    }
+
+    double TempoOffsetToScale(int offset)
+    {
+        var stepped = (int)(Math.Round(offset / (double)TempoStepBpm) * TempoStepBpm);
+        stepped = Math.Clamp(stepped, TempoMinBpm, TempoMaxBpm);
+        var file = MidiFileBpm;
+        return Math.Clamp((file + stepped) / (double)file, 0.5, 1.5);
+    }
+
+    async Task SetTempoOffsetAsync(int offset, bool persist = true)
+    {
+        var scale = TempoOffsetToScale(offset);
         try
         {
             var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.setTempoScale", scale);
             ApplyMidiControls(c);
             var state = await Js.InvokeAsync<AudioStateDto>("mobihymnAudio.getState", (object?)null);
             if (state.Duration > 0) Duration = state.Duration;
+            if (persist)
+                await PersistMidiPreferencesAsync();
         }
         catch { /* ignore */ }
     }
 
-    async Task NudgeTempo(double delta)
+    async Task OnTempoInput(ChangeEventArgs e)
     {
-        var next = Math.Clamp(MidiTempoScale + delta, 0.5, 1.5);
-        try
-        {
-            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.setTempoScale", next);
-            ApplyMidiControls(c);
-            var state = await Js.InvokeAsync<AudioStateDto>("mobihymnAudio.getState", (object?)null);
-            if (state.Duration > 0) Duration = state.Duration;
-        }
-        catch { /* ignore */ }
+        if (!int.TryParse(e.Value?.ToString(), out var offset))
+            return;
+        await SetTempoOffsetAsync(offset);
+    }
+
+    async Task NudgeTempo(int delta)
+    {
+        await SetTempoOffsetAsync(Math.Clamp(MidiTempoOffset + delta, TempoMinBpm, TempoMaxBpm));
     }
 
     async Task OnTransposeInput(ChangeEventArgs e)
     {
         if (!int.TryParse(e.Value?.ToString(), out var semis)) return;
+        await SetTransposeAsync(semis);
+    }
+
+    async Task SetTransposeAsync(int semis, bool persist = true)
+    {
+        semis = Math.Clamp(semis, KeyMinSemitones, KeyMaxSemitones);
         try
         {
             var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.setTranspose", semis);
             ApplyMidiControls(c);
+            if (persist)
+                await PersistMidiPreferencesAsync();
         }
         catch { /* ignore */ }
     }
 
     async Task NudgeKey(int delta)
     {
-        var next = Math.Clamp(MidiTranspose + delta, -12, 12);
-        try
-        {
-            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.setTranspose", next);
-            ApplyMidiControls(c);
-        }
-        catch { /* ignore */ }
+        var next = Math.Clamp(MidiTranspose + delta, KeyMinSemitones, KeyMaxSemitones);
+        await SetTransposeAsync(next);
     }
 
     async Task ResetTempo()
     {
         if (MidiTempoIsDefault) return;
-        try
-        {
-            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.setTempoScale", 1);
-            ApplyMidiControls(c);
-            var state = await Js.InvokeAsync<AudioStateDto>("mobihymnAudio.getState", (object?)null);
-            if (state.Duration > 0) Duration = state.Duration;
-        }
-        catch { /* ignore */ }
+        await SetTempoOffsetAsync(0);
     }
 
     async Task ResetKey()
     {
         if (MidiKeyIsDefault) return;
+        await SetTransposeAsync(0);
+    }
+
+    void StartTempoEdit()
+    {
+        TempoEditing = true;
+    }
+
+    async Task OnTempoBpmTyped(ChangeEventArgs e)
+    {
+        TempoEditing = false;
+        if (!int.TryParse(e.Value?.ToString(), out var bpm)) return;
+        bpm = Math.Clamp(bpm, 20, 300);
+        // Convert typed absolute BPM to an offset relative to the file tempo.
+        var offset = ScaleToTempoOffset(bpm, MidiFileBpm);
+        await SetTempoOffsetAsync(offset);
+    }
+
+    async Task OnTempoBpmKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or "Escape") TempoEditing = false;
+        await Task.CompletedTask;
+    }
+
+    void StartKeyEdit()
+    {
+        KeyEditing = true;
+    }
+
+    async Task OnKeyTyped(ChangeEventArgs e)
+    {
+        KeyEditing = false;
+        if (!int.TryParse(e.Value?.ToString(), out var semi)) return;
+        await SetTransposeAsync(semi);
+    }
+
+    // Returns the key name that would result from transposing by `semitones` from the file key.
+    string MidiKeyForSemitone(int semitones)
+    {
+        // Use the JS-reported key name as the base when available.
+        var baseKey = MidiKeyName.Trim().Split('/')[0].Trim();
+        // Fall back to C if we can't parse it.
+        int basePc = baseKey.Length >= 1
+            ? (new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                {"C",0},{"C#",1},{"Db",1},{"D",2},{"D#",3},{"Eb",3},{"E",4},{"F",5},
+                {"F#",6},{"Gb",6},{"G",7},{"G#",8},{"Ab",8},{"A",9},{"A#",10},{"Bb",10},{"B",11}
+            }.TryGetValue(baseKey, out var pc) ? pc : 0)
+            : 0;
+        var noteNames = new[] { "C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B" };
+        var result = noteNames[((basePc + semitones) % 12 + 12) % 12];
+        return result;
+    }
+
+    Task PersistMidiPreferencesAsync()
+    {
+        var number = State.ActiveHymn?.Number;
+        return string.IsNullOrWhiteSpace(number)
+            ? Task.CompletedTask
+            : State.SetMidiPreferencesAsync(number, MidiTempoOffset, MidiTranspose);
+    }
+
+    async Task SetInstrumentAsync(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)
+            || (string.Equals(MidiInstrumentId, id, StringComparison.Ordinal) && !MidiInstrumentLoading))
+            return;
+        MidiInstrumentLoading = true;
+        MidiInstrumentId = id;
         try
         {
-            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.setTranspose", 0);
+            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.setInstrument", id);
             ApplyMidiControls(c);
         }
-        catch { /* ignore */ }
+        catch
+        {
+            MidiInstrumentLoading = false;
+        }
     }
+
+    async Task OnInstrumentChanged(ChangeEventArgs e)
+    {
+        var id = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(id))
+            await SetInstrumentAsync(id);
+    }
+
+    static List<MidiInstrumentOption> DefaultMidiInstruments() =>
+    [
+        new("acoustic_grand_piano", "Piano"),
+        new("church_organ", "Church Organ"),
+        new("drawbar_organ", "Drawbar Organ"),
+        new("reed_organ", "Reed Organ"),
+        new("harpsichord", "Harpsichord"),
+        new("string_ensemble_1", "String Ensemble"),
+        new("choir_aahs", "Choir Aahs"),
+        new("voice_oohs", "Choir Oohs"),
+        new("strings_satb", "SATB Strings"),
+        new("sax_satb", "SATB Sax Choir"),
+        new("sax_at", "Alto / Tenor Sax"),
+        new("organ_strings", "Strings + Organ"),
+        new("woodwind_satb", "Mixed Woodwinds")
+    ];
+
+    readonly record struct MidiInstrumentOption(string Id, string Label);
 
     async Task ToggleChannel(int channel)
     {
         try
         {
+            if (MidiSoloChannel == channel)
+                MidiSoloChannel = null;
             var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.toggleChannelMute", channel);
+            ApplyMidiControls(c);
+        }
+        catch { /* ignore */ }
+    }
+
+    async Task OnChannelVolumeInput(int channel, ChangeEventArgs e)
+    {
+        if (!double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var volume))
+            return;
+        await SetChannelVolumeAsync(channel, volume);
+    }
+
+    async Task SetChannelVolumeAsync(int channel, double volume)
+    {
+        try
+        {
+            var c = await Js.InvokeAsync<MidiControlsDto>(
+                "mobihymnAudio.setChannelVolume", channel, Math.Clamp(volume, 0, 1));
+            ApplyMidiControls(c);
+        }
+        catch { /* ignore */ }
+    }
+
+    [JSInvokable]
+    public async Task OnDialDrag(string name, double value)
+    {
+        if (string.IsNullOrEmpty(name)) return;
+        if (name == "tempo")
+            await SetTempoOffsetAsync((int)Math.Round(value));
+        else if (name == "key")
+            await SetTransposeAsync((int)Math.Round(value));
+        else if (name.StartsWith("vol:", StringComparison.Ordinal)
+                 && int.TryParse(name.AsSpan(4), out var channel))
+            await SetChannelVolumeAsync(channel, value);
+        StateHasChanged();
+    }
+
+    async Task ToggleSolo(int channel)
+    {
+        try
+        {
+            if (MidiSoloChannel == channel)
+            {
+                MidiSoloChannel = null;
+                var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.unmuteAllChannels");
+                ApplyMidiControls(c);
+                return;
+            }
+
+            MidiSoloChannel = channel;
+            foreach (var ch in MidiChannels)
+            {
+                var shouldMute = ch != channel;
+                var isMuted = MidiMuted.Contains(ch);
+                if (shouldMute == isMuted) continue;
+                var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.setChannelMuted", ch, shouldMute);
+                ApplyMidiControls(c);
+            }
+            MidiSoloChannel = channel;
+        }
+        catch { /* ignore */ }
+    }
+
+    async Task MuteAllChannels()
+    {
+        if (AllVoicesMuted) return;
+        try
+        {
+            MidiSoloChannel = null;
+            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.muteAllChannels");
+            ApplyMidiControls(c);
+        }
+        catch { /* ignore */ }
+    }
+
+    async Task UnmuteAllChannels()
+    {
+        if (NoVoicesMuted) return;
+        try
+        {
+            MidiSoloChannel = null;
+            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.unmuteAllChannels");
+            ApplyMidiControls(c);
+        }
+        catch { /* ignore */ }
+    }
+
+    async Task ResetChannelState()
+    {
+        if (ChannelStateIsDefault) return;
+        try
+        {
+            MidiSoloChannel = null;
+            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.unmuteAllChannels");
             ApplyMidiControls(c);
         }
         catch { /* ignore */ }
@@ -660,6 +1118,18 @@ else
         midiPollCts = null;
     }
 
+    async Task TrackInstrumentLoadAsync(int gen)
+    {
+        try
+        {
+            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.waitForInstrument");
+            if (gen != resolveGeneration) return;
+            ApplyMidiControls(c);
+            StateHasChanged();
+        }
+        catch { /* ignore */ }
+    }
+
     async Task ResolveAudioAsync(string number)
     {
         var gen = Interlocked.Increment(ref resolveGeneration);
@@ -676,7 +1146,10 @@ else
         MidiTempoBpm = 120;
         MidiKeyName = "C";
         MidiChannels = new();
+        MidiChannelNames = new();
+        MidiChannelVolumes = new();
         MidiMuted = new();
+        MidiSoloChannel = null;
         StopMidiPoll();
         resolvedForNumber = number;
 
@@ -724,6 +1197,11 @@ else
             if (AudioMode == "midi")
             {
                 await RefreshMidiControlsAsync();
+                var saved = State.GetMidiPreferences(number);
+                await SetTempoOffsetAsync(saved.TempoOffset, persist: false);
+                await SetTransposeAsync(saved.Transpose, persist: false);
+                // Samples keep downloading after the transport is on screen.
+                _ = TrackInstrumentLoadAsync(gen);
             }
         }
         catch (Exception ex)
@@ -797,11 +1275,23 @@ else
     {
         public string? Mode { get; set; }
         public List<int>? Channels { get; set; }
+        public Dictionary<string, string>? ChannelNames { get; set; }
+        public Dictionary<string, double>? ChannelVolumes { get; set; }
+        public Dictionary<string, double>? ChannelActivity { get; set; }
         public List<int>? Muted { get; set; }
         public int Transpose { get; set; }
         public double TempoScale { get; set; } = 1;
         public int TempoBpm { get; set; }
         public string? KeyName { get; set; }
+        public string? Instrument { get; set; }
+        public List<MidiInstrumentDto>? Instruments { get; set; }
+        public bool InstrumentLoading { get; set; }
+    }
+
+    sealed class MidiInstrumentDto
+    {
+        public string? Id { get; set; }
+        public string? Label { get; set; }
     }
 
     protected override async Task OnParametersSetAsync()
@@ -869,6 +1359,13 @@ else
             {
                 IsOnline = true;
             }
+
+            try
+            {
+                dialRef = DotNetObjectReference.Create(this);
+                await Js.InvokeVoidAsync("mobihymnDial.init", dialRef);
+            }
+            catch { /* dials fall back to keyboard only */ }
         }
 
         if (ShowPlayer && AudioMode == "mp3" && !string.IsNullOrEmpty(AudioUrl))
@@ -893,6 +1390,20 @@ else
             }
             catch { /* element may not be in DOM yet */ }
         }
+
+        try { await Js.InvokeVoidAsync("mobihymnPlayerMetrics.sync"); }
+        catch { /* FAB falls back to its static offsets */ }
+
+        // Hoist the expanded overlay to <body> so it escapes every overflow:hidden
+        // ancestor. Restore it when not expanded so Blazor's DOM diffing is happy.
+        try
+        {
+            if (AudioMode == "midi" && MidiPanelOpen && MidiPanelExpanded)
+                await Js.InvokeVoidAsync("mobihymnPortal.hoist", "midi-overlay");
+            else
+                await Js.InvokeVoidAsync("mobihymnPortal.restore", "midi-overlay");
+        }
+        catch { /* ignore; graceful fallback if element absent */ }
     }
 
     [JSInvokable]
@@ -920,7 +1431,20 @@ else
         Auth.AuthStateChanged += OnAuthChanged;
     }
 
-    void OnChanged() => InvokeAsync(StateHasChanged);
+    void OnChanged() => _ = InvokeAsync(async () =>
+    {
+        // Account sync can finish after this page is already showing a hymn.
+        // Adopt the newly pulled per-hymn values without requiring navigation.
+        if (AudioMode == "midi" && State.ActiveHymn != null)
+        {
+            var saved = State.GetMidiPreferences(State.ActiveHymn.Number);
+            if (saved.TempoOffset != MidiTempoOffset)
+                await SetTempoOffsetAsync(saved.TempoOffset, persist: false);
+            if (saved.Transpose != MidiTranspose)
+                await SetTransposeAsync(saved.Transpose, persist: false);
+        }
+        StateHasChanged();
+    });
     void OnBoardNavChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
     void OnAuthChanged(object? sender, EventArgs e)
     {
@@ -943,6 +1467,10 @@ else
         netSub = null;
         netRef?.Dispose();
         netRef = null;
+        try { _ = Js.InvokeVoidAsync("mobihymnPlayerMetrics.stop"); } catch { /* ignore */ }
+        try { _ = Js.InvokeVoidAsync("mobihymnDial.release"); } catch { /* ignore */ }
+        dialRef?.Dispose();
+        dialRef = null;
         _ = Js.InvokeVoidAsync("mobihymnAudio.stop");
     }
 }

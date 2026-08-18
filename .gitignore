@@ -415,3 +415,8 @@ MobiHymn4.Maui/Signing.local.props
 *.p12
 MobiHymn4.Maui/Signing.local.props
 
+# Hymn MIDI source, generated SATB splits, and hand-edited files (local only)
+midi/
+midi-satb/
+midi-custom/
+

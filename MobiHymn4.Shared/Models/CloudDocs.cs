@@ -101,6 +101,18 @@ public class UserSettingsCloudDoc
     public List<ShortHymnCloudDoc> History { get; set; } = new();
     public List<ShortHymnCloudDoc> Bookmarks { get; set; } = new();
     public List<string> Searches { get; set; } = new();
+    /// <summary>Per-hymn MIDI adjustments, stored locally and synced with the account.</summary>
+    public List<MidiHymnPreferenceCloudDoc> MidiPreferences { get; set; } = new();
+}
+
+public class MidiHymnPreferenceCloudDoc
+{
+    public string Number { get; set; } = "";
+    /// <summary>BPM delta from the MIDI file tempo, in five-BPM steps.</summary>
+    public int TempoOffset { get; set; }
+    /// <summary>Key transposition in semitones.</summary>
+    public int Transpose { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
 }
 
 public class ShortHymnCloudDoc
