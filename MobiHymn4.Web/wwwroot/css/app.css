@@ -4353,6 +4353,7 @@ body.dark .mode-btn.active i {
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.45);
   line-height: 1;
+  text-align: left;
 }
 .midi-panel-expand-btn {
   display: flex;
@@ -4511,7 +4512,8 @@ body.dark .mode-btn.active i {
   padding: 0 2px 2px;
 }
 .midi-dial-wrap .midi-section-label {
-  text-align: center;
+  align-self: stretch;
+  text-align: left;
   width: 100%;
 }
 .midi-stems {
