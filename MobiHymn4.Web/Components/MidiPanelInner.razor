@@ -61,6 +61,7 @@
 @if (Channels.Count > 0)
 {
     <div class="midi-stems @(Expanded ? "is-vertical" : "is-radial")" role="group" aria-label="Voices">
+        <span class="midi-section-label">Channels</span>
         @foreach (var ch in Channels)
         {
             var muted = Muted.Contains(ch);
@@ -133,6 +134,7 @@
 
 <div class="midi-dials">
     <div class="midi-dial-wrap tone-tempo">
+        <span class="midi-section-label">Tempo</span>
         <div class="midi-dial" style="--dial-fill:@TempoDialFill"
              data-drag-dial="tempo"
              data-dial-min="@TempoMin"
@@ -182,6 +184,7 @@
         </div>
     </div>
     <div class="midi-dial-wrap tone-key">
+        <span class="midi-section-label">Key</span>
         <div class="midi-dial" style="--dial-fill:@KeyDialFill"
              data-drag-dial="key"
              data-dial-min="@KeyMin"
