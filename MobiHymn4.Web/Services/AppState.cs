@@ -51,6 +51,12 @@ public sealed class AppState
     public string? StatusMessage { get; private set; }
 
     public bool DarkMode => Settings.DarkMode;
+
+    /// <summary>Compact radial vs expanded sheet. Device-local; survives hymn changes and remounts.</summary>
+    public bool MidiPanelExpanded => prefs.GetBool(PrefKeys.MidiPanelExpanded, false);
+
+    public void SetMidiPanelExpanded(bool value) =>
+        prefs.SetBool(PrefKeys.MidiPanelExpanded, value);
     public string ReaderTheme => Settings.ActiveReadTheme ?? "#FFFFFF";
     public string ReaderFont
     {

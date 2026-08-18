@@ -91,4 +91,43 @@
             }
         }
     };
+
+    window.mobihymnMidiPanel = {
+        _from: null,
+        _timer: 0,
+        capture: function () {
+            var player = document.querySelector(".read-player");
+            this._from = player ? player.getBoundingClientRect().height : null;
+        },
+        run: function () {
+            var player = document.querySelector(".read-player");
+            var from = this._from;
+            this._from = null;
+            if (!player || from == null) return;
+            var to = player.getBoundingClientRect().height;
+            if (Math.abs(to - from) < 1) return;
+            if (this._timer) {
+                clearTimeout(this._timer);
+                this._timer = 0;
+            }
+            player.style.height = from + "px";
+            player.style.overflow = "hidden";
+            void player.offsetHeight;
+            player.style.transition = "height .34s cubic-bezier(.22, 1, .36, 1)";
+            player.style.height = to + "px";
+            var done = function (e) {
+                if (e && e.propertyName && e.propertyName !== "height") return;
+                player.style.transition = "";
+                player.style.height = "";
+                player.style.overflow = "";
+                player.removeEventListener("transitionend", done);
+                if (window.mobihymnMidiPanel._timer) {
+                    clearTimeout(window.mobihymnMidiPanel._timer);
+                    window.mobihymnMidiPanel._timer = 0;
+                }
+            };
+            player.addEventListener("transitionend", done);
+            this._timer = setTimeout(done, 400);
+        }
+    };
 })();

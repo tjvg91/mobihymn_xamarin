@@ -34,6 +34,8 @@ public static class PrefKeys
     public const string FcmDeviceId = "fcm_device_id";
     /// <summary>Persisted board setlist prev/next context (MAUI boardNavState).</summary>
     public const string BoardNavState = "boardNavState";
+    /// <summary>Device-local MIDI panel layout: expanded sheet vs compact radial.</summary>
+    public const string MidiPanelExpanded = "midiPanelExpanded";
 
     /// <summary>
     /// Account-scoped keys wiped on sign-out / account switch.

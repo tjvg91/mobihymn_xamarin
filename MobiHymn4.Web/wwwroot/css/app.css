@@ -3934,15 +3934,13 @@ body.dark .mode-btn.active i {
     opacity .2s ease;
 }
 .read-player.midi-open {
-  max-height: 520px;
+  /* Compact radial panel (header + 2×3 stems + BPM/Key ops) is taller than
+     the old 520px cap, which clipped the bottom of the card. */
+  max-height: min(92dvh, 820px);
 }
 .read-player.midi-expanded {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  position: relative;
   z-index: 210;
-  max-height: 56px;
 }
 .read-shell.read-chrome-hidden .read-player {
   transform: translateY(100%);
@@ -4175,7 +4173,36 @@ body.dark .mode-btn.active i {
   background: rgba(255, 255, 255, 0.08);
 }
 
-/* Fullscreen overlay when expanded — overrides the collapsed/partial states. */
+/* Dim behind the expanded in-player sheet. The sheet itself animates height. */
+.read-midi-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: rgba(0, 0, 0, 0.48);
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  transition: opacity .28s ease;
+}
+.read-midi-scrim.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.read-player.midi-expanded .read-midi-panel.is-open {
+  padding: 0;
+  border-bottom: 0;
+}
+.read-player.midi-expanded .read-midi-panel-inner {
+  margin: 0;
+  border-radius: 16px 16px 0 0;
+  padding: 14px 12px 12px;
+}
+
+/* Expanded sheet: dim scrim behind, panel sized to content above the player. */
 .read-midi-panel.is-expanded {
   position: fixed;
   top: 0;
@@ -4185,34 +4212,57 @@ body.dark .mode-btn.active i {
   z-index: 200;
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
+  align-items: stretch;
   grid-template-rows: unset;
   max-height: none;
-  overflow: hidden;
-  opacity: 1;
-  padding: max(env(safe-area-inset-top, 0px), 16px) 0 12px;
-  pointer-events: auto;
-  background: rgba(20, 20, 20, 0.97);
-  border-bottom: none;
-  transition: none;
-}
-.read-midi-panel.is-expanded .read-midi-panel-inner {
-  flex: 1;
   min-height: 0;
   overflow: hidden;
-  transform: none;
-  transition: none;
-  contain: unset;
-  margin: 0 12px;
-  padding: 16px 12px;
+  opacity: 0;
+  padding: 12px 0 0;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.48);
+  border-bottom: none;
+  cursor: pointer;
+  transition: opacity .28s ease;
+}
+.read-midi-panel.is-expanded.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.read-midi-panel.is-expanded .read-midi-panel-inner {
+  flex: 0 1 auto;
+  align-self: stretch;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  max-height: calc(100dvh - 56px);
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  contain: none;
+  margin: 0;
+  padding: 14px 12px 12px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  background: #1c1c1c;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.35);
+  cursor: default;
+  transform: translateY(18px);
+  transition:
+    transform .32s cubic-bezier(.22, 1, .36, 1),
+    padding .32s cubic-bezier(.22, 1, .36, 1);
+}
+.read-midi-panel.is-expanded.is-open .read-midi-panel-inner {
+  transform: translateY(0);
 }
 .read-midi-panel.is-expanded .midi-panel-content {
   flex: 0 1 auto;
-  max-height: 100%;
-  overflow-y: auto;
-  margin-top: auto;
+  min-height: 0;
+  overflow: visible;
+  margin-top: 0;
+  padding-bottom: 0;
 }
 
 .read-midi-panel {
@@ -4259,8 +4309,25 @@ body.dark .mode-btn.active i {
     background .26s ease;
 }
 .read-midi-panel.is-open .read-midi-panel-inner {
-  padding: 12px 10px 12px;
+  padding: 12px 10px 20px;
   transform: translateY(0);
+  contain: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+/* Overlay is also .is-open, so the rule above would otherwise shrink
+   padding back to 12px and clip the BPM/Key plus/minus/reset row. */
+.read-midi-panel.is-expanded.is-open {
+  overflow: hidden;
+  padding: 12px 0 0;
+}
+.read-midi-panel.is-expanded.is-open .read-midi-panel-inner {
+  contain: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: calc(100dvh - 56px);
+  padding: 14px 12px 12px;
+  border-radius: 16px 16px 0 0;
 }
 
 /* Panel header: title + expand/collapse button */
@@ -4357,17 +4424,17 @@ body.dark .mode-btn.active i {
   initial-value: 0;
 }
 
-.midi-panel-content.is-entering .midi-stem {
+.midi-panel-content.is-entering-expanded .midi-stem {
   animation: midi-stem-fill .55s cubic-bezier(.22, 1, .36, 1) both;
 }
-.midi-panel-content.is-entering .midi-stem:nth-child(1) { animation-delay: 0ms; }
-.midi-panel-content.is-entering .midi-stem:nth-child(2) { animation-delay: 40ms; }
-.midi-panel-content.is-entering .midi-stem:nth-child(3) { animation-delay: 80ms; }
-.midi-panel-content.is-entering .midi-stem:nth-child(4) { animation-delay: 120ms; }
-.midi-panel-content.is-entering .midi-stem:nth-child(5) { animation-delay: 160ms; }
-.midi-panel-content.is-entering .midi-stem:nth-child(6) { animation-delay: 200ms; }
-.midi-panel-content.is-entering .midi-stem:nth-child(7) { animation-delay: 240ms; }
-.midi-panel-content.is-entering .midi-stem:nth-child(8) { animation-delay: 280ms; }
+.midi-panel-content.is-entering-expanded .midi-stem:nth-child(1) { animation-delay: 0ms; }
+.midi-panel-content.is-entering-expanded .midi-stem:nth-child(2) { animation-delay: 40ms; }
+.midi-panel-content.is-entering-expanded .midi-stem:nth-child(3) { animation-delay: 80ms; }
+.midi-panel-content.is-entering-expanded .midi-stem:nth-child(4) { animation-delay: 120ms; }
+.midi-panel-content.is-entering-expanded .midi-stem:nth-child(5) { animation-delay: 160ms; }
+.midi-panel-content.is-entering-expanded .midi-stem:nth-child(6) { animation-delay: 200ms; }
+.midi-panel-content.is-entering-expanded .midi-stem:nth-child(7) { animation-delay: 240ms; }
+.midi-panel-content.is-entering-expanded .midi-stem:nth-child(8) { animation-delay: 280ms; }
 @keyframes midi-stem-fill {
   from { --stem-level: 0%; }
 }
@@ -4378,11 +4445,20 @@ body.dark .mode-btn.active i {
 .midi-panel-content.is-entering .midi-dial-wrap.tone-key .midi-dial {
   animation-delay: 70ms;
 }
+.midi-panel-content.is-entering:not(.is-entering-expanded) .midi-stems.is-radial .midi-stem:nth-child(1) .midi-dial { animation-delay: 0ms; }
+.midi-panel-content.is-entering:not(.is-entering-expanded) .midi-stems.is-radial .midi-stem:nth-child(2) .midi-dial { animation-delay: 40ms; }
+.midi-panel-content.is-entering:not(.is-entering-expanded) .midi-stems.is-radial .midi-stem:nth-child(3) .midi-dial { animation-delay: 80ms; }
+.midi-panel-content.is-entering:not(.is-entering-expanded) .midi-stems.is-radial .midi-stem:nth-child(4) .midi-dial { animation-delay: 120ms; }
+.midi-panel-content.is-entering:not(.is-entering-expanded) .midi-stems.is-radial .midi-stem:nth-child(5) .midi-dial { animation-delay: 160ms; }
+.midi-panel-content.is-entering:not(.is-entering-expanded) .midi-stems.is-radial .midi-stem:nth-child(6) .midi-dial { animation-delay: 200ms; }
+.midi-panel-content.is-entering:not(.is-entering-expanded) .midi-stems.is-radial .midi-stem:nth-child(7) .midi-dial { animation-delay: 240ms; }
+.midi-panel-content.is-entering:not(.is-entering-expanded) .midi-stems.is-radial .midi-stem:nth-child(8) .midi-dial { animation-delay: 280ms; }
 @keyframes midi-dial-fill {
   from { --dial-fill: 0; }
 }
 
-.midi-panel-content.is-entering:not(.is-entering-expanded) .midi-dial-wrap {
+.midi-panel-content.is-entering:not(.is-entering-expanded) .midi-dial-wrap,
+.midi-panel-content.is-entering:not(.is-entering-expanded) .midi-stems.is-radial {
   animation: midi-wipe-up .5s cubic-bezier(.22, 1, .36, 1) both;
 }
 .midi-panel-content.is-entering:not(.is-entering-expanded) .midi-dial-wrap.tone-key {
@@ -4395,6 +4471,13 @@ body.dark .mode-btn.active i {
 
 .midi-panel-content.is-entering-expanded .midi-dial-wrap {
   animation: midi-wipe-down .5s cubic-bezier(.22, 1, .36, 1) both;
+}
+.read-midi-panel.is-light .midi-panel-content.is-entering-expanded .midi-dial-wrap {
+  animation: midi-fade-in .35s ease both;
+}
+@keyframes midi-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .midi-panel-content.is-entering-expanded .midi-dial-wrap.tone-key {
   animation-delay: 70ms;
@@ -4418,6 +4501,64 @@ body.dark .mode-btn.active i {
   gap: 10px;
   min-width: 0;
 }
+.midi-stems.is-radial {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 8px;
+  justify-items: stretch;
+  padding: 10px 8px 8px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  box-sizing: border-box;
+}
+@media (min-width: 520px) {
+  .midi-stems.is-radial {
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  }
+}
+.midi-stems.is-radial .midi-stem {
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 0 0;
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+  overflow: visible;
+  box-sizing: border-box;
+}
+.midi-stem-dial {
+  --dial: var(--stem);
+}
+.midi-stem-dial .midi-dial-core { inset: 10px; }
+.midi-stem-dial .midi-dial-ring {
+  background: conic-gradient(
+    from 225deg,
+    var(--dial) 0 calc(var(--dial-fill, 0) * 0.75turn),
+    rgba(255, 255, 255, 0.14) calc(var(--dial-fill, 0) * 0.75turn) 0.75turn,
+    transparent 0.75turn
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+}
+.midi-stem-dial .midi-dial-cap {
+  color: color-mix(in srgb, var(--stem) 72%, #fff);
+  letter-spacing: 0.04em;
+}
+.midi-stem-dial .midi-dial-value {
+  font-size: 0.78rem;
+  color: var(--stem);
+}
+.midi-stems.is-radial .midi-stem-ops { width: 100%; }
+.midi-stem.is-muted .midi-stem-dial {
+  opacity: 0.38;
+  filter: grayscale(0.35);
+}
+.midi-stem.is-solo .midi-stem-dial {
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--stem) 55%, transparent);
+}
 /* Vertical stems layout in expanded panel */
 .midi-stems.is-vertical {
   grid-template-columns: 1fr;
@@ -4430,7 +4571,7 @@ body.dark .mode-btn.active i {
 }
 .midi-stems.is-vertical .midi-stem-body {
   flex: 1;
-  height: 72px;
+  height: 44px;
   flex-direction: row;
   justify-content: flex-start;
   padding: 0 12px;
@@ -4682,6 +4823,7 @@ input[type=range].midi-stem-volume {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+  flex-shrink: 0;
 }
 .midi-dial-wrap {
   --dial: var(--primary);
@@ -4704,6 +4846,12 @@ input[type=range].midi-stem-volume {
   height: 84px;
   flex-shrink: 0;
   cursor: ew-resize;
+}
+.midi-dial.midi-stem-dial {
+  width: min(56px, 100%);
+  height: auto;
+  aspect-ratio: 1;
+  max-width: 100%;
 }
 [data-drag-dial] {
   touch-action: none;
@@ -4809,6 +4957,8 @@ input[type=range].midi-dial-input {
   gap: 2px;
   min-width: 0;
   width: 100%;
+  flex-shrink: 0;
+  padding-bottom: 2px;
 }
 .midi-dial-sub {
   flex: 1 1 auto;
@@ -4847,6 +4997,126 @@ input[type=range].midi-dial-input {
 .midi-dial-reset:disabled {
   opacity: 0.28;
   cursor: default;
+}
+
+/* Light theme: MIDI panel follows Settings → Dark Mode off. */
+.read-midi-panel.is-light.is-expanded,
+.read-midi-panel.is-light.is-expanded.is-open {
+  background: rgba(0, 0, 0, 0.48);
+  isolation: isolate;
+}
+.read-midi-panel.is-light.is-open {
+  border-bottom-color: rgba(45, 45, 45, 0.1);
+}
+/* Collapsed: paint the panel slot (including padding) so the dark player
+   strip does not show through around the card. The transport bar is unchanged. */
+.read-midi-panel.is-light.is-open:not(.is-expanded) {
+  background: #f2f2f2;
+}
+.read-midi-panel.is-light .read-midi-panel-inner {
+  background: #f2f2f2;
+  box-shadow: inset 0 0 0 1px rgba(45, 45, 45, 0.08);
+}
+.read-midi-panel.is-light.is-expanded .read-midi-panel-inner {
+  background: #f2f2f2;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.18);
+  border-radius: 16px 16px 0 0;
+}
+.read-midi-panel.is-light .midi-panel-title {
+  color: rgba(45, 45, 45, 0.48);
+}
+.read-midi-panel.is-light .midi-panel-expand-btn {
+  background: rgba(45, 45, 45, 0.06);
+  color: rgba(45, 45, 45, 0.55);
+}
+.read-midi-panel.is-light .midi-panel-expand-btn:hover {
+  background: rgba(45, 45, 45, 0.12);
+  color: #2d2d2d;
+}
+.read-midi-panel.is-light .midi-panel-action-btn {
+  background: rgba(45, 45, 45, 0.06);
+  color: #2d2d2d;
+}
+.read-midi-panel.is-light .midi-panel-action-btn:hover {
+  background: rgba(45, 45, 45, 0.12);
+}
+.read-midi-panel.is-light .midi-stem {
+  --stem-soft: color-mix(in srgb, var(--stem) 34%, #d8d8d8);
+}
+.read-midi-panel.is-light .midi-stem-body {
+  box-shadow: inset 0 0 0 1px rgba(45, 45, 45, 0.08);
+}
+.read-midi-panel.is-light .midi-stem.is-solo .midi-stem-body {
+  box-shadow:
+    inset 0 0 0 1px rgba(45, 45, 45, 0.12),
+    0 0 0 2px color-mix(in srgb, var(--stem) 55%, transparent);
+}
+.read-midi-panel.is-light .midi-stem-btn {
+  background: color-mix(in srgb, var(--stem) 18%, #ececec);
+  color: color-mix(in srgb, var(--stem) 70%, #2d2d2d);
+}
+.read-midi-panel.is-light .midi-stem-btn.is-on {
+  background: var(--stem);
+  color: var(--stem-text);
+}
+.read-midi-panel.is-light .midi-instrument-select-wrap {
+  background: rgba(45, 45, 45, 0.05);
+  color: rgba(45, 45, 45, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(45, 45, 45, 0.1);
+}
+.read-midi-panel.is-light .midi-instrument-select {
+  color: #2d2d2d;
+}
+.read-midi-panel.is-light .midi-instrument-select option {
+  background: #ffffff;
+  color: #2d2d2d;
+}
+.read-midi-panel.is-light .midi-dial-wrap,
+.read-midi-panel.is-light .midi-stems.is-radial {
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(45, 45, 45, 0.12);
+}
+.read-midi-panel.is-light .midi-dial-ring,
+.read-midi-panel.is-light .midi-stem-dial .midi-dial-ring {
+  background: conic-gradient(
+    from 225deg,
+    var(--dial) 0 calc(var(--dial-fill, 0) * 0.75turn),
+    rgba(45, 45, 45, 0.22) calc(var(--dial-fill, 0) * 0.75turn) 0.75turn,
+    transparent 0.75turn
+  );
+}
+.read-midi-panel.is-light .midi-dial-core {
+  background: #f3f3f3;
+  box-shadow: inset 0 0 0 1px rgba(45, 45, 45, 0.1);
+}
+.read-midi-panel.is-light .midi-dial-cap {
+  color: rgba(45, 45, 45, 0.48);
+}
+.read-midi-panel.is-light .midi-stem-dial .midi-dial-cap,
+.read-midi-panel.is-light .midi-stem-dial .midi-dial-value {
+  color: #2d2d2d;
+}
+.read-midi-panel.is-light .midi-stem.is-solo .midi-stem-dial {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--stem) 55%, transparent);
+}
+.read-midi-panel.is-light .midi-dial-value--tap {
+  border-bottom-color: rgba(45, 45, 45, 0.22);
+}
+.read-midi-panel.is-light .midi-dial-edit {
+  background: #ffffff;
+  color: var(--dial);
+}
+.read-midi-panel.is-light .midi-dial-sub {
+  color: rgba(45, 45, 45, 0.62);
+}
+.read-midi-panel.is-light .midi-dial-nudge,
+.read-midi-panel.is-light .midi-dial-reset {
+  color: rgba(45, 45, 45, 0.72);
+}
+.read-midi-panel.is-light .midi-dial-nudge:active,
+.read-midi-panel.is-light .midi-dial-reset:hover:not(:disabled) {
+  color: #2d2d2d;
+  background: rgba(45, 45, 45, 0.08);
 }
 .midi-dial-input:focus,
 .midi-dial-input:focus-visible,

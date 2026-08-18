@@ -51,8 +51,8 @@
                 class="midi-panel-action-btn midi-panel-action-btn--icon"
                 @onclick="() => OnResetChannelState.InvokeAsync()"
                 disabled="@ResetChannelStateDisabled"
-                title="Reset mute and solo"
-                aria-label="Reset mute and solo">
+                title="Reset mute, solo, and volumes"
+                aria-label="Reset mute, solo, and volumes">
             <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
         </button>
     </div>
@@ -60,32 +60,58 @@
 
 @if (Channels.Count > 0)
 {
-    <div class="midi-stems @(Expanded ? "is-vertical" : null)" role="group" aria-label="Voices">
+    <div class="midi-stems @(Expanded ? "is-vertical" : "is-radial")" role="group" aria-label="Voices">
         @foreach (var ch in Channels)
         {
             var muted = Muted.Contains(ch);
-            var solo = SoloChannel == ch;
+            var solo = SoloChannels.Contains(ch);
             var label = ChannelLabel(ch);
             var shortLabel = ChannelShortLabel(ch);
             var tone = ChannelToneClass(ch);
+            var vol = ChannelVolume(ch).ToString(System.Globalization.CultureInfo.InvariantCulture);
             <div class="midi-stem @tone @(muted ? "is-muted" : null) @(solo ? "is-solo" : null)"
                  style="--stem-level:@ChannelVolumePercent(ch)%">
-                <div class="midi-stem-body" title="@label"
-                     data-drag-dial="@($"vol:{ch}")"
-                     data-dial-min="0"
-                     data-dial-max="1"
-                     data-dial-step="0.05"
-                     data-dial-px="5"
-                     data-dial-axis="@(Expanded ? "x" : "y")"
-                     data-dial-value="@ChannelVolume(ch).ToString(System.Globalization.CultureInfo.InvariantCulture)">
-                    <span class="midi-stem-name">@shortLabel</span>
-                    <span class="midi-stem-level">@ChannelVolumePercent(ch)%</span>
-                    <input class="midi-stem-volume"
-                           type="range" min="0" max="1" step="0.05"
-                           value="@ChannelVolume(ch).ToString(System.Globalization.CultureInfo.InvariantCulture)"
-                           @oninput="e => OnVolumeInput(ch, e)"
-                           aria-label="@($"{label} volume")" />
-                </div>
+                @if (Expanded)
+                {
+                    <div class="midi-stem-body" title="@label"
+                         data-drag-dial="@($"vol:{ch}")"
+                         data-dial-min="0"
+                         data-dial-max="1"
+                         data-dial-step="0.05"
+                         data-dial-px="5"
+                         data-dial-axis="x"
+                         data-dial-value="@vol">
+                        <span class="midi-stem-name">@shortLabel</span>
+                        <span class="midi-stem-level">@ChannelVolumePercent(ch)%</span>
+                        <input class="midi-stem-volume"
+                               type="range" min="0" max="1" step="0.05"
+                               value="@vol"
+                               @oninput="e => OnVolumeInput(ch, e)"
+                               aria-label="@($"{label} volume")" />
+                    </div>
+                }
+                else
+                {
+                    <div class="midi-dial midi-stem-dial" title="@label"
+                         style="--dial-fill:@ChannelDialFill(ch)"
+                         data-drag-dial="@($"vol:{ch}")"
+                         data-dial-min="0"
+                         data-dial-max="1"
+                         data-dial-step="0.05"
+                         data-dial-px="8"
+                         data-dial-value="@vol">
+                        <div class="midi-dial-ring" aria-hidden="true"></div>
+                        <div class="midi-dial-core">
+                            <span class="midi-dial-cap">@shortLabel</span>
+                            <span class="midi-dial-value">@ChannelVolumePercent(ch)</span>
+                        </div>
+                        <input class="midi-dial-input"
+                               type="range" min="0" max="1" step="0.05"
+                               value="@vol"
+                               @oninput="e => OnVolumeInput(ch, e)"
+                               aria-label="@($"{label} volume")" />
+                    </div>
+                }
                 <div class="midi-stem-ops">
                     <button type="button"
                             class="midi-stem-btn @(muted ? "is-on" : null)"
@@ -218,7 +244,7 @@
     [Parameter] public List<InstrumentOption> Instruments { get; set; } = new();
     [Parameter] public List<int> Channels { get; set; } = new();
     [Parameter] public HashSet<int> Muted { get; set; } = new();
-    [Parameter] public int? SoloChannel { get; set; }
+    [Parameter] public HashSet<int> SoloChannels { get; set; } = new();
     [Parameter] public Dictionary<int, string> ChannelNames { get; set; } = new();
     [Parameter] public Dictionary<int, double> ChannelVolumes { get; set; } = new();
     [Parameter] public Dictionary<int, double> ChannelActivity { get; set; } = new();
@@ -294,6 +320,9 @@
         ChannelVolumes.TryGetValue(ch, out var v) ? Math.Clamp(v, 0, 1) : 1;
 
     int ChannelVolumePercent(int ch) => (int)Math.Round(ChannelVolume(ch) * 100);
+
+    string ChannelDialFill(int ch) =>
+        ChannelVolume(ch).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
 
     string KeyNameForSemitone(int s) => KeyNameForSemitoneFunc?.Invoke(s) ?? s.ToString();
 

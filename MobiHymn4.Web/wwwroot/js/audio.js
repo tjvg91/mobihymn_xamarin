@@ -1132,6 +1132,36 @@ window.mobihymnAudio = (function () {
       if (mode !== "midi") return midiControlState();
       mutedChannels.clear();
       return midiControlState();
+    },
+
+    setSoloChannels(channels) {
+      if (mode !== "midi") return midiControlState();
+      const solos = new Set(
+        (Array.isArray(channels) ? channels : [])
+          .map(Number)
+          .filter((ch) => isFinite(ch))
+      );
+      if (solos.size === 0) {
+        mutedChannels.clear();
+        return midiControlState();
+      }
+      for (const ch of midiChannels) {
+        if (solos.has(Number(ch))) mutedChannels.delete(ch);
+        else {
+          if (!mutedChannels.has(ch)) stopActiveMidiNotes(ch);
+          mutedChannels.add(ch);
+        }
+      }
+      return midiControlState();
+    },
+
+    resetChannelState() {
+      if (mode !== "midi") return midiControlState();
+      mutedChannels.clear();
+      const vols = {};
+      for (const ch of midiChannels) vols[ch] = 1;
+      midiChannelVolumes = vols;
+      return midiControlState();
     }
   };
 })();

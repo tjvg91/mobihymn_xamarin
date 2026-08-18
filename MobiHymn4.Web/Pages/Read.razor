@@ -81,39 +81,29 @@ else
 
         @if (ShowPlayer)
         {
-            @* Fullscreen expanded panel lives outside .read-player so overflow:hidden
-               on the player cannot clip it. *@
-            @* Fullscreen overlay is kept as a sibling of .read-player and
-               hoisted to <body> by JS after each render so it escapes every
-               overflow:hidden / contain ancestor. When not expanded it is
-               inert (no interactivity) and invisible. *@
+            @* Dim sits above the lyrics and below the player. The panel itself
+               stays inside .read-player so expand/collapse is a height tween. *@
             @if (AudioMode == "midi")
             {
                 <div id="midi-overlay"
-                     class="read-midi-panel @(MidiPanelOpen && MidiPanelExpanded ? "is-open is-expanded" : null)"
+                     class="read-midi-scrim @(MidiPanelOpen && MidiPanelExpanded ? "is-open" : null)"
                      aria-hidden="@(!(MidiPanelOpen && MidiPanelExpanded))"
                      inert="@(!(MidiPanelOpen && MidiPanelExpanded))"
-                     @onclick:stopPropagation="true">
-                    <div class="read-midi-panel-inner">
-                        @MidiPanelComponent(expanded: true)
-                    </div>
+                     @onclick="CloseMidiPanel">
                 </div>
             }
 
-            <div class="read-player @(UsesLightPlayerBar ? "read-player-on-dark-theme" : null) @(MidiPanelOpen ? "midi-open" : null) @(MidiPanelExpanded ? "midi-expanded" : null)"
+            <div class="read-player @(UsesLightPlayerBar ? "read-player-on-dark-theme" : null) @(MidiPanelOpen ? "midi-open" : null) @(MidiPanelOpen && MidiPanelExpanded ? "midi-expanded" : null)"
                  style="@PlayerBarStyle"
                  @onclick:stopPropagation="true">
                 @if (AudioMode == "midi")
                 {
-                    @* inert takes every control out of the tab order in one
-                       attribute, instead of re-patching a tabindex on each of
-                       them while the panel is mid-animation. *@
-                    <div class="read-midi-panel @(MidiPanelOpen && !MidiPanelExpanded ? "is-open" : null)"
-                         aria-hidden="@(!MidiPanelOpen || MidiPanelExpanded)"
-                         inert="@(!MidiPanelOpen || MidiPanelExpanded)"
+                    <div class="read-midi-panel @(State.DarkMode ? null : "is-light") @(MidiPanelOpen ? "is-open" : null)"
+                         aria-hidden="@(!MidiPanelOpen)"
+                         inert="@(!MidiPanelOpen)"
                          @onclick:stopPropagation="true">
                         <div class="read-midi-panel-inner">
-                            @MidiPanelComponent(expanded: false)
+                            @MidiPanelComponent(MidiPanelExpanded)
                         </div>
                     </div>
                 }
@@ -274,11 +264,12 @@ else
     Dictionary<int, double> MidiChannelVolumes = new();
     Dictionary<int, double> MidiChannelActivity = new();
     HashSet<int> MidiMuted = new();
-    int? MidiSoloChannel;
+    HashSet<int> MidiSoloChannels = new();
     string MidiInstrumentId = "acoustic_grand_piano";
     bool MidiInstrumentLoading;
     bool MidiPanelExpanded;
     bool MidiEnterAnim;
+    bool midiViewHeightAnim;
     int midiEnterToken;
     bool TempoEditing;
     bool KeyEditing;
@@ -296,7 +287,7 @@ else
             Instruments="@MidiInstruments.Select(i => new MidiPanelInner.InstrumentOption(i.Id, i.Label)).ToList()"
             Channels="@MidiChannels"
             Muted="@MidiMuted"
-            SoloChannel="@MidiSoloChannel"
+            SoloChannels="@MidiSoloChannels"
             MuteAllDisabled="@AllVoicesMuted"
             ResetChannelStateDisabled="@ChannelStateIsDefault"
             ChannelNames="@MidiChannelNames"
@@ -341,7 +332,11 @@ else
             OnKeySelect="@(semi => OnKeyTyped(new ChangeEventArgs { Value = semi.ToString() }))" />;
     bool AllVoicesMuted => MidiChannels.Count > 0 && MidiChannels.TrueForAll(ch => MidiMuted.Contains(ch));
     bool NoVoicesMuted => MidiChannels.Count == 0 || MidiChannels.TrueForAll(ch => !MidiMuted.Contains(ch));
-    bool ChannelStateIsDefault => NoVoicesMuted && MidiSoloChannel is null;
+    bool ChannelVolumesAreDefault =>
+        MidiChannels.Count == 0
+        || MidiChannels.TrueForAll(ch => ChannelVolumePercent(ch) == 100);
+    bool ChannelStateIsDefault =>
+        NoVoicesMuted && MidiSoloChannels.Count == 0 && ChannelVolumesAreDefault;
     double SeekMax => Duration > 0 ? Duration : 1;
     double SeekPct => Duration > 0 ? Math.Clamp(CurrentTime / Duration * 100, 0, 100) : 0;
     string MidiTempoBpmLabel => MidiTempoBpm.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -643,20 +638,29 @@ else
 
     void ToggleMidiPanel()
     {
-        MidiPanelOpen = !MidiPanelOpen;
-        if (!MidiPanelOpen)
+        if (MidiPanelOpen)
         {
-            MidiPanelExpanded = false;
-            MidiEnterAnim = false;
+            CloseMidiPanel();
             return;
         }
+        MidiPanelOpen = true;
         BeginMidiEnter();
     }
 
-    void ToggleMidiExpand()
+    void CloseMidiPanel()
     {
+        if (!MidiPanelOpen) return;
+        MidiPanelOpen = false;
+        MidiEnterAnim = false;
+    }
+
+    async Task ToggleMidiExpand()
+    {
+        try { await Js.InvokeVoidAsync("mobihymnMidiPanel.capture"); }
+        catch { /* height tween is best-effort */ }
         MidiPanelExpanded = !MidiPanelExpanded;
-        if (MidiPanelExpanded) BeginMidiEnter();
+        State.SetMidiPanelExpanded(MidiPanelExpanded);
+        midiViewHeightAnim = true;
     }
 
     void BeginMidiEnter()
@@ -780,9 +784,7 @@ else
                 .Where(i => !string.IsNullOrWhiteSpace(i.Id))
                 .Select(i => new MidiInstrumentOption(i.Id!, string.IsNullOrWhiteSpace(i.Label) ? i.Id! : i.Label!))
                 .ToList();
-        if (MidiSoloChannel is int solo
-            && (MidiMuted.Contains(solo) || !MidiChannels.Contains(solo)))
-            MidiSoloChannel = null;
+        MidiSoloChannels.RemoveWhere(ch => MidiMuted.Contains(ch) || !MidiChannels.Contains(ch));
     }
 
     async Task RefreshMidiControlsAsync()
@@ -983,10 +985,11 @@ else
     {
         try
         {
-            if (MidiSoloChannel == channel)
-                MidiSoloChannel = null;
+            MidiSoloChannels.Remove(channel);
             var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.toggleChannelMute", channel);
             ApplyMidiControls(c);
+            if (MidiSoloChannels.Count > 0)
+                await ApplySoloChannelsAsync();
         }
         catch { /* ignore */ }
     }
@@ -1028,26 +1031,18 @@ else
     {
         try
         {
-            if (MidiSoloChannel == channel)
-            {
-                MidiSoloChannel = null;
-                var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.unmuteAllChannels");
-                ApplyMidiControls(c);
-                return;
-            }
-
-            MidiSoloChannel = channel;
-            foreach (var ch in MidiChannels)
-            {
-                var shouldMute = ch != channel;
-                var isMuted = MidiMuted.Contains(ch);
-                if (shouldMute == isMuted) continue;
-                var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.setChannelMuted", ch, shouldMute);
-                ApplyMidiControls(c);
-            }
-            MidiSoloChannel = channel;
+            if (!MidiSoloChannels.Remove(channel))
+                MidiSoloChannels.Add(channel);
+            await ApplySoloChannelsAsync();
         }
         catch { /* ignore */ }
+    }
+
+    async Task ApplySoloChannelsAsync()
+    {
+        var c = await Js.InvokeAsync<MidiControlsDto>(
+            "mobihymnAudio.setSoloChannels", MidiSoloChannels.ToArray());
+        ApplyMidiControls(c);
     }
 
     async Task MuteAllChannels()
@@ -1055,7 +1050,7 @@ else
         if (AllVoicesMuted) return;
         try
         {
-            MidiSoloChannel = null;
+            MidiSoloChannels.Clear();
             var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.muteAllChannels");
             ApplyMidiControls(c);
         }
@@ -1067,7 +1062,7 @@ else
         if (NoVoicesMuted) return;
         try
         {
-            MidiSoloChannel = null;
+            MidiSoloChannels.Clear();
             var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.unmuteAllChannels");
             ApplyMidiControls(c);
         }
@@ -1079,8 +1074,8 @@ else
         if (ChannelStateIsDefault) return;
         try
         {
-            MidiSoloChannel = null;
-            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.unmuteAllChannels");
+            MidiSoloChannels.Clear();
+            var c = await Js.InvokeAsync<MidiControlsDto>("mobihymnAudio.resetChannelState");
             ApplyMidiControls(c);
         }
         catch { /* ignore */ }
@@ -1149,7 +1144,7 @@ else
         MidiChannelNames = new();
         MidiChannelVolumes = new();
         MidiMuted = new();
-        MidiSoloChannel = null;
+        MidiSoloChannels.Clear();
         StopMidiPoll();
         resolvedForNumber = number;
 
@@ -1391,14 +1386,20 @@ else
             catch { /* element may not be in DOM yet */ }
         }
 
+        if (midiViewHeightAnim)
+        {
+            midiViewHeightAnim = false;
+            try { await Js.InvokeVoidAsync("mobihymnMidiPanel.run"); }
+            catch { /* keep the snap if the tween helper is missing */ }
+        }
+
         try { await Js.InvokeVoidAsync("mobihymnPlayerMetrics.sync"); }
         catch { /* FAB falls back to its static offsets */ }
 
-        // Hoist the expanded overlay to <body> so it escapes every overflow:hidden
-        // ancestor. Restore it when not expanded so Blazor's DOM diffing is happy.
+        // Hoist the dim overlay to <body> so it escapes overflow:hidden ancestors.
         try
         {
-            if (AudioMode == "midi" && MidiPanelOpen && MidiPanelExpanded)
+            if (AudioMode == "midi" && ShowPlayer)
                 await Js.InvokeVoidAsync("mobihymnPortal.hoist", "midi-overlay");
             else
                 await Js.InvokeVoidAsync("mobihymnPortal.restore", "midi-overlay");
@@ -1426,6 +1427,7 @@ else
 
     protected override void OnInitialized()
     {
+        MidiPanelExpanded = State.MidiPanelExpanded;
         State.Changed += OnChanged;
         BoardNav.Changed += OnBoardNavChanged;
         Auth.AuthStateChanged += OnAuthChanged;
