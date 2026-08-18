@@ -3,6 +3,15 @@ window.mobihymnAudio = (function () {
   let audioEl = null;
   let midiPlayer = null;
   let midiInstrument = null;
+  /** @type {Record<string, any>} */
+  let midiInstrumentsByName = {};
+  /** @type {Map<string, any>} */
+  let activeMidiNotes = new Map();
+  /** @type {Map<string, { n: number, vel: number }>} */
+  let midiNoteMeta = new Map();
+  const WAVE_BINS = 192;
+  /** @type {Record<number, { bins: Float32Array, i: number }>} */
+  let midiChannelWaves = {};
   let midiAudioCtx = null;
   let midiDuration = 0;
   let midiBaseDuration = 0;
@@ -16,12 +25,277 @@ window.mobihymnAudio = (function () {
   let mutedChannels = new Set();
   /** @type {number[]} */
   let midiChannels = [];
+  /** @type {Record<number, string>} */
+  let midiChannelNames = {};
+  /** @type {Record<number, number>} */
+  let midiChannelVolumes = {};
+  /** @type {Record<number, { active: number, peak: number, at: number }>} */
+  let midiChannelActivity = {};
   let midiTranspose = 0; // semitones
   let midiTempoScale = 1;
   let midiFileTempo = 120;
   let midiKeyRoot = "C"; // pitch class from Key Signature (or default)
   let midiKeyMode = "Major"; // Major | Minor
   let midiKeyDetected = false;
+  /** Whether playback restarts at end (MIDI + MP3). Survives track changes. */
+  let playbackLoop = false;
+  /** Instrument/preset id — survives hymn changes; samples reload per AudioContext. */
+  let midiInstrumentId = "acoustic_grand_piano";
+  let midiInstrumentLoading = false;
+  /** In-flight sample download, so resolve() need not wait on it but play() can. */
+  let midiInstrumentPromise = null;
+
+  // A one-item instruments array applies one patch to every channel. Four-item
+  // arrays map in sorted channel order to Soprano, Alto, Tenor, Bass.
+  const MIDI_INSTRUMENTS = [
+    { id: "acoustic_grand_piano", label: "Piano", instruments: ["acoustic_grand_piano"] },
+    { id: "church_organ", label: "Church Organ", instruments: ["church_organ"] },
+    { id: "drawbar_organ", label: "Drawbar Organ", instruments: ["drawbar_organ"] },
+    { id: "reed_organ", label: "Reed Organ", instruments: ["reed_organ"] },
+    { id: "harpsichord", label: "Harpsichord", instruments: ["harpsichord"] },
+    { id: "string_ensemble_1", label: "String Ensemble", instruments: ["string_ensemble_1"] },
+    { id: "choir_aahs", label: "Choir Aahs", instruments: ["choir_aahs"] },
+    { id: "voice_oohs", label: "Choir Oohs", instruments: ["voice_oohs"] },
+    {
+      id: "strings_satb",
+      label: "SATB Strings",
+      instruments: ["violin", "viola", "cello", "contrabass"]
+    },
+    {
+      id: "sax_satb",
+      label: "SATB Sax Choir",
+      instruments: ["soprano_sax", "alto_sax", "tenor_sax", "baritone_sax"]
+    },
+    {
+      id: "sax_at",
+      label: "Alto / Tenor Sax",
+      instruments: ["alto_sax", "alto_sax", "tenor_sax", "tenor_sax"]
+    },
+    {
+      id: "organ_strings",
+      label: "Strings + Organ",
+      instruments: ["violin", "viola", "church_organ", "church_organ"]
+    },
+    {
+      id: "woodwind_satb",
+      label: "Mixed Woodwinds",
+      instruments: ["flute", "clarinet", "english_horn", "bassoon"]
+    }
+  ];
+
+  function normalizeInstrumentId(id) {
+    const name = String(id || "");
+    return MIDI_INSTRUMENTS.some((i) => i.id === name) ? name : "acoustic_grand_piano";
+  }
+
+  function currentInstrumentPreset() {
+    return MIDI_INSTRUMENTS.find((i) => i.id === midiInstrumentId) || MIDI_INSTRUMENTS[0];
+  }
+
+  // Hymn MIDIs release each chord a hair before the next one starts. Sustained
+  // patches need a release long enough to bridge that gap, or the line breathes
+  // between every chord; percussive ones want a short one so notes stay crisp.
+  const RELEASE_BY_INSTRUMENT = {
+    choir_aahs: 0.5,
+    voice_oohs: 0.5,
+    string_ensemble_1: 0.45,
+    string_ensemble_2: 0.45,
+    violin: 0.32,
+    viola: 0.32,
+    cello: 0.32,
+    contrabass: 0.32,
+    church_organ: 0.2,
+    reed_organ: 0.2,
+    drawbar_organ: 0.14,
+    rock_organ: 0.14,
+    percussive_organ: 0.12,
+    soprano_sax: 0.24,
+    alto_sax: 0.24,
+    tenor_sax: 0.24,
+    baritone_sax: 0.24,
+    flute: 0.26,
+    clarinet: 0.24,
+    english_horn: 0.26,
+    bassoon: 0.26,
+    acoustic_grand_piano: 0.3,
+    harpsichord: 0.14
+  };
+  const DEFAULT_RELEASE = 0.25;
+
+  function voiceForChannel(channel) {
+    const preset = currentInstrumentPreset();
+    const role = Math.max(0, midiChannels.indexOf(channel));
+    const name = preset.instruments.length === 1
+      ? preset.instruments[0]
+      : preset.instruments[Math.min(role, preset.instruments.length - 1)];
+    return {
+      name: name,
+      instrument: midiInstrumentsByName[name] || midiInstrument,
+      release: RELEASE_BY_INSTRUMENT[name] ?? DEFAULT_RELEASE
+    };
+  }
+
+  function midiNoteKey(channel, event) {
+    const pitch = typeof event?.noteNumber === "number"
+      ? event.noteNumber
+      : String(event?.noteName || "");
+    return channel + ":" + pitch;
+  }
+
+  function stopMidiNote(channel, event) {
+    const key = midiNoteKey(channel, event);
+    const node = activeMidiNotes.get(key);
+    midiNoteMeta.delete(key);
+    if (!node) return;
+    activeMidiNotes.delete(key);
+    try { node.stop(midiAudioCtx?.currentTime); } catch { /* already stopped */ }
+  }
+
+  function stopActiveMidiNotes(channel) {
+    for (const [key, node] of activeMidiNotes) {
+      if (channel != null && !key.startsWith(channel + ":")) continue;
+      activeMidiNotes.delete(key);
+      midiNoteMeta.delete(key);
+      try { node.stop(midiAudioCtx?.currentTime); } catch { /* already stopped */ }
+    }
+  }
+
+  function sampleChannelWaves() {
+    const out = {};
+    for (const ch of midiChannels) {
+      const bins = midiChannelWaves[ch];
+      out[ch] = bins ? Array.from(bins) : [];
+    }
+    return out;
+  }
+
+  function eventAbsTick(ev, running) {
+    if (typeof ev?.tick === "number" && ev.tick > 0) return ev.tick;
+    return running;
+  }
+
+  function bakeChannelWaves() {
+    const next = {};
+    for (const ch of midiChannels)
+      next[ch] = new Float32Array(WAVE_BINS);
+    midiChannelWaves = next;
+
+    const tracks = midiPlayer?.getEvents?.() || [];
+    const notes = [];
+    let maxTick = 0;
+
+    try {
+      for (const track of tracks) {
+        if (!Array.isArray(track)) continue;
+        let running = 0;
+        const open = {};
+        for (const ev of track) {
+          running += Number(ev?.delta) || 0;
+          const tick = eventAbsTick(ev, running);
+          maxTick = Math.max(maxTick, tick, running);
+          if (typeof ev?.channel !== "number") continue;
+          const ch = ev.channel;
+          const pitch = typeof ev.noteNumber === "number" ? ev.noteNumber : ev.noteName;
+          if (pitch == null) continue;
+          const key = ch + ":" + pitch;
+          const isOff = ev.name === "Note off"
+            || (ev.name === "Note on" && !(ev.velocity > 0));
+          const isOn = ev.name === "Note on" && ev.velocity > 0;
+          if (isOn) {
+            open[key] = { tick, vel: ev.velocity || 80, n: typeof pitch === "number" ? pitch : 60 };
+          } else if (isOff && open[key]) {
+            notes.push({
+              ch,
+              start: open[key].tick,
+              end: Math.max(open[key].tick + 1, tick),
+              vel: open[key].vel,
+              n: open[key].n
+            });
+            delete open[key];
+          }
+        }
+        for (const key of Object.keys(open)) {
+          notes.push({
+            ch: Number(key.split(":")[0]),
+            start: open[key].tick,
+            end: Math.max(open[key].tick + 1, running, maxTick),
+            vel: open[key].vel,
+            n: open[key].n
+          });
+        }
+      }
+    } catch { /* keep empty waves */ }
+
+    const totalTicks = Math.max(
+      1,
+      maxTick,
+      midiPlayer?.getTotalTicks?.() || 0,
+      midiPlayer?.totalTicks || 0
+    );
+
+    for (const note of notes) {
+      const bins = midiChannelWaves[note.ch];
+      if (!bins) continue;
+      const start = Math.max(0, Math.min(totalTicks, note.start));
+      const end = Math.max(start + 1, Math.min(totalTicks, note.end));
+      const a = Math.max(0, Math.floor((start / totalTicks) * WAVE_BINS));
+      const b = Math.min(WAVE_BINS - 1, Math.max(a, Math.ceil((end / totalTicks) * WAVE_BINS) - 1));
+      const amp = Math.max(0.2, Math.min(1, (note.vel || 80) / 100));
+      for (let i = a; i <= b; i++) {
+        const phase = (note.n || 60) * 0.37 + i * 0.51;
+        const grain = 0.72 + 0.28 * Math.abs(Math.sin(phase));
+        bins[i] = Math.min(1, bins[i] + amp * grain);
+      }
+    }
+
+    for (const ch of midiChannels) {
+      const bins = midiChannelWaves[ch];
+      let max = 0;
+      for (let i = 0; i < bins.length; i++) max = Math.max(max, bins[i]);
+      if (max <= 0) continue;
+      for (let i = 0; i < bins.length; i++) {
+        if (bins[i] <= 0) continue;
+        bins[i] = 0.22 + 0.78 * (bins[i] / max);
+      }
+    }
+  }
+
+  async function loadMidiInstrument(id) {
+    if (!midiAudioCtx || !window.Soundfont)
+      throw new Error("MIDI audio not ready");
+    const presetId = normalizeInstrumentId(id);
+    const preset = MIDI_INSTRUMENTS.find((i) => i.id === presetId) || MIDI_INSTRUMENTS[0];
+    midiInstrumentLoading = true;
+    try {
+      const names = Array.from(new Set(preset.instruments));
+      const loaded = await Promise.all(
+        names.map(async (name) => [name, await window.Soundfont.instrument(midiAudioCtx, name)])
+      );
+      const next = Object.fromEntries(loaded);
+      // Swap only after every voice is ready, so playback never becomes a
+      // partially loaded mixture.
+      stopActiveMidiNotes();
+      midiInstrumentsByName = next;
+      midiInstrument = next[preset.instruments[0]];
+      midiInstrumentId = presetId;
+    } finally {
+      midiInstrumentLoading = false;
+    }
+  }
+
+  // Samples are several hundred KB, so the caller decides whether to wait: the
+  // transport can render immediately while this streams, and play() joins it.
+  function beginInstrumentLoad(id) {
+    midiInstrumentPromise = loadMidiInstrument(id).catch((e) => {
+      console.warn("Instrument load failed", e);
+    });
+    return midiInstrumentPromise;
+  }
+
+  async function awaitInstrument() {
+    if (!midiInstrumentPromise) return;
+    try { await midiInstrumentPromise; } catch { /* already logged */ }
+  }
 
   const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
   const NOTE_NAMES_FLAT = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
@@ -107,6 +381,11 @@ window.mobihymnAudio = (function () {
   function resetMidiControls() {
     mutedChannels = new Set();
     midiChannels = [];
+    midiChannelNames = {};
+    midiChannelVolumes = {};
+    midiChannelActivity = {};
+    midiChannelWaves = {};
+    midiNoteMeta = new Map();
     midiTranspose = 0;
     midiTempoScale = 1;
     midiFileTempo = 120;
@@ -197,10 +476,14 @@ window.mobihymnAudio = (function () {
    * Change playback BPM without jumping the playhead.
    * midi-player-js maps wall-clock → ticks using tempo; changing tempo mid-play
    * without resetting the clock makes getCurrentTick leap forward/back.
+   *
+   * Do not call skipToTick from a MIDI Set Tempo event — that rewinds the
+   * event cursor and note-on/note-off fire as fragments.
    */
-  function applyTempo() {
+  function applyTempo(opts) {
     if (!midiPlayer || typeof midiPlayer.setTempo !== "function") return;
     const bpm = Math.max(20, Math.min(400, midiFileTempo * midiTempoScale));
+    const seek = !opts || opts.seek !== false;
     const wasPlaying = !midiPaused && (typeof midiPlayer.isPlaying !== "function" || midiPlayer.isPlaying());
 
     let tick = 0;
@@ -211,18 +494,18 @@ window.mobihymnAudio = (function () {
     } catch { tick = midiPlayer.tick || 0; }
 
     try {
-      if (wasPlaying) {
+      if (seek && wasPlaying) {
         try { midiPlayer.pause(); } catch { /* ignore */ }
       }
       midiPlayer.setTempo(bpm);
-      if (typeof midiPlayer.skipToTick === "function")
+      if (seek && typeof midiPlayer.skipToTick === "function")
         midiPlayer.skipToTick(Math.max(0, tick));
-      else {
+      else if (seek) {
         midiPlayer.startTick = Math.max(0, tick);
         midiPlayer.tick = Math.max(0, tick);
       }
       syncMidiTimesFromTicks();
-      if (wasPlaying) {
+      if (seek && wasPlaying) {
         midiPaused = false;
         midiPlayer.play();
         stopMidiClock();
@@ -239,21 +522,56 @@ window.mobihymnAudio = (function () {
     return name + octave;
   }
 
+  const SATB_NAMES = {
+    0: "Soprano",
+    1: "Alto",
+    2: "Tenor",
+    3: "Bass",
+    4: "Soprano Alt",
+    5: "Bass Alt"
+  };
+  const GENERIC_TRACK_NAME = /^(untitled|piano|pianor|pianol|treble\s*clef|bass\s*clef|other\s+\d+)$/i;
+
+  function cleanTrackName(raw) {
+    let s = String(raw ?? "").trim();
+    s = s.replace(/^piano\s*,\s*/i, "").trim();
+    if (GENERIC_TRACK_NAME.test(s)) return "";
+    return s;
+  }
+
   function collectChannelsAndKey() {
     const found = new Set();
+    const names = {};
     try {
       const tracks = midiPlayer?.getEvents?.() || [];
       for (const track of tracks) {
         if (!Array.isArray(track)) continue;
+        let trackName = "";
+        let trackCh = null;
         for (const ev of track) {
           if (ev?.name === "Key Signature")
             applyKeySignatureEvent(ev);
-          if (typeof ev?.channel === "number" && (ev.name === "Note on" || ev.name === "Note off"))
+          if (ev?.name === "Sequence/Track Name" || ev?.name === "Instrument Name") {
+            const s = cleanTrackName(ev.string ?? ev.data ?? "");
+            if (s) trackName = s;
+          }
+          if (typeof ev?.channel === "number" && (ev.name === "Note on" || ev.name === "Note off")) {
             found.add(ev.channel);
+            if (trackCh == null) trackCh = ev.channel;
+          }
         }
+        if (trackCh != null && trackName)
+          names[trackCh] = trackName;
       }
     } catch { /* ignore */ }
     midiChannels = Array.from(found).sort((a, b) => a - b);
+    if (midiChannels.includes(2)) {
+      for (const ch of midiChannels) {
+        if (!names[ch] && SATB_NAMES[ch]) names[ch] = SATB_NAMES[ch];
+      }
+    }
+    midiChannelNames = names;
+    bakeChannelWaves();
   }
 
   function handleMidiEvent(event) {
@@ -263,7 +581,7 @@ window.mobihymnAudio = (function () {
       const bpm = event.tempo || event.data;
       if (bpm) {
         midiFileTempo = bpm;
-        applyTempo();
+        applyTempo({ seek: false });
       }
       return;
     }
@@ -273,8 +591,19 @@ window.mobihymnAudio = (function () {
       return;
     }
 
-    if (!midiInstrument || event.name !== "Note on" || !(event.velocity > 0)) return;
     const ch = typeof event.channel === "number" ? event.channel : 0;
+    const isNoteOff = event.name === "Note off"
+      || (event.name === "Note on" && !(event.velocity > 0));
+    if (isNoteOff) {
+      const offState = midiChannelActivity[ch] || (midiChannelActivity[ch] = { active: 0, peak: 0, at: 0 });
+      offState.active = Math.max(0, (offState.active || 0) - 1);
+      offState.at = (typeof performance !== "undefined" && performance.now)
+        ? performance.now()
+        : Date.now();
+      stopMidiNote(ch, event);
+      return;
+    }
+    if (!midiInstrument || event.name !== "Note on" || !(event.velocity > 0)) return;
     if (mutedChannels.has(ch)) return;
 
     const baseNum = typeof event.noteNumber === "number"
@@ -286,17 +615,44 @@ window.mobihymnAudio = (function () {
     if (!note) return;
 
     try {
-      midiInstrument.play(note, midiAudioCtx.currentTime, {
-        gain: event.velocity / 127
+      const channelVolume = midiChannelVolumes[ch] ?? 1;
+      const activity = midiChannelActivity[ch] || (midiChannelActivity[ch] = { active: 0, peak: 0, at: 0 });
+      activity.active = (activity.active || 0) + 1;
+      activity.peak = Math.max(activity.peak || 0, (event.velocity || 0) / 127);
+      activity.at = (typeof performance !== "undefined" && performance.now)
+        ? performance.now()
+        : Date.now();
+      const voice = voiceForChannel(ch);
+      if (!voice.instrument) return;
+      // A repeated note-on replaces the prior voice. Tracking the returned
+      // node lets MIDI Note Off end sustained organ/string/choir samples.
+      stopMidiNote(ch, event);
+      const node = voice.instrument.play(note, midiAudioCtx.currentTime, {
+        gain: (event.velocity / 127) * channelVolume,
+        release: voice.release
       });
+      const key = midiNoteKey(ch, event);
+      if (node) activeMidiNotes.set(key, node);
+      if (baseNum != null) {
+        midiNoteMeta.set(key, {
+          n: baseNum + midiTranspose,
+          vel: Math.max(0.08, (event.velocity || 0) / 127)
+        });
+      }
     } catch { /* ignore note errors */ }
   }
 
   async function tearDownMidi() {
     stopMidiClock();
+    stopActiveMidiNotes();
     try { midiPlayer?.stop(); } catch { /* ignore */ }
     midiPlayer = null;
     midiInstrument = null;
+    midiInstrumentPromise = null;
+    midiInstrumentsByName = {};
+    activeMidiNotes = new Map();
+    midiNoteMeta = new Map();
+    midiChannelWaves = {};
     midiDuration = 0;
     midiBaseDuration = 0;
     midiCurrent = 0;
@@ -340,16 +696,45 @@ window.mobihymnAudio = (function () {
   }
 
   function midiControlState() {
+    const now = (typeof performance !== "undefined" && performance.now)
+      ? performance.now()
+      : Date.now();
+    const channelActivity = {};
+    for (const ch of midiChannels) {
+      const state = midiChannelActivity[ch];
+      if (!state) {
+        channelActivity[ch] = 0;
+        continue;
+      }
+      const elapsed = Math.max(0, now - (state.at || 0));
+      const decay = Math.max(0, 1 - elapsed / 900);
+      const sustain = state.active > 0 ? Math.min(1, 0.2 + state.active * 0.18) : 0;
+      channelActivity[ch] = Math.max(sustain, (state.peak || 0) * decay);
+    }
     return {
       mode: mode,
       channels: midiChannels.slice(),
+      channelNames: { ...midiChannelNames },
+      channelVolumes: { ...midiChannelVolumes },
+      channelActivity,
       muted: Array.from(mutedChannels),
       transpose: midiTranspose,
       tempoScale: midiTempoScale,
       tempoBpm: Math.round(midiFileTempo * midiTempoScale),
-      keyName: currentKeyName()
+      keyName: currentKeyName(),
+      instrument: midiInstrumentId,
+      instruments: MIDI_INSTRUMENTS.map((i) => ({ id: i.id, label: i.label })),
+      instrumentLoading: midiInstrumentLoading
     };
   }
+
+  // The MIDI libraries come from a CDN, so fetch them while the app is still
+  // booting rather than on the first hymn's resolve.
+  (function warmMidiLibs() {
+    var start = function () { ensureMidiLibs().catch(function () { /* retried on demand */ }); };
+    if (window.requestIdleCallback) window.requestIdleCallback(start, { timeout: 3000 });
+    else setTimeout(start, 1200);
+  })();
 
   return {
     urlExists,
@@ -403,7 +788,7 @@ window.mobihymnAudio = (function () {
       await ensureMidiLibs();
       resetMidiControls();
       midiAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      midiInstrument = await window.Soundfont.instrument(midiAudioCtx, "acoustic_grand_piano");
+      beginInstrumentLoad(midiInstrumentId);
 
       const ab = buffer instanceof ArrayBuffer
         ? buffer
@@ -464,9 +849,26 @@ window.mobihymnAudio = (function () {
       });
 
       midiPlayer.on("endOfFile", () => {
-        midiPaused = true;
         midiCurrent = 0;
         stopMidiClock();
+        stopActiveMidiNotes();
+        if (playbackLoop) {
+          try {
+            if (typeof midiPlayer.skipToTick === "function")
+              midiPlayer.skipToTick(0);
+            else if (typeof midiPlayer.stop === "function")
+              midiPlayer.stop();
+          } catch { /* ignore */ }
+          midiPaused = false;
+          try {
+            midiPlayer.play();
+            tickMidiClock();
+          } catch {
+            midiPaused = true;
+          }
+          return;
+        }
+        midiPaused = true;
         try { midiPlayer.stop(); } catch { /* ignore */ }
       });
 
@@ -506,6 +908,7 @@ window.mobihymnAudio = (function () {
       audioEl = el;
       mode = "mp3";
       if (!el || !url) return;
+      el.loop = playbackLoop;
       let abs = url;
       try { abs = new URL(url, window.location.href).href; } catch { /* keep raw */ }
       // Avoid reload on every Blazor render — el.src is always absolute.
@@ -514,12 +917,24 @@ window.mobihymnAudio = (function () {
       el.load();
     },
 
+    setLoop(enabled) {
+      playbackLoop = !!enabled;
+      if (audioEl) audioEl.loop = playbackLoop;
+      return playbackLoop;
+    },
+
+    getLoop() {
+      return playbackLoop;
+    },
+
     async play(el) {
       if (mode === "midi") {
         if (!midiPlayer) return false;
+        await awaitInstrument();
+        if (!midiInstrument) return false;
         if (midiAudioCtx?.state === "suspended")
           await midiAudioCtx.resume();
-        applyTempo();
+        applyTempo({ seek: false });
         midiPaused = false;
         midiPlayer.play();
         stopMidiClock();
@@ -543,6 +958,7 @@ window.mobihymnAudio = (function () {
         try { midiPlayer?.pause(); } catch { /* ignore */ }
         midiPaused = true;
         stopMidiClock();
+        stopActiveMidiNotes();
         return;
       }
       const target = el || audioEl;
@@ -569,6 +985,7 @@ window.mobihymnAudio = (function () {
       if (mode === "midi") {
         if (!midiPlayer) return;
         try {
+          stopActiveMidiNotes();
           const totalTicks = midiPlayer.totalTicks || 0;
           const dur = midiDuration > 0
             ? midiDuration
@@ -630,6 +1047,8 @@ window.mobihymnAudio = (function () {
       return midiControlState();
     },
 
+    sampleChannelWaves,
+
     setTempoScale(scale) {
       if (mode !== "midi") return midiControlState();
       const s = Number(scale);
@@ -647,12 +1066,46 @@ window.mobihymnAudio = (function () {
       return midiControlState();
     },
 
+    async setInstrument(id) {
+      if (mode !== "midi" || !midiAudioCtx)
+        return midiControlState();
+      const name = normalizeInstrumentId(id);
+      if (name === midiInstrumentId && midiInstrument && !midiInstrumentLoading)
+        return midiControlState();
+      try {
+        if (midiAudioCtx.state === "suspended")
+          await midiAudioCtx.resume();
+        await beginInstrumentLoad(name);
+      } catch (e) {
+        console.warn("Instrument load failed", e);
+      }
+      return midiControlState();
+    },
+
+    /** Resolves once the pending soundfont is ready, for UI that shows progress. */
+    async waitForInstrument() {
+      await awaitInstrument();
+      return midiControlState();
+    },
+
     setChannelMuted(channel, muted) {
       if (mode !== "midi") return midiControlState();
       const ch = Number(channel);
       if (!isFinite(ch)) return midiControlState();
-      if (muted) mutedChannels.add(ch);
+      if (muted) {
+        mutedChannels.add(ch);
+        stopActiveMidiNotes(ch);
+      }
       else mutedChannels.delete(ch);
+      return midiControlState();
+    },
+
+    setChannelVolume(channel, volume) {
+      if (mode !== "midi") return midiControlState();
+      const ch = Number(channel);
+      const value = Number(volume);
+      if (!isFinite(ch) || !isFinite(value)) return midiControlState();
+      midiChannelVolumes[ch] = Math.max(0, Math.min(1, value));
       return midiControlState();
     },
 
@@ -661,7 +1114,23 @@ window.mobihymnAudio = (function () {
       const ch = Number(channel);
       if (!isFinite(ch)) return midiControlState();
       if (mutedChannels.has(ch)) mutedChannels.delete(ch);
-      else mutedChannels.add(ch);
+      else {
+        mutedChannels.add(ch);
+        stopActiveMidiNotes(ch);
+      }
+      return midiControlState();
+    },
+
+    muteAllChannels() {
+      if (mode !== "midi") return midiControlState();
+      for (const ch of midiChannels) mutedChannels.add(ch);
+      stopActiveMidiNotes();
+      return midiControlState();
+    },
+
+    unmuteAllChannels() {
+      if (mode !== "midi") return midiControlState();
+      mutedChannels.clear();
       return midiControlState();
     }
   };

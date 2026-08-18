@@ -301,6 +301,64 @@ public sealed class AppState
         Notify();
     }
 
+    public (int TempoOffset, int Transpose) GetMidiPreferences(string? hymnNumber)
+    {
+        if (string.IsNullOrWhiteSpace(hymnNumber))
+            return (0, 0);
+
+        var item = (Settings.MidiPreferences ?? new List<MidiHymnPreferenceCloudDoc>())
+            .FirstOrDefault(p => string.Equals(
+                p.Number, hymnNumber.Trim(), StringComparison.OrdinalIgnoreCase));
+        return item == null
+            ? (0, 0)
+            : (Math.Clamp(item.TempoOffset, -60, 60), Math.Clamp(item.Transpose, -6, 5));
+    }
+
+    public async Task SetMidiPreferencesAsync(
+        string? hymnNumber,
+        int tempoOffset,
+        int transpose)
+    {
+        var number = hymnNumber?.Trim() ?? "";
+        if (number.Length == 0)
+            return;
+
+        tempoOffset = Math.Clamp(
+            (int)(Math.Round(tempoOffset / 5.0) * 5),
+            -60,
+            60);
+        transpose = Math.Clamp(transpose, -6, 5);
+        Settings.MidiPreferences ??= new List<MidiHymnPreferenceCloudDoc>();
+
+        var item = Settings.MidiPreferences.FirstOrDefault(p =>
+            string.Equals(p.Number, number, StringComparison.OrdinalIgnoreCase));
+        if (item != null
+            && item.TempoOffset == tempoOffset
+            && item.Transpose == transpose)
+            return;
+
+        if (item == null)
+        {
+            item = new MidiHymnPreferenceCloudDoc { Number = number };
+            Settings.MidiPreferences.Add(item);
+        }
+
+        item.Number = number;
+        item.TempoOffset = tempoOffset;
+        item.Transpose = transpose;
+        item.UpdatedAt = DateTimeOffset.UtcNow;
+        // Keep the account document bounded while retaining the most recently
+        // adjusted hymns. Explicit zeroes are kept so resets sync across devices.
+        Settings.MidiPreferences = Settings.MidiPreferences
+            .Where(p => !string.IsNullOrWhiteSpace(p.Number))
+            .OrderByDescending(p => p.UpdatedAt)
+            .Take(500)
+            .ToList();
+
+        await store.SaveLocalSettingsAsync(Settings);
+        Sync.SchedulePush();
+    }
+
     /// <summary>Live reader font size while pinch-zooming (MAUI 15–40). Persist on gesture end.</summary>
     public Task SetReaderFontSizeAsync(double size, bool persist)
     {
@@ -372,6 +430,9 @@ public sealed class AppState
 
             Bookmarks = MergeBookmarks(Bookmarks, cloud.Bookmarks);
             History = MergeHistory(History, cloud.History);
+            Settings.MidiPreferences = MergeMidiPreferences(
+                Settings.MidiPreferences,
+                cloud.MidiPreferences);
         }
 
         await store.SaveLocalSettingsAsync(Settings, touchUpdatedAt: false);
@@ -425,7 +486,8 @@ public sealed class AppState
         AgentChatLimit = 10,
         History = new List<ShortHymnCloudDoc>(),
         Bookmarks = new List<ShortHymnCloudDoc>(),
-        Searches = new List<string>()
+        Searches = new List<string>(),
+        MidiPreferences = new List<MidiHymnPreferenceCloudDoc>()
     };
 
     void ApplyReaderPrefsFromCloud(UserSettingsCloudDoc cloud)
@@ -472,8 +534,48 @@ public sealed class AppState
         AgentChatLimit = cloud.AgentChatLimit <= 0 ? 10 : cloud.AgentChatLimit,
         History = cloud.History?.ToList() ?? new List<ShortHymnCloudDoc>(),
         Bookmarks = cloud.Bookmarks?.ToList() ?? new List<ShortHymnCloudDoc>(),
-        Searches = cloud.Searches?.ToList() ?? new List<string>()
+        Searches = cloud.Searches?.ToList() ?? new List<string>(),
+        MidiPreferences = cloud.MidiPreferences?
+            .Where(p => !string.IsNullOrWhiteSpace(p.Number))
+            .Select(CloneMidiPreference)
+            .ToList()
+            ?? new List<MidiHymnPreferenceCloudDoc>()
     };
+
+    static MidiHymnPreferenceCloudDoc CloneMidiPreference(MidiHymnPreferenceCloudDoc p) => new()
+    {
+        Number = p.Number,
+        TempoOffset = p.TempoOffset,
+        Transpose = p.Transpose,
+        UpdatedAt = p.UpdatedAt
+    };
+
+    static List<MidiHymnPreferenceCloudDoc> MergeMidiPreferences(
+        List<MidiHymnPreferenceCloudDoc>? local,
+        List<MidiHymnPreferenceCloudDoc>? cloud)
+    {
+        var map = new Dictionary<string, MidiHymnPreferenceCloudDoc>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var item in local ?? Enumerable.Empty<MidiHymnPreferenceCloudDoc>())
+        {
+            if (string.IsNullOrWhiteSpace(item.Number)) continue;
+            map[item.Number.Trim()] = CloneMidiPreference(item);
+        }
+
+        foreach (var item in cloud ?? Enumerable.Empty<MidiHymnPreferenceCloudDoc>())
+        {
+            if (string.IsNullOrWhiteSpace(item.Number)) continue;
+            var number = item.Number.Trim();
+            if (!map.TryGetValue(number, out var existing)
+                || item.UpdatedAt >= existing.UpdatedAt)
+                map[number] = CloneMidiPreference(item);
+        }
+
+        return map.Values
+            .OrderByDescending(p => p.UpdatedAt)
+            .Take(500)
+            .ToList();
+    }
 
     static List<ShortHymn> MergeBookmarks(List<ShortHymn> local, List<ShortHymnCloudDoc>? cloud)
     {

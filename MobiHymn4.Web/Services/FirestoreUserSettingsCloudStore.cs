@@ -60,6 +60,16 @@ public sealed class FirestoreUserSettingsCloudStore : IUserSettingsCloudStore
         searches = (doc.Searches ?? new List<string>())
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .Take(10)
+            .ToList(),
+        midiPreferences = (doc.MidiPreferences ?? new List<MidiHymnPreferenceCloudDoc>())
+            .Where(p => !string.IsNullOrWhiteSpace(p.Number))
+            .Select(p => new
+            {
+                number = p.Number.Trim(),
+                tempoOffset = p.TempoOffset,
+                transpose = p.Transpose,
+                updatedAt = p.UpdatedAt.ToUniversalTime().ToString("O")
+            })
             .ToList()
     };
 
@@ -86,8 +96,32 @@ public sealed class FirestoreUserSettingsCloudStore : IUserSettingsCloudStore
             AgentChatLimit = GetInt(d, "agentChatLimit", 10),
             History = MapHymnList(d, "history"),
             Bookmarks = MapHymnList(d, "bookmarks"),
-            Searches = MapStringList(d, "searches")
+            Searches = MapStringList(d, "searches"),
+            MidiPreferences = MapMidiPreferences(d)
         };
+    }
+
+    static List<MidiHymnPreferenceCloudDoc> MapMidiPreferences(JsonElement d)
+    {
+        if (!TryGetProp(d, "midiPreferences", out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return new List<MidiHymnPreferenceCloudDoc>();
+
+        var list = new List<MidiHymnPreferenceCloudDoc>();
+        foreach (var item in arr.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object) continue;
+            var number = GetString(item, "number")?.Trim();
+            if (string.IsNullOrWhiteSpace(number)) continue;
+            list.Add(new MidiHymnPreferenceCloudDoc
+            {
+                Number = number,
+                TempoOffset = GetInt(item, "tempoOffset"),
+                Transpose = GetInt(item, "transpose"),
+                UpdatedAt = GetDateTime(item, "updatedAt") ?? default
+            });
+        }
+
+        return list;
     }
 
     static List<ShortHymnCloudDoc> MapHymnList(JsonElement d, string name)

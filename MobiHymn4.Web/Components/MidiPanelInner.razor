@@ -1,0 +1,328 @@
+@* Inner content of the MIDI control panel — rendered in both the
+   collapsed (inside .read-player) and expanded (body-level overlay) panels.
+   All state is passed in via parameters; events bubble back via callbacks. *@
+
+<div class="midi-panel-content @(Entering ? (Expanded ? "is-entering is-entering-expanded" : "is-entering") : null)">
+<div class="midi-panel-header">
+    <span class="midi-panel-title">MIDI Controls</span>
+    <button type="button"
+            class="midi-panel-expand-btn"
+            @onclick="OnExpandToggle"
+            @onclick:stopPropagation="true"
+            title="@(Expanded ? "Collapse" : "Expand")"
+            aria-label="@(Expanded ? "Collapse MIDI panel" : "Expand MIDI panel to full screen")">
+        <i class="fa-solid @(Expanded ? "fa-compress" : "fa-expand")" aria-hidden="true"></i>
+    </button>
+</div>
+
+<div class="midi-panel-tools">
+    <label class="midi-instrument-select-wrap @(InstrumentLoading ? "is-loading" : null)">
+        <span>Instrument</span>
+        <select class="midi-instrument-select"
+                value="@InstrumentId"
+                @onchange="OnInstrumentChanged"
+                disabled="@InstrumentLoading"
+                aria-label="Instrument">
+            @foreach (var inst in Instruments)
+            {
+                <option value="@inst.Id">@inst.Label</option>
+            }
+        </select>
+        @if (InstrumentLoading)
+        {
+            <span class="spinner midi-instrument-spinner" aria-hidden="true"></span>
+        }
+        else
+        {
+            <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+        }
+    </label>
+
+    <div class="midi-panel-channel-actions" role="group" aria-label="Channel actions">
+        <button type="button"
+                class="midi-panel-action-btn midi-panel-action-btn--icon"
+                @onclick="() => OnMuteAll.InvokeAsync()"
+                disabled="@MuteAllDisabled"
+                title="Mute all channels"
+                aria-label="Mute all channels">
+            <i class="fa-solid fa-microphone-slash" aria-hidden="true"></i>
+        </button>
+        <button type="button"
+                class="midi-panel-action-btn midi-panel-action-btn--icon"
+                @onclick="() => OnResetChannelState.InvokeAsync()"
+                disabled="@ResetChannelStateDisabled"
+                title="Reset mute and solo"
+                aria-label="Reset mute and solo">
+            <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+        </button>
+    </div>
+</div>
+
+@if (Channels.Count > 0)
+{
+    <div class="midi-stems @(Expanded ? "is-vertical" : null)" role="group" aria-label="Voices">
+        @foreach (var ch in Channels)
+        {
+            var muted = Muted.Contains(ch);
+            var solo = SoloChannel == ch;
+            var label = ChannelLabel(ch);
+            var shortLabel = ChannelShortLabel(ch);
+            var tone = ChannelToneClass(ch);
+            <div class="midi-stem @tone @(muted ? "is-muted" : null) @(solo ? "is-solo" : null)"
+                 style="--stem-level:@ChannelVolumePercent(ch)%">
+                <div class="midi-stem-body" title="@label"
+                     data-drag-dial="@($"vol:{ch}")"
+                     data-dial-min="0"
+                     data-dial-max="1"
+                     data-dial-step="0.05"
+                     data-dial-px="5"
+                     data-dial-axis="@(Expanded ? "x" : "y")"
+                     data-dial-value="@ChannelVolume(ch).ToString(System.Globalization.CultureInfo.InvariantCulture)">
+                    <span class="midi-stem-name">@shortLabel</span>
+                    <span class="midi-stem-level">@ChannelVolumePercent(ch)%</span>
+                    <input class="midi-stem-volume"
+                           type="range" min="0" max="1" step="0.05"
+                           value="@ChannelVolume(ch).ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                           @oninput="e => OnVolumeInput(ch, e)"
+                           aria-label="@($"{label} volume")" />
+                </div>
+                <div class="midi-stem-ops">
+                    <button type="button"
+                            class="midi-stem-btn @(muted ? "is-on" : null)"
+                            @onclick="() => OnMuteToggle.InvokeAsync(ch)"
+                            title="@(muted ? $"Unmute {label}" : $"Mute {label}")"
+                            aria-label="@(muted ? $"Unmute {label}" : $"Mute {label}")"
+                            aria-pressed="@muted">M</button>
+                    <button type="button"
+                            class="midi-stem-btn @(solo ? "is-on" : null)"
+                            @onclick="() => OnSoloToggle.InvokeAsync(ch)"
+                            title="@(solo ? $"Unsolo {label}" : $"Solo {label}")"
+                            aria-label="@(solo ? $"Unsolo {label}" : $"Solo {label}")"
+                            aria-pressed="@solo">S</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<div class="midi-dials">
+    <div class="midi-dial-wrap tone-tempo">
+        <div class="midi-dial" style="--dial-fill:@TempoDialFill"
+             data-drag-dial="tempo"
+             data-dial-min="@TempoMin"
+             data-dial-max="@TempoMax"
+             data-dial-step="@TempoStep"
+             data-dial-value="@TempoOffset">
+            <div class="midi-dial-ring" aria-hidden="true"></div>
+            <div class="midi-dial-core">
+                <span class="midi-dial-cap">BPM</span>
+                @if (TempoEditing)
+                {
+                    <input class="midi-dial-edit"
+                           type="number"
+                           value="@TempoBpm"
+                           min="1" max="300"
+                           @onchange="OnTempoBpmTyped"
+                           @onblur="() => OnTempoEditEnd.InvokeAsync()"
+                           @onkeydown="OnTempoKeyDown"
+                           @onclick:stopPropagation="true"
+                           aria-label="Type BPM" />
+                }
+                else
+                {
+                    <span class="midi-dial-value midi-dial-value--tap"
+                          title="Tap to type BPM"
+                          @onclick="() => OnTempoEditStart.InvokeAsync()"
+                          @onclick:stopPropagation="true">@TempoBpm</span>
+                }
+            </div>
+            <input class="midi-dial-input" type="range"
+                   min="@TempoMin" max="@TempoMax" step="@TempoStep"
+                   value="@TempoOffset"
+                   @oninput="OnTempoInput"
+                   aria-label="Tempo" />
+        </div>
+        <div class="midi-dial-ops">
+            <button type="button" class="midi-dial-nudge" @onclick="() => OnTempoNudge.InvokeAsync(-TempoStep)" aria-label="Slower">−</button>
+            <span class="midi-dial-sub">@TempoOffsetLabel</span>
+            <button type="button" class="midi-dial-nudge" @onclick="() => OnTempoNudge.InvokeAsync(TempoStep)" aria-label="Faster">+</button>
+            <button type="button"
+                    class="midi-dial-reset"
+                    @onclick="() => OnTempoReset.InvokeAsync()"
+                    disabled="@TempoIsDefault"
+                    title="Reset tempo" aria-label="Reset tempo">
+                <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+            </button>
+        </div>
+    </div>
+    <div class="midi-dial-wrap tone-key">
+        <div class="midi-dial" style="--dial-fill:@KeyDialFill"
+             data-drag-dial="key"
+             data-dial-min="@KeyMin"
+             data-dial-max="@KeyMax"
+             data-dial-value="@Transpose">
+            <div class="midi-dial-ring" aria-hidden="true"></div>
+            <div class="midi-dial-core">
+                <span class="midi-dial-cap">Key</span>
+                @if (KeyEditing)
+                {
+                    <select class="midi-dial-edit midi-dial-edit--select"
+                            value="@Transpose"
+                            @onchange="OnKeySelected"
+                            @onblur="() => OnKeyEditEnd.InvokeAsync()"
+                            @onclick:stopPropagation="true"
+                            aria-label="Choose key">
+                        @for (var s = KeyMin; s <= KeyMax; s++)
+                        {
+                            var semi = s;
+                            <option value="@semi">@KeyNameForSemitone(semi)</option>
+                        }
+                    </select>
+                }
+                else
+                {
+                    <span class="midi-dial-value midi-dial-value--tap"
+                          title="Tap to choose key"
+                          @onclick="() => OnKeyEditStart.InvokeAsync()"
+                          @onclick:stopPropagation="true">@KeyName</span>
+                }
+            </div>
+            <input class="midi-dial-input" type="range"
+                   min="@KeyMin" max="@KeyMax" step="1"
+                   value="@Transpose"
+                   @oninput="OnTransposeInput"
+                   aria-label="Transpose" />
+        </div>
+        <div class="midi-dial-ops">
+            <button type="button" class="midi-dial-nudge" @onclick="() => OnKeyNudge.InvokeAsync(-1)" aria-label="Down a semitone">−</button>
+            <span class="midi-dial-sub">@TransposeLabel</span>
+            <button type="button" class="midi-dial-nudge" @onclick="() => OnKeyNudge.InvokeAsync(1)" aria-label="Up a semitone">+</button>
+            <button type="button"
+                    class="midi-dial-reset"
+                    @onclick="() => OnKeyReset.InvokeAsync()"
+                    disabled="@KeyIsDefault"
+                    title="Reset key" aria-label="Reset key">
+                <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+            </button>
+        </div>
+    </div>
+</div>
+</div>
+
+@code {
+    [Parameter] public bool Expanded { get; set; }
+    [Parameter] public bool Entering { get; set; }
+    [Parameter] public bool InstrumentLoading { get; set; }
+    [Parameter] public string InstrumentId { get; set; } = "";
+    public readonly record struct InstrumentOption(string Id, string Label);
+    [Parameter] public List<InstrumentOption> Instruments { get; set; } = new();
+    [Parameter] public List<int> Channels { get; set; } = new();
+    [Parameter] public HashSet<int> Muted { get; set; } = new();
+    [Parameter] public int? SoloChannel { get; set; }
+    [Parameter] public Dictionary<int, string> ChannelNames { get; set; } = new();
+    [Parameter] public Dictionary<int, double> ChannelVolumes { get; set; } = new();
+    [Parameter] public Dictionary<int, double> ChannelActivity { get; set; } = new();
+    [Parameter] public string TempoDialFill { get; set; } = "0.5";
+    [Parameter] public string KeyDialFill { get; set; } = "0.5";
+    [Parameter] public int TempoMin { get; set; } = -60;
+    [Parameter] public int TempoMax { get; set; } = 60;
+    [Parameter] public int TempoStep { get; set; } = 5;
+    [Parameter] public int TempoOffset { get; set; }
+    [Parameter] public int TempoBpm { get; set; } = 120;
+    [Parameter] public string TempoOffsetLabel { get; set; } = "0";
+    [Parameter] public bool TempoIsDefault { get; set; } = true;
+    [Parameter] public bool TempoEditing { get; set; }
+    [Parameter] public int KeyMin { get; set; } = -6;
+    [Parameter] public int KeyMax { get; set; } = 5;
+    [Parameter] public int Transpose { get; set; }
+    [Parameter] public string KeyName { get; set; } = "G";
+    [Parameter] public string TransposeLabel { get; set; } = "0 st";
+    [Parameter] public bool KeyIsDefault { get; set; } = true;
+    [Parameter] public bool KeyEditing { get; set; }
+    [Parameter] public Func<int, string>? KeyNameForSemitoneFunc { get; set; }
+    [Parameter] public EventCallback OnExpandToggle { get; set; }
+    [Parameter] public EventCallback<string> OnInstrumentChange { get; set; }
+    [Parameter] public EventCallback<(int ch, ChangeEventArgs e)> OnChannelVolume { get; set; }
+    [Parameter] public EventCallback<int> OnMuteToggle { get; set; }
+    [Parameter] public EventCallback<int> OnSoloToggle { get; set; }
+    [Parameter] public EventCallback OnMuteAll { get; set; }
+    [Parameter] public EventCallback OnResetChannelState { get; set; }
+    [Parameter] public bool MuteAllDisabled { get; set; }
+    [Parameter] public bool ResetChannelStateDisabled { get; set; }
+    [Parameter] public EventCallback<ChangeEventArgs> OnTempoChange { get; set; }
+    [Parameter] public EventCallback<int> OnTempoNudge { get; set; }
+    [Parameter] public EventCallback OnTempoReset { get; set; }
+    [Parameter] public EventCallback OnTempoEditStart { get; set; }
+    [Parameter] public EventCallback OnTempoEditEnd { get; set; }
+    [Parameter] public EventCallback<int> OnTempoBpmType { get; set; }
+    [Parameter] public EventCallback<ChangeEventArgs> OnTransposeChange { get; set; }
+    [Parameter] public EventCallback<int> OnKeyNudge { get; set; }
+    [Parameter] public EventCallback OnKeyReset { get; set; }
+    [Parameter] public EventCallback OnKeyEditStart { get; set; }
+    [Parameter] public EventCallback OnKeyEditEnd { get; set; }
+    [Parameter] public EventCallback<int> OnKeySelect { get; set; }
+
+    string ChannelLabel(int ch) =>
+        ChannelNames.TryGetValue(ch, out var n) && !string.IsNullOrWhiteSpace(n) ? n : (ch + 1).ToString();
+
+    string ChannelShortLabel(int ch)
+    {
+        var label = ChannelLabel(ch).Trim();
+        if (label.StartsWith("Soprano Alt", StringComparison.OrdinalIgnoreCase)) return "S+";
+        if (label.StartsWith("Bass Alt", StringComparison.OrdinalIgnoreCase)) return "B+";
+        if (label.StartsWith("Soprano", StringComparison.OrdinalIgnoreCase)) return "S";
+        if (label.StartsWith("Alto", StringComparison.OrdinalIgnoreCase)) return "A";
+        if (label.StartsWith("Tenor", StringComparison.OrdinalIgnoreCase)) return "T";
+        if (label.StartsWith("Bass", StringComparison.OrdinalIgnoreCase)) return "B";
+        if (label.Length <= 3) return label;
+        return label[..1].ToUpperInvariant();
+    }
+
+    string ChannelToneClass(int ch)
+    {
+        var label = ChannelLabel(ch);
+        if (label.Contains("Soprano Alt", StringComparison.OrdinalIgnoreCase)) return "tone-salt";
+        if (label.Contains("Bass Alt", StringComparison.OrdinalIgnoreCase)) return "tone-balt";
+        if (label.Contains("Soprano", StringComparison.OrdinalIgnoreCase) || ch == 0) return "tone-s";
+        if (label.Contains("Alto", StringComparison.OrdinalIgnoreCase) || ch == 1) return "tone-a";
+        if (label.Contains("Tenor", StringComparison.OrdinalIgnoreCase) || ch == 2) return "tone-t";
+        if (label.Contains("Bass", StringComparison.OrdinalIgnoreCase) || ch == 3) return "tone-b";
+        return "tone-" + (ch % 6);
+    }
+
+    double ChannelVolume(int ch) =>
+        ChannelVolumes.TryGetValue(ch, out var v) ? Math.Clamp(v, 0, 1) : 1;
+
+    int ChannelVolumePercent(int ch) => (int)Math.Round(ChannelVolume(ch) * 100);
+
+    string KeyNameForSemitone(int s) => KeyNameForSemitoneFunc?.Invoke(s) ?? s.ToString();
+
+    async Task OnInstrumentChanged(ChangeEventArgs e)
+        => await OnInstrumentChange.InvokeAsync(e.Value?.ToString() ?? "");
+
+    async Task OnVolumeInput(int ch, ChangeEventArgs e)
+        => await OnChannelVolume.InvokeAsync((ch, e));
+
+    async Task OnTempoInput(ChangeEventArgs e) => await OnTempoChange.InvokeAsync(e);
+
+    async Task OnTempoBpmTyped(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var bpm))
+            await OnTempoBpmType.InvokeAsync(bpm);
+        await OnTempoEditEnd.InvokeAsync();
+    }
+
+    async Task OnTempoKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or "Escape") await OnTempoEditEnd.InvokeAsync();
+    }
+
+    async Task OnTransposeInput(ChangeEventArgs e) => await OnTransposeChange.InvokeAsync(e);
+
+    async Task OnKeySelected(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var semi))
+            await OnKeySelect.InvokeAsync(semi);
+        await OnKeyEditEnd.InvokeAsync();
+    }
+}

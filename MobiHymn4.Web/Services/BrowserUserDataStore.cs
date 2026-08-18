@@ -54,6 +54,7 @@ public sealed class BrowserUserDataStore : ILocalUserDataStore
 
         if (settings.HymnInputType is < 0 or > 2)
             settings.HymnInputType = ParseInputType(prefs.Get(PrefKeys.HymnInputType, "1"));
+        settings.MidiPreferences ??= new List<MidiHymnPreferenceCloudDoc>();
 
         // Keep the dedicated pref key mirrored to settings (settings JSON is source of truth).
         prefs.Set(PrefKeys.HymnInputType, settings.HymnInputType.ToString());

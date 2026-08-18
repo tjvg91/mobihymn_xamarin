@@ -5,10 +5,16 @@ public static class ReleaseHistory
 {
     public sealed record Entry(string Version, IReadOnlyList<string> Details);
 
-    public const string CurrentVersion = "0.9.0";
+    public const string CurrentVersion = "0.9.2";
 
     public static IReadOnlyList<Entry> Entries { get; } =
     [
+        new("0.9.2",
+        [
+            "MIDI files modification",
+            "MIDI panel UI improvements",
+            "MIDI soundfonts",
+        ]),
         new("0.9.0",
         [
             "Optimize downloading and syncing",
@@ -53,18 +59,6 @@ public static class ReleaseHistory
         [
             "New app icon",
             "Initial MIDI player",
-        ]),
-        new("0.7.2",
-        [
-            "Can select lyrics",
-            "Can opt for app-provided font size",
-            "Splash screen disabled",
-        ]),
-        new("0.7.0",
-        [
-            "Slider intro",
-            "Splash Screen",
-            "Can play MIDI",
         ]),
     ];
 }
