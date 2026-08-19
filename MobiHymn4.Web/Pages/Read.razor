@@ -81,15 +81,18 @@ else
 
         @if (ShowPlayer)
         {
-            @* Dim sits above the lyrics and below the player. The panel itself
-               stays inside .read-player so expand/collapse is a height tween. *@
+            @* Expanded sheet is a body-hoisted overlay so it cannot steal
+               lyrics space or zero the compact panel's side insets. *@
             @if (AudioMode == "midi")
             {
                 <div id="midi-overlay"
-                     class="read-midi-scrim @(MidiPanelOpen && MidiPanelExpanded ? "is-open" : null)"
+                     class="read-midi-panel is-expanded @(State.DarkMode ? null : "is-light") @(MidiPanelOpen && MidiPanelExpanded ? "is-open" : null)"
                      aria-hidden="@(!(MidiPanelOpen && MidiPanelExpanded))"
                      inert="@(!(MidiPanelOpen && MidiPanelExpanded))"
                      @onclick="CloseMidiPanel">
+                    <div class="read-midi-panel-inner" @onclick:stopPropagation="true">
+                        @MidiPanelComponent(expanded: true)
+                    </div>
                 </div>
             }
 
@@ -98,12 +101,12 @@ else
                  @onclick:stopPropagation="true">
                 @if (AudioMode == "midi")
                 {
-                    <div class="read-midi-panel @(State.DarkMode ? null : "is-light") @(MidiPanelOpen ? "is-open" : null)"
-                         aria-hidden="@(!MidiPanelOpen)"
-                         inert="@(!MidiPanelOpen)"
+                    <div class="read-midi-panel @(State.DarkMode ? null : "is-light") @(MidiPanelOpen && !MidiPanelExpanded ? "is-open" : null)"
+                         aria-hidden="@(!MidiPanelOpen || MidiPanelExpanded)"
+                         inert="@(!MidiPanelOpen || MidiPanelExpanded)"
                          @onclick:stopPropagation="true">
                         <div class="read-midi-panel-inner">
-                            @MidiPanelComponent(MidiPanelExpanded)
+                            @MidiPanelComponent(expanded: false)
                         </div>
                     </div>
                 }
@@ -269,7 +272,6 @@ else
     bool MidiInstrumentLoading;
     bool MidiPanelExpanded;
     bool MidiEnterAnim;
-    bool midiViewHeightAnim;
     int midiEnterToken;
     bool TempoEditing;
     bool KeyEditing;
@@ -654,13 +656,10 @@ else
         MidiEnterAnim = false;
     }
 
-    async Task ToggleMidiExpand()
+    void ToggleMidiExpand()
     {
-        try { await Js.InvokeVoidAsync("mobihymnMidiPanel.capture"); }
-        catch { /* height tween is best-effort */ }
         MidiPanelExpanded = !MidiPanelExpanded;
         State.SetMidiPanelExpanded(MidiPanelExpanded);
-        midiViewHeightAnim = true;
     }
 
     void BeginMidiEnter()
@@ -1384,13 +1383,6 @@ else
                     State.ReaderFontSize);
             }
             catch { /* element may not be in DOM yet */ }
-        }
-
-        if (midiViewHeightAnim)
-        {
-            midiViewHeightAnim = false;
-            try { await Js.InvokeVoidAsync("mobihymnMidiPanel.run"); }
-            catch { /* keep the snap if the tween helper is missing */ }
         }
 
         try { await Js.InvokeVoidAsync("mobihymnPlayerMetrics.sync"); }

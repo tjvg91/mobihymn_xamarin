@@ -3809,14 +3809,14 @@ body.dark .mode-btn.active i {
     position: relative;
   display: flex;
   flex-direction: column;
-  height: calc(100svh - var(--topbar-height));   /* viewport minus topbar */
+  height: calc(100dvh - var(--topbar-height));
   overflow: hidden;
   background: var(--reader-theme, #2D2D2D);
   transition: height .32s cubic-bezier(.22, 1, .36, 1);
 }
 .app-shell.read-chrome-hidden .read-shell,
 .read-shell.read-chrome-hidden {
-  height: 100svh;
+  height: 100dvh;
 }
 
 /* Scrollable lyrics area â€” full dark background, white text */
@@ -3927,20 +3927,23 @@ body.dark .mode-btn.active i {
   transform: translateY(0);
   opacity: 1;
   overflow: hidden;
-  max-height: 56px; /* exactly the transport row when the panel is collapsed */
+  box-sizing: border-box;
+  padding-bottom: var(--safe-bottom);
+  max-height: calc(56px + var(--safe-bottom));
   transition:
     transform .32s cubic-bezier(.22, 1, .36, 1),
     max-height .34s cubic-bezier(.22, 1, .36, 1),
     opacity .2s ease;
 }
 .read-player.midi-open {
-  /* Compact radial panel (header + 2×3 stems + BPM/Key ops) is taller than
-     the old 520px cap, which clipped the bottom of the card. */
   max-height: min(92dvh, 820px);
 }
 .read-player.midi-expanded {
   position: relative;
   z-index: 210;
+  max-height: calc(56px + var(--safe-bottom));
+  border-radius: 0;
+  box-shadow: none;
 }
 .read-shell.read-chrome-hidden .read-player {
   transform: translateY(100%);
@@ -4173,42 +4176,14 @@ body.dark .mode-btn.active i {
   background: rgba(255, 255, 255, 0.08);
 }
 
-/* Dim behind the expanded in-player sheet. The sheet itself animates height. */
-.read-midi-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: rgba(0, 0, 0, 0.48);
-  opacity: 0;
-  pointer-events: none;
-  cursor: pointer;
-  transition: opacity .28s ease;
-}
-.read-midi-scrim.is-open {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.read-player.midi-expanded .read-midi-panel.is-open {
-  padding: 0;
-  border-bottom: 0;
-}
-.read-player.midi-expanded .read-midi-panel-inner {
-  margin: 0;
-  border-radius: 16px 16px 0 0;
-  padding: 14px 12px 12px;
-}
-
-/* Expanded sheet: dim scrim behind, panel sized to content above the player. */
+/* Dim + expanded sheet sit above lyrics and dock to the transport bar.
+   Overlay stays opacity:1 so the sheet can slide independently of the scrim. */
 .read-midi-panel.is-expanded {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  bottom: 56px;
+  bottom: 0;
   z-index: 200;
   display: flex;
   flex-direction: column;
@@ -4218,47 +4193,58 @@ body.dark .mode-btn.active i {
   max-height: none;
   min-height: 0;
   overflow: hidden;
-  opacity: 0;
-  padding: 12px 0 0;
+  opacity: 1;
+  padding: 0;
   pointer-events: none;
-  background: rgba(0, 0, 0, 0.48);
+  background: transparent;
   border-bottom: none;
   cursor: pointer;
+}
+.read-midi-panel.is-expanded::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: calc(56px + var(--safe-bottom));
+  z-index: 0;
+  background: rgba(0, 0, 0, 0.48);
+  opacity: 0;
+  pointer-events: none;
   transition: opacity .28s ease;
 }
-.read-midi-panel.is-expanded.is-open {
+.read-midi-panel.is-expanded.is-open::before {
   opacity: 1;
   pointer-events: auto;
 }
 .read-midi-panel.is-expanded .read-midi-panel-inner {
-  flex: 0 1 auto;
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
   align-self: stretch;
   width: 100%;
   max-width: none;
   box-sizing: border-box;
-  max-height: calc(100dvh - 56px);
+  max-height: calc(100% - var(--topbar-height) - 56px - var(--safe-bottom) + 2px);
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   contain: none;
-  margin: 0;
-  padding: 14px 12px 12px;
+  /* 2px overlap so the sheet tucks into the transport instead of floating above it. */
+  margin: 0 0 calc(56px + var(--safe-bottom) - 2px);
+  padding: 16px 12px 10px;
   display: flex;
   flex-direction: column;
-  background: #1c1c1c;
+  background: #2D2D2D;
   border-radius: 16px 16px 0 0;
-  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 -12px 28px -10px rgba(0, 0, 0, 0.4);
   cursor: default;
-  transform: translateY(18px);
-  transition:
-    transform .32s cubic-bezier(.22, 1, .36, 1),
-    padding .32s cubic-bezier(.22, 1, .36, 1);
-}
-.read-midi-panel.is-expanded.is-open .read-midi-panel-inner {
-  transform: translateY(0);
+  pointer-events: auto;
+  transform: translateY(calc(100% + 56px + var(--safe-bottom)));
+  transition: transform .34s cubic-bezier(.22, 1, .36, 1);
 }
 .read-midi-panel.is-expanded .midi-panel-content {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
   overflow: visible;
   margin-top: 0;
@@ -4319,15 +4305,18 @@ body.dark .mode-btn.active i {
    padding back to 12px and clip the BPM/Key plus/minus/reset row. */
 .read-midi-panel.is-expanded.is-open {
   overflow: hidden;
-  padding: 12px 0 0;
+  padding: 0;
+  pointer-events: none;
 }
 .read-midi-panel.is-expanded.is-open .read-midi-panel-inner {
   contain: none;
   overflow-x: hidden;
   overflow-y: auto;
-  max-height: calc(100dvh - 56px);
-  padding: 14px 12px 12px;
+  max-height: calc(100% - var(--topbar-height) - 56px - var(--safe-bottom) + 2px);
+  margin: 0 0 calc(56px + var(--safe-bottom) - 2px);
+  padding: 16px 12px 10px;
   border-radius: 16px 16px 0 0;
+  transform: translateY(0);
 }
 
 /* Panel header: title + expand/collapse button */
@@ -4480,7 +4469,7 @@ body.dark .mode-btn.active i {
 }
 
 .midi-panel-content.is-entering-expanded .midi-dial-wrap {
-  animation: midi-wipe-down .5s cubic-bezier(.22, 1, .36, 1) both;
+  animation: midi-wipe-up .5s cubic-bezier(.22, 1, .36, 1) both;
 }
 .read-midi-panel.is-light .midi-panel-content.is-entering-expanded .midi-dial-wrap {
   animation: midi-fade-in .35s ease both;
@@ -4502,6 +4491,10 @@ body.dark .mode-btn.active i {
   .midi-panel-content.is-entering .midi-dial,
   .midi-panel-content.is-entering .midi-dial-wrap {
     animation: none;
+  }
+  .read-midi-panel.is-expanded .read-midi-panel-inner,
+  .read-midi-panel.is-expanded::before {
+    transition: none;
   }
 }
 
@@ -4600,6 +4593,8 @@ body.dark .mode-btn.active i {
   height: 44px;
   flex-direction: row;
   justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
   padding: 0 12px;
   cursor: ew-resize;
   background:
@@ -4608,6 +4603,21 @@ body.dark .mode-btn.active i {
       var(--stem) 0 var(--stem-level, 100%),
       var(--stem-soft) var(--stem-level, 100%) 100%
     );
+}
+.midi-stems.is-vertical .midi-stem-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.midi-stems.is-vertical .midi-stem-level {
+  flex-shrink: 0;
+  margin-left: auto;
 }
 .midi-stem-wave {
   display: none !important;
@@ -5028,7 +5038,7 @@ input[type=range].midi-dial-input {
 /* Light theme: MIDI panel follows Settings → Dark Mode off. */
 .read-midi-panel.is-light.is-expanded,
 .read-midi-panel.is-light.is-expanded.is-open {
-  background: rgba(0, 0, 0, 0.48);
+  background: transparent;
   isolation: isolate;
 }
 .read-midi-panel.is-light.is-open {
@@ -5045,7 +5055,7 @@ input[type=range].midi-dial-input {
 }
 .read-midi-panel.is-light.is-expanded .read-midi-panel-inner {
   background: #f2f2f2;
-  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 -12px 28px -10px rgba(0, 0, 0, 0.22);
   border-radius: 16px 16px 0 0;
 }
 .read-midi-panel.is-light .midi-panel-title,
