@@ -79,7 +79,7 @@ window.mobihymnAudio = (function () {
     {
       id: "woodwind_satb",
       label: "Mixed Woodwinds",
-      instruments: ["flute", "clarinet", "english_horn", "bassoon"]
+      instruments: ["flute", "recorder", "clarinet", "bassoon"]
     }
   ];
 
@@ -114,6 +114,7 @@ window.mobihymnAudio = (function () {
     tenor_sax: 0.24,
     baritone_sax: 0.24,
     flute: 0.26,
+    recorder: 0.28,
     clarinet: 0.24,
     english_horn: 0.26,
     bassoon: 0.26,

@@ -4527,7 +4527,22 @@ body.dark .mode-btn.active i {
 }
 @media (min-width: 520px) {
   .midi-stems.is-radial {
-    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 10px 8px;
+  }
+  .midi-stems.is-radial .midi-section-label {
+    flex: 1 0 100%;
+    width: 100%;
+  }
+  .midi-stems.is-radial .midi-stem {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .midi-stems.is-radial .midi-dial.midi-stem-dial {
+    width: min(84px, 100%);
   }
 }
 .midi-stems.is-radial .midi-stem {
@@ -5430,6 +5445,14 @@ body.dark .hi-footer { background: #252525; }
   cursor: pointer;
 }
 .hi-close:active { transform: scale(.98); }
+
+.mi-header-avatar {
+  border-radius: 50%;
+  border: 2px solid rgba(45, 45, 45, 0.18);
+  font-weight: 700;
+  font-size: 0.9rem;
+  overflow: hidden;
+}
 
 /* Reader settings popup â€” mirrors MAUI SettingsPopup */
 .rs-backdrop {
@@ -7045,18 +7068,35 @@ body.dark .board-pane-hymn-card { background: #2A2A2A; }
 .board-pane-members-title-row {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin: 4px 0 14px;
+  gap: 2px;
+  margin: 0 0 8px;
+}
+.board-pane-members-title-row .board-pane-dash-icon {
+  width: 28px;
+  height: 28px;
+  margin-left: -8px;
+  padding: 0;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+.board-pane-members-title-row .board-pane-dash-icon i {
+  display: block;
+  line-height: 1;
+  transform: translateY(1px);
 }
 .board-pane-members-title {
   margin: 0;
   font-size: 1.05rem;
   font-weight: 700;
+  line-height: 28px;
   color: var(--fg);
 }
 .board-pane-field-label {
   display: block;
-  margin: 10px 0 6px;
+  margin: 8px 0 4px;
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.1em;
@@ -7086,20 +7126,30 @@ body.dark .board-pane-search { background: #2a2a2a; }
 }
 .board-pane-chips {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 4px;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 2px;
+  padding: 1px 0 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
+.board-pane-chips::-webkit-scrollbar { display: none; }
 .board-pane-chip {
+  flex: 0 0 auto;
   border: 1px solid var(--card-stroke);
   background: #fff;
   color: var(--fg);
   border-radius: 999px;
-  padding: 7px 12px;
+  padding: 5px 12px;
   font: inherit;
-  font-size: 0.82rem;
-  font-weight: 600;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.25;
   cursor: pointer;
+  white-space: nowrap;
 }
 body.dark .board-pane-chip { background: #2a2a2a; }
 .board-pane-chip.is-selected {
@@ -7117,7 +7167,7 @@ body.dark .board-pane-chip.is-selected {
   background: #EFEFEF;
   border-radius: 10px;
   padding: 3px;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
 }
 body.dark .board-pane-segments { background: #2a2a2a; }
 .board-pane-segment {
@@ -7149,7 +7199,7 @@ body.dark .board-pane-segment.is-selected {
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  margin-top: 4px;
+  margin-top: 0;
 }
 .board-pane-member-section {
   margin-top: 8px;
@@ -7162,7 +7212,29 @@ body.dark .board-pane-segment.is-selected {
 .board-pane-member {
   display: flex;
   align-items: center;
+  gap: 4px;
+}
+.board-pane-member-hit {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
   gap: 12px;
+  margin: 0;
+  padding: 6px 8px 6px 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.board-pane-member-hit:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+body.dark .board-pane-member-hit:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 .board-pane-member-menu {
   margin-left: auto;
@@ -7199,13 +7271,16 @@ body.dark .board-pane-member-menu:hover { background: rgba(255,255,255,.08); }
   gap: 2px;
 }
 .board-pane-member-name {
-  font-weight: 700;
+  font-weight: 400;
   font-size: 0.95rem;
   color: var(--fg);
 }
 .board-pane-member-roles {
   font-size: 0.78rem;
-  color: var(--subtitle);
+  color: #8a8a8a;
+}
+body.dark .board-pane-member-roles {
+  color: rgba(255, 255, 255, 0.48);
 }
 
 /* ---------- Login ---------- */

@@ -258,6 +258,8 @@
                                            || (role == "All" && string.IsNullOrEmpty(memberRoleFilter));
                             <button type="button"
                                     class="board-pane-chip @(selected ? "is-selected" : null)"
+                                    data-role="@role"
+                                    aria-pressed="@selected"
                                     @onclick="() => SetRoleFilter(role)">
                                 @role
                             </button>
@@ -312,16 +314,20 @@
                                 {
                                     <div class="board-pane-member board-cascade-item"
                                          style="@EnterDelayStyle(DisplayedMemberRows.IndexOf(row))">
-                                        <span class="board-pane-avatar" style="@AvatarStyle(row.Member)">@Initials(row.Member)</span>
-                                        <span class="board-pane-member-main">
-                                            <span class="board-pane-member-name">@MemberListName(row.Member)</span>
-                                            @if (string.IsNullOrEmpty(memberRoleFilter)
-                                                 && !membersGroupByRole
-                                                 && !string.IsNullOrWhiteSpace(RolesSummary(row.Member)))
-                                            {
-                                                <span class="board-pane-member-roles">@RolesSummary(row.Member)</span>
-                                            }
-                                        </span>
+                                        <button type="button"
+                                                class="board-pane-member-hit"
+                                                @onclick="() => OpenMemberInfo(row.Member)">
+                                            <span class="board-pane-avatar" style="@AvatarStyle(row.Member)">@Initials(row.Member)</span>
+                                            <span class="board-pane-member-main">
+                                                <span class="board-pane-member-name">@MemberListName(row.Member)</span>
+                                                @if (string.IsNullOrEmpty(memberRoleFilter)
+                                                     && !membersGroupByRole
+                                                     && !string.IsNullOrWhiteSpace(RolesSummary(row.Member)))
+                                                {
+                                                    <span class="board-pane-member-roles">@RolesSummary(row.Member)</span>
+                                                }
+                                            </span>
+                                        </button>
                                         @if (currentUserIsGroupAdmin
                                              && !string.Equals(row.Member.Id, Auth.CurrentUserId, StringComparison.Ordinal))
                                         {
@@ -829,6 +835,12 @@
     </div>
 }
 
+<MemberInfoPopup @bind-Visible="showMemberInfo"
+                 Member="memberInfoTarget"
+                 IsYou="@(memberInfoTarget != null && string.Equals(memberInfoTarget.Id, Auth.CurrentUserId, StringComparison.Ordinal))"
+                 AvatarStyle="@(memberInfoTarget == null ? "" : AvatarStyle(memberInfoTarget))"
+                 Initials="@(memberInfoTarget == null ? "?" : Initials(memberInfoTarget))" />
+
 <ActionMenuDialog @bind-Visible="showGroupMenu"
                   Title="@(ActiveGroup?.Name ?? "Group")"
                   Options="groupMenuOptions"
@@ -1069,6 +1081,8 @@
     bool showRemoveMemberConfirm;
     bool showRemoveAdminConfirm;
     bool showMemberMenu;
+    bool showMemberInfo;
+    GroupMemberDoc? memberInfoTarget;
     bool showBoardConfirm;
     bool showDeleteListConfirm;
     bool showDeleteHymnConfirm;
@@ -1657,9 +1671,7 @@
         await InvokeAsync(StateHasChanged);
         try
         {
-            Members = (await GroupService.GetMembersAsync(ActiveGroup.Id))
-                .OrderBy(m => DisplayName(m), StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            Members = OrderMembers(await GroupService.GetMembersAsync(ActiveGroup.Id)).ToList();
             currentUserIsGroupAdmin = Members.Any(m =>
                 string.Equals(m.Id, Auth.CurrentUserId, StringComparison.Ordinal) && m.IsAdmin)
                 || string.Equals(ActiveGroup.CreatedBy, Auth.CurrentUserId, StringComparison.Ordinal);
@@ -1700,10 +1712,7 @@
         {
             if (string.Equals(memberRoleFilter, "Admin", StringComparison.OrdinalIgnoreCase))
             {
-                var admins = filtered
-                    .Where(m => m.IsAdmin)
-                    .OrderBy(m => DisplayName(m), StringComparer.OrdinalIgnoreCase)
-                    .ToList();
+                var admins = OrderMembers(filtered.Where(m => m.IsAdmin)).ToList();
                 if (admins.Count > 0)
                 {
                     rows.Add(new MemberRow { IsHeader = true, Header = "Admin" });
@@ -1718,10 +1727,7 @@
                         !role.Equals(memberRoleFilter, StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    var section = filtered
-                        .Where(m => HasRole(m, role))
-                        .OrderBy(m => DisplayName(m), StringComparer.OrdinalIgnoreCase)
-                        .ToList();
+                    var section = OrderMembers(filtered.Where(m => HasRole(m, role))).ToList();
                     if (section.Count == 0) continue;
                     rows.Add(new MemberRow { IsHeader = true, Header = role });
                     rows.AddRange(section.Select(m => new MemberRow { Member = m }));
@@ -1729,10 +1735,7 @@
 
                 if (string.IsNullOrEmpty(memberRoleFilter))
                 {
-                    var other = filtered
-                        .Where(m => !RoleOrder.Any(r => HasRole(m, r)))
-                        .OrderBy(m => DisplayName(m), StringComparer.OrdinalIgnoreCase)
-                        .ToList();
+                    var other = OrderMembers(filtered.Where(m => !RoleOrder.Any(r => HasRole(m, r)))).ToList();
                     if (other.Count > 0)
                     {
                         rows.Add(new MemberRow { IsHeader = true, Header = "Members" });
@@ -1743,9 +1746,7 @@
         }
         else
         {
-            rows.AddRange(filtered
-                .OrderBy(m => DisplayName(m), StringComparer.OrdinalIgnoreCase)
-                .Select(m => new MemberRow { Member = m }));
+            rows.AddRange(OrderMembers(filtered).Select(m => new MemberRow { Member = m }));
         }
 
         DisplayedMemberRows = rows;
@@ -1796,6 +1797,14 @@
             "accompaniment" => "accompaniment",
             _ => (raw ?? "").Trim().ToLowerInvariant()
         };
+
+    IEnumerable<GroupMemberDoc> OrderMembers(IEnumerable<GroupMemberDoc> source) =>
+        source
+            .OrderBy(m => IsCurrentUser(m) ? 0 : 1)
+            .ThenBy(m => DisplayName(m), StringComparer.OrdinalIgnoreCase);
+
+    bool IsCurrentUser(GroupMemberDoc m) =>
+        string.Equals(m.Id, Auth.CurrentUserId, StringComparison.Ordinal);
 
     static string DisplayName(GroupMemberDoc m)
     {
@@ -1876,6 +1885,13 @@
         if (HasRole(m, "Projector")) return ("#6B7280", "rgba(107,114,128,.15)");
         if (HasRole(m, "Accompaniment")) return ("#8B5CF6", "rgba(139,92,246,.15)");
         return ("#2563EB", "rgba(37,99,235,.15)");
+    }
+
+    void OpenMemberInfo(GroupMemberDoc member)
+    {
+        if (member == null) return;
+        memberInfoTarget = member;
+        showMemberInfo = true;
     }
 
     void OpenMemberMenu(GroupMemberDoc member)
