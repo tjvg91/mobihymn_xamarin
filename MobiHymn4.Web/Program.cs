@@ -41,15 +41,7 @@ builder.Services.AddScoped<AppUpdateService>();
 
 var host = builder.Build();
 
-// Keep startup light so the splash/UI can paint on iOS PWA before Firebase / IndexedDB finish.
-await RunWithTimeout(
-    async () =>
-    {
-        var auth = host.Services.GetRequiredService<IAuthService>();
-        await auth.InitializeAsync();
-    },
-    TimeSpan.FromSeconds(8));
-
+// Local prefs/bookmarks only — keep this before first paint (IndexedDB is fast offline).
 await RunWithTimeout(
     async () =>
     {
@@ -64,8 +56,17 @@ await host.RunAsync();
 
 static async Task WarmUpAfterUiAsync(WebAssemblyHost host)
 {
-    // Yield so RunAsync can start rendering first.
+    // Yield so RunAsync can start rendering before Firebase ESM / auth finish.
     await Task.Yield();
+
+    // Auth after first paint — Firebase module import was blocking TTI by up to ~8s.
+    await RunWithTimeout(
+        async () =>
+        {
+            var auth = host.Services.GetRequiredService<IAuthService>();
+            await auth.InitializeAsync();
+        },
+        TimeSpan.FromSeconds(8));
 
     // Wire notification taps before slower warm-up so SW postMessage isn't dropped.
     try
@@ -97,6 +98,12 @@ static async Task WarmUpAfterUiAsync(WebAssemblyHost host)
             _ = catalog.RefreshAsync();
     }
     catch { /* download / hydrate later from Settings */ }
+
+    try
+    {
+        await host.Services.GetRequiredService<AppState>().RepairRenumberedReferencesAsync();
+    }
+    catch { /* offline — retried on next launch or library refresh */ }
 }
 
 static async Task RunWithTimeout(Func<Task> work, TimeSpan timeout)

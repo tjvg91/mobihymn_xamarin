@@ -4,6 +4,7 @@ const { initializeApp, getApps } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
 const { getStorage } = require("firebase-admin/storage");
+const { renderOgPng } = require("./og-image");
 
 if (getApps().length === 0) {
   initializeApp({
@@ -191,6 +192,222 @@ exports.midiProxy = onRequest(
   }
 );
 
+const PUBLIC_ORIGIN = "https://mobihymn.web.app";
+const SHARE_NUMBER_RE = /^\d{1,6}[a-zA-Z]{0,3}$/;
+
+function hymnOgImageUrl(number) {
+  return `${PUBLIC_ORIGIN}/og/${encodeURIComponent(number)}.png`;
+}
+
+function escapeHtmlAttr(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function extractShareNumber(req) {
+  const path = String(req.path || req.originalUrl || "").split("?")[0];
+  const fromPath = path.match(/\/(?:share|hymn)\/([^/]+)\/?$/i);
+  if (fromPath && fromPath[1])
+    return decodeURIComponent(fromPath[1]).trim();
+  const q = req.query && typeof req.query.n === "string" ? req.query.n.trim() : "";
+  return q;
+}
+
+function firstLineFromHymnJson(data) {
+  if (!data || typeof data !== "object") return "";
+  const direct = typeof data.firstLine === "string" ? data.firstLine.trim() : "";
+  if (direct) return direct;
+  const lyrics = typeof data.lyrics === "string" ? data.lyrics : "";
+  if (!lyrics) return "";
+  const line = lyrics
+    .replace(/\r\n/g, "\n")
+    .split(/\n|<br\s*\/?>/i)
+    .map((l) => l.replace(/<[^>]+>/g, "").trim())
+    .find((l) => l.length > 0);
+  return line || "";
+}
+
+async function lookupHymnFirstLine(number) {
+  const target = `${HYMN_UPSTREAM}/hymn/api/hymns.dna?q=${encodeURIComponent(number)}`;
+  const upstream = await fetch(target, {
+    method: "GET",
+    headers: { accept: "application/json" },
+    redirect: "follow",
+  });
+  if (!upstream.ok) return "";
+  const text = await upstream.text();
+  if (!text || /^\s*Error:/i.test(text)) return "";
+  try {
+    const data = JSON.parse(text);
+    if (Array.isArray(data))
+      return firstLineFromHymnJson(data[0]);
+    return firstLineFromHymnJson(data);
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Share landing page for crawlers (WhatsApp / iMessage / Slack, etc.).
+ * Injects og:title with hymn number + first line, then sends browsers to /read/{n}.
+ * Hosting rewrite: /share/** → hymnShare (keeps /read/** on the SPA, no extra latency).
+ */
+exports.hymnShare = onRequest(
+  {
+    region: "us-central1",
+    cors: false,
+    timeoutSeconds: 30,
+    memory: "256MiB",
+    invoker: "public",
+  },
+  async (req, res) => {
+    try {
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        res.status(405).send("Method not allowed");
+        return;
+      }
+
+      const number = extractShareNumber(req);
+      // Hymn ids are digits, optionally with a short letter/tune suffix (e.g. 77b).
+      if (!number || !SHARE_NUMBER_RE.test(number)) {
+        res.redirect(302, `${PUBLIC_ORIGIN}/read`);
+        return;
+      }
+
+      let firstLine = "";
+      try {
+        firstLine = await lookupHymnFirstLine(number);
+      } catch (e) {
+        console.warn("hymnShare lookup failed", e?.message || e);
+      }
+
+      const readPath = `/read/${encodeURIComponent(number)}`;
+      const shareUrl = `${PUBLIC_ORIGIN}/share/${encodeURIComponent(number)}`;
+      const readUrl = `${PUBLIC_ORIGIN}${readPath}`;
+      const title = firstLine
+        ? `#${number} — ${firstLine}`
+        : `Hymn #${number}`;
+      const description = firstLine || "Read this hymn on MobiHymn";
+      const escTitle = escapeHtmlAttr(title);
+      const escDesc = escapeHtmlAttr(description);
+      const escShare = escapeHtmlAttr(shareUrl);
+      const escRead = escapeHtmlAttr(readUrl);
+      const escNum = escapeHtmlAttr(number);
+      const escImage = escapeHtmlAttr(hymnOgImageUrl(number));
+      const jsRead = JSON.stringify(readPath);
+
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escTitle}</title>
+  <meta name="description" content="${escDesc}" />
+  <link rel="canonical" href="${escRead}" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="MobiHymn" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:url" content="${escShare}" />
+  <meta property="og:title" content="${escTitle}" />
+  <meta property="og:description" content="${escDesc}" />
+  <meta property="og:image" content="${escImage}" />
+  <meta property="og:image:secure_url" content="${escImage}" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="${escTitle}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${escTitle}" />
+  <meta name="twitter:description" content="${escDesc}" />
+  <meta name="twitter:image" content="${escImage}" />
+  <meta name="twitter:image:alt" content="${escTitle}" />
+  <meta http-equiv="refresh" content="0;url=${escRead}" />
+  <script>location.replace(${jsRead});</script>
+</head>
+<body>
+  <p><a href="${escRead}">Open hymn #${escNum} on MobiHymn</a></p>
+</body>
+</html>`;
+
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      if (req.method === "HEAD") {
+        res.status(200).end();
+        return;
+      }
+      res.status(200).send(html);
+    } catch (e) {
+      console.error("hymnShare failed", e);
+      if (!res.headersSent)
+        res.status(302).setHeader("Location", `${PUBLIC_ORIGIN}/read`).end();
+    }
+  }
+);
+
+function extractOgNumber(req) {
+  const path = String(req.path || req.originalUrl || "").split("?")[0];
+  const m = path.match(/\/og\/([^/]+?)(?:\.png)?\/?$/i);
+  return m && m[1] ? decodeURIComponent(m[1]).trim() : "";
+}
+
+/**
+ * Per-hymn 1200x630 share thumbnail (number + first line).
+ * Hosting rewrite: /og/** → hymnShareOg. Referenced by hymnShare's og:image.
+ */
+exports.hymnShareOg = onRequest(
+  {
+    region: "us-central1",
+    cors: false,
+    timeoutSeconds: 30,
+    memory: "512MiB",
+    invoker: "public",
+  },
+  async (req, res) => {
+    try {
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        res.status(405).send("Method not allowed");
+        return;
+      }
+
+      const number = extractOgNumber(req);
+      if (!number || !SHARE_NUMBER_RE.test(number)) {
+        res.redirect(302, `${PUBLIC_ORIGIN}/og-image.png`);
+        return;
+      }
+
+      let firstLine = "";
+      try {
+        firstLine = await lookupHymnFirstLine(number);
+      } catch (e) {
+        console.warn("hymnShareOg lookup failed", e?.message || e);
+      }
+
+      const png = await renderOgPng(number, firstLine);
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Content-Length", String(png.length));
+      // Missing first line is likely a transient upstream failure — don't pin it at the CDN.
+      res.setHeader(
+        "Cache-Control",
+        firstLine
+          ? "public, max-age=86400, s-maxage=604800"
+          : "public, max-age=300, s-maxage=300"
+      );
+      if (req.method === "HEAD") {
+        res.status(200).end();
+        return;
+      }
+      res.status(200).send(png);
+    } catch (e) {
+      console.error("hymnShareOg failed", e);
+      if (!res.headersSent)
+        res.redirect(302, `${PUBLIC_ORIGIN}/og-image.png`);
+    }
+  }
+);
+
 /**
  * Longest-common-subsequence of two id arrays (same multiset of ids in each).
  * Ids NOT part of the LCS are the ones whose *relative* order changed — i.e.
@@ -237,12 +454,17 @@ function hymnLabel(h) {
   return `hymn #${h.hymnNumber || "?"}`;
 }
 
+function asText(value) {
+  if (value == null || value === undefined) return null;
+  return String(value);
+}
+
 function contentChanged(oldEntry, newEntry) {
   return (
     Boolean(oldEntry.isSection) !== Boolean(newEntry.isSection) ||
-    (oldEntry.sectionName || null) !== (newEntry.sectionName || null) ||
-    (oldEntry.hymnNumber || null) !== (newEntry.hymnNumber || null) ||
-    (oldEntry.notes || null) !== (newEntry.notes || null)
+    asText(oldEntry.sectionName) !== asText(newEntry.sectionName) ||
+    asText(oldEntry.hymnNumber) !== asText(newEntry.hymnNumber) ||
+    asText(oldEntry.notes) !== asText(newEntry.notes)
   );
 }
 
@@ -319,10 +541,10 @@ exports.boardUpdateList = onCall({ region: "us-central1", invoker: "public" }, a
     const entry = {
       id,
       isSection: raw.isSection === true,
-      sectionName: raw.sectionName ?? null,
-      hymnNumber: raw.hymnNumber ?? null,
+      sectionName: raw.sectionName == null || raw.sectionName === "" ? null : String(raw.sectionName),
+      hymnNumber: raw.hymnNumber == null || raw.hymnNumber === "" ? null : String(raw.hymnNumber),
       sortOrder: typeof raw.sortOrder === "number" ? raw.sortOrder : 0,
-      notes: raw.notes ?? null,
+      notes: raw.notes == null || raw.notes === "" ? null : String(raw.notes),
       updatedAt: raw.updatedAt ?? null,
     };
 
@@ -415,9 +637,15 @@ exports.onBoardWrite = onDocumentWritten(
 
     const listLabel = formatListLabel(after.name, listId);
     const change = describeHymnChange(before, after);
-    console.log(`[BoardNotify] ${groupId}/${listId} action=${change.action} count=${change.count} silent=${change.silent} actor=${actorUid}`);
+    console.log(`[BoardNotify] ${groupId}/${listId} action=${change.action} count=${change.count} silent=${change.silent} actor=${actorUid || "(unknown)"}`);
     if (change.silent) {
       return; // reorder / section-move only — no content change
+    }
+    // Fail closed: without a known actor we used to notify everyone, including
+    // the person who just edited. Prefer silence over self-spam.
+    if (!actorUid) {
+      console.warn(`[BoardNotify] skip all: missing actorUid for ${groupId}/${listId}`);
+      return;
     }
     const who = actorName || "Someone";
     const title = `${who} ${change.verb} ${change.object}`;
@@ -429,7 +657,7 @@ exports.onBoardWrite = onDocumentWritten(
     const sends = [];
     for (const memberDoc of membersSnap.docs) {
       const uid = memberDoc.id;
-      if (!uid || (actorUid && uid === actorUid)) {
+      if (!uid || uid === actorUid) {
         continue;
       }
 

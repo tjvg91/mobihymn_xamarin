@@ -1,3 +1,4 @@
+using System.Globalization;
 using MobiHymn4.Shared;
 using MobiHymn4.Shared.Models;
 using MobiHymn4.Shared.Services;
@@ -57,6 +58,25 @@ public sealed class AppState
 
     public void SetMidiPanelExpanded(bool value) =>
         prefs.SetBool(PrefKeys.MidiPanelExpanded, value);
+
+    /// <summary>MP3 play/pause fade length in seconds (0.5–2, half-second steps). Device-local.</summary>
+    public double Mp3FadeSeconds
+    {
+        get
+        {
+            var raw = prefs.Get(PrefKeys.Mp3FadeSeconds, "1");
+            if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds))
+                return 1;
+            return Math.Clamp(Math.Round(seconds * 2) / 2, 0.5, 2);
+        }
+    }
+
+    public void SetMp3FadeSeconds(double seconds)
+    {
+        var value = Math.Clamp(Math.Round(seconds * 2) / 2, 0.5, 2);
+        prefs.Set(PrefKeys.Mp3FadeSeconds, value.ToString("0.#", CultureInfo.InvariantCulture));
+    }
+
     public string ReaderTheme => Settings.ActiveReadTheme ?? "#FFFFFF";
     public string ReaderFont
     {
@@ -126,6 +146,84 @@ public sealed class AppState
         History = await store.GetHistoryAsync();
         Settings = await store.GetLocalSettingsAsync();
         prefs.Set(PrefKeys.HymnInputType, HymnInputType.ToString());
+        Notify();
+    }
+
+    /// <summary>
+    /// Moves bookmarks and history entries to the hymn number that now holds their saved
+    /// first line (e.g. after a hymn is inserted and later numbers shift up).
+    /// Safe to call repeatedly; entries that already match, or whose first line is shared
+    /// by several hymns, are left alone.
+    /// </summary>
+    public async Task RepairRenumberedReferencesAsync(CancellationToken cancellationToken = default)
+    {
+        if (Bookmarks.Count == 0 && History.Count == 0)
+            return;
+
+        HymnCatalogMeta meta;
+        try
+        {
+            meta = await lyrics.GetCatalogMetaAsync(cancellationToken);
+        }
+        catch
+        {
+            return;
+        }
+
+        // Letters/digits only, so straight, curly, or garbled apostrophes still match.
+        static string LineKey(string? line) =>
+            new string((line ?? "").Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+
+        var numbersByLine = (meta.Hymns ?? new List<HymnCatalogEntry>())
+            .Where(h => !string.IsNullOrWhiteSpace(h.Number) && !string.IsNullOrWhiteSpace(h.FirstLine))
+            .GroupBy(h => LineKey(h.FirstLine))
+            .Where(g => g.Key.Length > 0)
+            .ToDictionary(g => g.Key, g => g.Select(h => h.Number).ToList());
+        if (numbersByLine.Count == 0)
+            return;
+
+        bool Repair(ShortHymn item)
+        {
+            var line = LineKey(item.Line);
+            if (line.Length == 0 || !numbersByLine.TryGetValue(line, out var numbers))
+                return false;
+            if (numbers.Count != 1 || numbers.Contains(item.Number, StringComparer.OrdinalIgnoreCase))
+                return false;
+            item.Number = numbers[0];
+            return true;
+        }
+
+        var bookmarksChanged = false;
+        foreach (var b in Bookmarks)
+            bookmarksChanged |= Repair(b);
+        var historyChanged = false;
+        foreach (var h in History)
+            historyChanged |= Repair(h);
+
+        if (!bookmarksChanged && !historyChanged)
+            return;
+
+        if (bookmarksChanged)
+        {
+            Bookmarks = Bookmarks
+                .GroupBy(b => $"{b.Number}|{b.BookmarkGroup}", StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.OrderByDescending(b => b.TimeStamp).First())
+                .OrderByDescending(b => b.TimeStamp)
+                .ToList();
+            await store.SaveBookmarksAsync(Bookmarks);
+        }
+
+        if (historyChanged)
+        {
+            History = History
+                .GroupBy(h => h.Number, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.OrderByDescending(h => h.TimeStamp).First())
+                .OrderByDescending(h => h.TimeStamp)
+                .ToList();
+            await store.SaveHistoryAsync(History);
+        }
+
+        Sync.SchedulePush();
         Notify();
     }
 
@@ -448,6 +546,7 @@ public sealed class AppState
         if (!string.IsNullOrWhiteSpace(Settings.LastHymnNumber))
             prefs.Set(PrefKeys.LastHymnNumber, Settings.LastHymnNumber);
         Notify();
+        await RepairRenumberedReferencesAsync();
     }
 
     /// <summary>

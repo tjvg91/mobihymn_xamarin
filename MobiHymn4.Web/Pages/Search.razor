@@ -16,7 +16,8 @@
     <div class="search-bar-wrap">
         <div class="search-bar">
             <i class="fa-solid fa-magnifying-glass search-bar-icon" aria-hidden="true"></i>
-            <input class="search-bar-input"
+            <input @ref="queryInput"
+                   class="search-bar-input"
                    @bind="Query"
                    @bind:event="oninput"
                    placeholder="@Placeholder"
@@ -197,6 +198,7 @@
     bool Listening;
     bool resultsEnterAnim;
     int resultsEnterAnimToken;
+    ElementReference queryInput;
     string? Error;
     List<HymnSearchHit> Results = new();
     List<HymnSearchGroup> Groups = new();
@@ -392,6 +394,12 @@
             return;
         if (Auth.IsSignedIn)
             await Profiles.RefreshCurrentProfileAsync();
+        // Empty search — put the keyboard on the box so typing can start immediately.
+        if (ResultCount == 0 && !Busy && !Listening)
+        {
+            try { await queryInput.FocusAsync(); }
+            catch { /* element may be gone on quick navigate */ }
+        }
     }
 
     void OnProfileChanged(object? s, EventArgs e) => InvokeAsync(StateHasChanged);

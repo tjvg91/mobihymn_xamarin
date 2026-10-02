@@ -111,25 +111,26 @@ function fcmShowBoardNotification(payload) {
         const d = (raw.data && typeof raw.data === 'object') ? raw.data : raw;
         const n = (raw.notification && typeof raw.notification === 'object') ? raw.notification : {};
         const updatedBy = String(d.updatedBy || '');
-        const me = String(self.__mhAuthUid || '');
-        if (me && updatedBy && me === updatedBy) {
-            console.log('[BoardOpen][sw] skip self-update notification', { updatedBy });
-            return Promise.resolve();
-        }
-        const title = String(n.title || d.title || 'MobiHymn');
-        const body = String(n.body || d.body || '');
-        const groupId = String(d.groupId || '');
-        const listId = String(d.listId || d.date || '');
-        const boardPath = String(d.boardPath || '');
-        const tag = listId ? ('board-' + listId) : (groupId ? ('board-' + groupId) : 'board');
-        console.log('[BoardOpen][sw] showNotification', { title, body, groupId, listId });
-        return self.registration.showNotification(title, {
-            body,
-            icon: '/icon-192.png',
-            badge: '/icon-192.png',
-            tag,
-            renotify: true,
-            data: Object.assign({}, d, { groupId, listId, boardPath, title, body })
+        return fcmCurrentAuthUid().then((me) => {
+            if (me && updatedBy && me === updatedBy) {
+                console.log('[BoardOpen][sw] skip self-update notification', { updatedBy });
+                return;
+            }
+            const title = String(n.title || d.title || 'MobiHymn');
+            const body = String(n.body || d.body || '');
+            const groupId = String(d.groupId || '');
+            const listId = String(d.listId || d.date || '');
+            const boardPath = String(d.boardPath || '');
+            const tag = listId ? ('board-' + listId) : (groupId ? ('board-' + groupId) : 'board');
+            console.log('[BoardOpen][sw] showNotification', { title, body, groupId, listId });
+            return self.registration.showNotification(title, {
+                body,
+                icon: '/icon-192.png',
+                badge: '/icon-192.png',
+                tag,
+                renotify: true,
+                data: Object.assign({}, d, { groupId, listId, boardPath, title, body })
+            });
         });
     } catch (e) {
         console.warn('[BoardOpen][sw] showNotification failed, using fallback', e);
@@ -141,11 +142,41 @@ function fcmShowBoardNotification(payload) {
     }
 }
 
+async function fcmRestoreAuthUid() {
+    try {
+        const cache = await caches.open('mh-auth-v1');
+        const res = await cache.match('/__uid');
+        if (res) self.__mhAuthUid = (await res.text()) || '';
+    } catch { /* ignore */ }
+}
+
+async function fcmSetAuthUid(uid) {
+    self.__mhAuthUid = uid ? String(uid) : '';
+    try {
+        const cache = await caches.open('mh-auth-v1');
+        if (self.__mhAuthUid)
+            await cache.put('/__uid', new Response(self.__mhAuthUid, { headers: { 'Content-Type': 'text/plain' } }));
+        else
+            await cache.delete('/__uid');
+    } catch { /* ignore */ }
+}
+
+async function fcmCurrentAuthUid() {
+    const mem = String(self.__mhAuthUid || '');
+    if (mem) return mem;
+    await fcmRestoreAuthUid();
+    return String(self.__mhAuthUid || '');
+}
+
+self.addEventListener('activate', (event) => {
+    event.waitUntil(fcmRestoreAuthUid());
+});
+
 self.addEventListener('message', (event) => {
     try {
         const data = event && event.data;
         if (data && data.type === 'mh-auth')
-            self.__mhAuthUid = data.uid ? String(data.uid) : '';
+            event.waitUntil(fcmSetAuthUid(data.uid ? String(data.uid) : ''));
     } catch { /* ignore */ }
 });
 
@@ -196,11 +227,11 @@ const manifestUrlList = self.assetsManifest.assets.map(asset => new URL(asset.ur
 
 async function onInstall(event) {
     console.info('Service worker: Install');
-    // Activate ASAP. Precaching the full Blazor payload during install can take
-    // minutes on mobile after clear-data and leaves the worker stuck in
-    // "installing" — FCM getToken / serviceWorker.ready hang and Account
-    // "Register" stays on Registering forever.
-    self.skipWaiting();
+    // Only critical shell assets here; the full Blazor payload is precached after
+    // activation. Precaching everything during install can take minutes on mobile
+    // after clear-data — FCM getToken / serviceWorker.ready hang meanwhile.
+    // No skipWaiting(): updates wait until the page sends SKIP_WAITING, which is
+    // governed by /update-policy.json (auto / optional / mandatory).
 
     const cache = await caches.open(cacheName);
     const critical = self.assetsManifest.assets.filter(asset => {
@@ -328,7 +359,9 @@ async function onFetch(event) {
         || url.pathname === '/service-worker-assets.js'
         || url.pathname === '/service-worker.published.js'
         || url.pathname === '/js/firebase-config.js'
-        || url.pathname === '/launch-app.html') {
+        || url.pathname === '/launch-app.html'
+        || url.pathname === '/update-policy.json'
+        || url.pathname === '/catalog-policy.json') {
         return fetch(event.request);
     }
 
@@ -348,13 +381,12 @@ async function onFetch(event) {
     if (event.request.method !== 'GET')
         return fetch(event.request);
 
-    // HTML + CSS/JS/fonts/manifest: network-first so a reopen picks up deploys.
-    if (isNavigation(event.request, url) || isShellAsset(url)) {
+    // HTML navigations: short network-first so deploys land, but never stall reopen.
+    if (isNavigation(event.request, url)) {
         try {
-            const fresh = await networkFirst(event.request, 8000);
+            const fresh = await networkFirst(event.request, 1500);
             if (fresh && fresh.ok) {
-                const storeAs = isNavigation(event.request, url) ? 'index.html' : url.pathname;
-                await putCache(storeAs, fresh.clone());
+                await putCache('index.html', fresh.clone());
                 return fresh;
             }
         } catch { /* fall through */ }
@@ -362,16 +394,35 @@ async function onFetch(event) {
         const cached = await matchCache(event.request, url);
         if (cached) return cached;
 
-        if (isNavigation(event.request, url)) {
-            try {
-                const cache = await caches.open(cacheName);
-                const fallback = await cache.match('index.html');
-                if (fallback) return fallback;
-            } catch { /* ignore */ }
+        try {
+            const cache = await caches.open(cacheName);
+            const fallback = await cache.match('index.html');
+            if (fallback) return fallback;
+        } catch { /* ignore */ }
+        return new Response('Offline', { status: 503, statusText: 'Offline' });
+    }
+
+    // CSS/JS/fonts/manifest: stale-while-revalidate — instant from cache on warm reopen.
+    if (isShellAsset(url)) {
+        const cached = await matchCache(event.request, url);
+        if (cached) {
+            event.waitUntil((async () => {
+                try {
+                    const fresh = await fetch(event.request);
+                    if (fresh && fresh.ok)
+                        await putCache(url.pathname, fresh.clone());
+                } catch { /* ignore */ }
+            })());
+            return cached;
+        }
+        try {
+            const fresh = await fetch(event.request);
+            if (fresh && fresh.ok)
+                await putCache(url.pathname, fresh.clone());
+            return fresh;
+        } catch {
             return new Response('Offline', { status: 503, statusText: 'Offline' });
         }
-
-        return fetch(event.request);
     }
 
     // _framework hashed bundles: cache-first

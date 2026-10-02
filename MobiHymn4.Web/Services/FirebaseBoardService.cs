@@ -372,16 +372,22 @@ public sealed class FirebaseBoardService : IBoardService
         {
             foreach (var h in arr.EnumerateArray())
             {
+                var hymnId = FirebaseProfileService.GetFlexibleString(h, "id");
+                // Never invent an id for an existing row — a new id orphans edits
+                // and trips ownership checks on the next boardUpdateList write.
+                if (string.IsNullOrWhiteSpace(hymnId))
+                    continue;
+
                 hymns.Add(new BoardHymnDoc
                 {
-                    Id = FirebaseProfileService.GetString(h, "id") ?? Guid.NewGuid().ToString("N")[..8],
+                    Id = hymnId,
                     IsSection = h.TryGetProperty("isSection", out var s) && s.ValueKind == JsonValueKind.True,
-                    SectionName = FirebaseProfileService.GetString(h, "sectionName"),
-                    HymnNumber = FirebaseProfileService.GetString(h, "hymnNumber"),
+                    SectionName = FirebaseProfileService.GetFlexibleString(h, "sectionName"),
+                    HymnNumber = FirebaseProfileService.GetFlexibleString(h, "hymnNumber"),
                     SortOrder = h.TryGetProperty("sortOrder", out var so) && so.TryGetInt64(out var n) ? n : 0,
-                    Notes = FirebaseProfileService.GetString(h, "notes"),
-                    AddedBy = FirebaseProfileService.GetString(h, "addedBy"),
-                    AddedByName = FirebaseProfileService.GetString(h, "addedByName"),
+                    Notes = FirebaseProfileService.GetFlexibleString(h, "notes"),
+                    AddedBy = FirebaseProfileService.GetFlexibleString(h, "addedBy"),
+                    AddedByName = FirebaseProfileService.GetFlexibleString(h, "addedByName"),
                     UpdatedAt = GetDateTime(h, "updatedAt") ?? default
                 });
             }

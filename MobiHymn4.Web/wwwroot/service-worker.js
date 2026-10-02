@@ -32,11 +32,34 @@ try {
         });
     }
 
+    async function fcmSetAuthUid(uid) {
+        self.__mhAuthUid = uid ? String(uid) : '';
+        try {
+            const cache = await caches.open('mh-auth-v1');
+            if (self.__mhAuthUid)
+                await cache.put('/__uid', new Response(self.__mhAuthUid, { headers: { 'Content-Type': 'text/plain' } }));
+            else
+                await cache.delete('/__uid');
+        } catch { /* ignore */ }
+    }
+
+    async function fcmRestoreAuthUid() {
+        try {
+            const cache = await caches.open('mh-auth-v1');
+            const res = await cache.match('/__uid');
+            if (res) self.__mhAuthUid = (await res.text()) || '';
+        } catch { /* ignore */ }
+    }
+
+    self.addEventListener('activate', (event) => {
+        event.waitUntil(fcmRestoreAuthUid());
+    });
+
     self.addEventListener('message', (event) => {
         try {
             const data = event && event.data;
             if (data && data.type === 'mh-auth')
-                self.__mhAuthUid = data.uid ? String(data.uid) : '';
+                event.waitUntil(fcmSetAuthUid(data.uid ? String(data.uid) : ''));
         } catch { /* ignore */ }
     });
 

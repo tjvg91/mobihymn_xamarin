@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Components.WebAssembly.Http;
 using MobiHymn4.Shared;
 using MobiHymn4.Shared.Services;
 
@@ -7,25 +10,41 @@ namespace MobiHymn4.Web.Services;
 /// Catalog update badges (MAUI-style) — only for an installed PWA after the hymn library
 /// has been downloaded. Browser tabs keep on-demand API loading with no update badges.
 /// Installed PWAs read/search hymns only from the downloaded catalog.
+/// An update is pending when the server catalogHash changes, or when
+/// tools/push-catalog-update.ps1 publishes a newer /catalog-policy.json (optionally mandatory).
 /// </summary>
 public sealed class CatalogUpdateService
 {
+    const string PolicyPath = "catalog-policy.json";
+
+    sealed class CatalogPolicy
+    {
+        [JsonPropertyName("id")] public string? Id { get; set; }
+        [JsonPropertyName("mode")] public string? Mode { get; set; }
+        [JsonPropertyName("message")] public string? Message { get; set; }
+    }
+
     readonly IHymnLyricsSource lyrics;
     readonly IAppPreferences prefs;
     readonly IHymnAccessPolicy access;
     readonly IHymnCatalogStore catalogStore;
+    readonly HttpClient http;
     int checkInFlight;
+    CatalogPolicy? latestPolicy;
+    DateTime lastRefreshUtc;
 
     public CatalogUpdateService(
         IHymnLyricsSource lyrics,
         IAppPreferences prefs,
         IHymnAccessPolicy access,
-        IHymnCatalogStore catalogStore)
+        IHymnCatalogStore catalogStore,
+        HttpClient http)
     {
         this.lyrics = lyrics;
         this.prefs = prefs;
         this.access = access;
         this.catalogStore = catalogStore;
+        this.http = http;
     }
 
     public event Action? Changed;
@@ -42,8 +61,13 @@ public sealed class CatalogUpdateService
     public int DownloadCompleted { get; private set; }
     public int DownloadTotal { get; private set; }
     public bool HasPendingUpdates { get; private set; }
-    public string? PendingCatalogHash { get; private set; }
+    /// <summary>Identifies the pending update (server hash, plus policy id when pushed).</summary>
+    public string? PendingUpdateKey { get; private set; }
     public int PendingTotal { get; private set; }
+    /// <summary>A pushed catalog policy marked mandatory — the prompt has no Later.</summary>
+    public bool IsMandatoryUpdate { get; private set; }
+    /// <summary>Custom text from the pushed catalog policy, if any.</summary>
+    public string? PendingMessage { get; private set; }
     public string? CheckError { get; private set; }
 
     public bool ShowHamburgerBadge { get; private set; }
@@ -157,19 +181,25 @@ public sealed class CatalogUpdateService
 
         IsChecking = true;
         CheckError = null;
+        lastRefreshUtc = DateTime.UtcNow;
         Notify();
 
         try
         {
-            var meta = await lyrics.GetCatalogMetaFreshAsync(cancellationToken).ConfigureAwait(false);
+            var metaTask = lyrics.GetCatalogMetaFreshAsync(cancellationToken);
+            var policy = await FetchPolicyAsync(cancellationToken).ConfigureAwait(false);
+            var meta = await metaTask.ConfigureAwait(false);
             if (meta.Total > 0)
                 prefs.Set(PrefKeys.HymnTotal, meta.Total.ToString());
 
             var serverHash = (meta.CatalogHash ?? "").Trim();
             var lastHash = prefs.Get(PrefKeys.HymnCatalogHash, "").Trim();
+            var policyId = (policy?.Id ?? "").Trim();
+            var policyPending = policyId.Length > 0
+                && string.CompareOrdinal(prefs.Get(PrefKeys.CatalogPolicyAppliedId, "").Trim(), policyId) < 0;
 
             // No baseline yet after download flag without hash — treat as current after meta.
-            if (string.IsNullOrEmpty(lastHash))
+            if (string.IsNullOrEmpty(lastHash) && !policyPending)
             {
                 if (!string.IsNullOrEmpty(serverHash))
                     prefs.Set(PrefKeys.HymnCatalogHash, serverHash);
@@ -177,7 +207,8 @@ public sealed class CatalogUpdateService
                 return;
             }
 
-            if (!string.IsNullOrEmpty(serverHash)
+            if (!policyPending
+                && !string.IsNullOrEmpty(serverHash)
                 && string.Equals(serverHash, lastHash, StringComparison.Ordinal))
             {
                 ClearPending();
@@ -185,9 +216,13 @@ public sealed class CatalogUpdateService
             }
 
             HasPendingUpdates = true;
-            PendingCatalogHash = string.IsNullOrEmpty(serverHash) ? null : serverHash;
+            var hashKey = string.IsNullOrEmpty(serverHash) ? lastHash : serverHash;
+            PendingUpdateKey = policyPending ? $"{hashKey}+policy:{policyId}" : NullIfEmpty(serverHash);
             PendingTotal = meta.Total;
-            ResetAckIfHashChanged(PendingCatalogHash ?? lastHash);
+            IsMandatoryUpdate = policyPending
+                && string.Equals(policy?.Mode?.Trim(), "mandatory", StringComparison.OrdinalIgnoreCase);
+            PendingMessage = policyPending ? NullIfEmpty(policy?.Message?.Trim()) : null;
+            ResetAckIfHashChanged(PendingUpdateKey ?? lastHash);
             UpdateBadgeFlags();
         }
         catch (OperationCanceledException)
@@ -206,6 +241,48 @@ public sealed class CatalogUpdateService
             Notify();
         }
     }
+
+    /// <summary>Re-check when the app returns to the foreground, at most once per <paramref name="minInterval"/>.</summary>
+    public Task RefreshIfStaleAsync(TimeSpan minInterval)
+    {
+        if (!IsUpdateTrackingEnabled || DateTime.UtcNow - lastRefreshUtc < minInterval)
+            return Task.CompletedTask;
+        return RefreshAsync();
+    }
+
+    async Task<CatalogPolicy?> FetchPolicyAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{PolicyPath}?t={DateTime.UtcNow.Ticks}");
+            request.SetBrowserRequestCache(BrowserRequestCache.NoStore);
+            using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+                return latestPolicy = null;
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            return latestPolicy = JsonSerializer.Deserialize<CatalogPolicy>(json);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Offline or SPA fallback HTML — keep the last policy we saw.
+            return latestPolicy;
+        }
+    }
+
+    /// <summary>After a full sync this device has everything up to the newest pushed policy.</summary>
+    async Task MarkPolicyAppliedAsync(CancellationToken cancellationToken)
+    {
+        var policy = await FetchPolicyAsync(cancellationToken).ConfigureAwait(false);
+        var id = (policy?.Id ?? "").Trim();
+        if (id.Length > 0)
+            prefs.Set(PrefKeys.CatalogPolicyAppliedId, id);
+    }
+
+    static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
     /// <summary>First-time PWA download: persist catalog and mark library as downloaded.</summary>
     public async Task DownloadLibraryAsync(CancellationToken cancellationToken = default)
@@ -253,6 +330,7 @@ public sealed class CatalogUpdateService
             if (!string.IsNullOrWhiteSpace(meta.CatalogHash))
                 prefs.Set(PrefKeys.HymnCatalogHash, meta.CatalogHash.Trim());
             prefs.Set(PrefKeys.HymnTotal, Math.Max(meta.Total, stored).ToString());
+            await MarkPolicyAppliedAsync(cancellationToken).ConfigureAwait(false);
             prefs.SetBool(PrefKeys.HymnLibraryDownloaded, true);
             DownloadProgress = 1;
             DownloadCompleted = stored;
@@ -315,6 +393,7 @@ public sealed class CatalogUpdateService
             if (!string.IsNullOrWhiteSpace(meta.CatalogHash))
                 prefs.Set(PrefKeys.HymnCatalogHash, meta.CatalogHash.Trim());
             prefs.Set(PrefKeys.HymnTotal, Math.Max(meta.Total, stored).ToString());
+            await MarkPolicyAppliedAsync(cancellationToken).ConfigureAwait(false);
             prefs.SetBool(PrefKeys.HymnLibraryDownloaded, true);
             DownloadProgress = 1;
             DownloadCompleted = stored;
@@ -332,6 +411,24 @@ public sealed class CatalogUpdateService
             IsDownloadingLibrary = false;
             Notify();
         }
+    }
+
+    /// <summary>A newer catalog is on the server and this device hasn't been asked about it yet.</summary>
+    public bool ShouldPromptForUpdate =>
+        IsUpdateTrackingEnabled
+        && HasPendingUpdates
+        && !IsDownloadingLibrary
+        && !string.IsNullOrEmpty(PendingUpdateKey)
+        && (IsMandatoryUpdate
+            || !string.Equals(
+                prefs.Get(PrefKeys.CatalogUpdatePromptedHash, ""),
+                PendingUpdateKey,
+                StringComparison.Ordinal));
+
+    public void MarkUpdatePrompted()
+    {
+        if (!string.IsNullOrEmpty(PendingUpdateKey))
+            prefs.Set(PrefKeys.CatalogUpdatePromptedHash, PendingUpdateKey);
     }
 
     public void AcknowledgeHamburgerBadge()
@@ -369,8 +466,10 @@ public sealed class CatalogUpdateService
     void ClearPending()
     {
         HasPendingUpdates = false;
-        PendingCatalogHash = null;
+        PendingUpdateKey = null;
         PendingTotal = 0;
+        IsMandatoryUpdate = false;
+        PendingMessage = null;
         UpdateBadgeFlags();
     }
 

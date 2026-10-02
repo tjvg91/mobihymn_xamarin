@@ -17,6 +17,9 @@ namespace MobiHymn4.Views
     {
         private Globals globalInstance = Globals.Instance;
 
+        /// <summary>Set before navigating here to open the pending change list on arrival.</summary>
+        public static bool OpenChangesOnAppear { get; set; }
+
         public SettingsPage()
         {
             InitializeComponent();
@@ -46,9 +49,16 @@ namespace MobiHymn4.Views
             UpdateResyncIcons();
             if (BindingContext is SettingsViewModel model)
                 model.RefreshCloudSyncState();
-            if (!globalInstance.IsFetchingSyncDetails)
+            if (OpenChangesOnAppear)
+            {
+                OpenChangesOnAppear = false;
+                OpenPendingChanges();
+            }
+            else if (!globalInstance.IsFetchingSyncDetails)
                 _ = globalInstance.RefreshCatalogDiffAsync();
         }
+
+        public void OpenPendingChanges() => btnViewChanges_Clicked(this, EventArgs.Empty);
 
         async void btnCloudSync_Clicked(object sender, EventArgs e)
         {

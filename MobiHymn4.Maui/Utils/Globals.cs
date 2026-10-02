@@ -1531,7 +1531,9 @@ namespace MobiHymn4.Utils
             if (HymnList == null || BookmarkList == null)
                 return;
 
-            var changed = false;
+            // Must run before first lines are overwritten below; the saved line is the only
+            // evidence of which hymn a bookmark pointed at before a renumbering.
+            var changed = RepairRenumberedReferences();
             foreach (var bookmark in BookmarkList)
             {
                 if (string.IsNullOrWhiteSpace(bookmark.BookmarkGroup))
@@ -1550,6 +1552,77 @@ namespace MobiHymn4.Utils
 
             if (changed)
                 OnBookmarksChanged(BookmarkList);
+        }
+
+        /// <summary>
+        /// Moves bookmarks and history entries to the hymn number that now holds their saved
+        /// first line (e.g. after a hymn is inserted and later numbers shift up). Returns true
+        /// when the bookmark list changed; history changes are raised directly.
+        /// </summary>
+        bool RepairRenumberedReferences()
+        {
+            if (HymnList == null || HymnList.Count == 0)
+                return false;
+
+            // Letters/digits only, so straight, curly, or garbled apostrophes still match.
+            static string LineKey(string line) =>
+                new string((line ?? "").Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+
+            var numbersByLine = HymnList
+                .Where(h => !string.IsNullOrWhiteSpace(h?.Number) && !string.IsNullOrWhiteSpace(h.FirstLine))
+                .GroupBy(h => LineKey(h.FirstLine))
+                .Where(g => g.Key.Length > 0)
+                .ToDictionary(g => g.Key, g => g.Select(h => h.Number).ToList());
+
+            bool Repair(ShortHymn item)
+            {
+                var line = LineKey(item?.Line);
+                if (line.Length == 0 || !numbersByLine.TryGetValue(line, out var numbers))
+                    return false;
+                // Ambiguous (shared first lines such as 741/741s) or already correct: leave it.
+                if (numbers.Count != 1
+                    || numbers.Contains(item.Number, StringComparer.OrdinalIgnoreCase))
+                    return false;
+                item.Number = numbers[0];
+                return true;
+            }
+
+            var bookmarksChanged = false;
+            if (BookmarkList?.Count > 0)
+            {
+                foreach (var bookmark in BookmarkList)
+                    bookmarksChanged |= Repair(bookmark);
+
+                if (bookmarksChanged)
+                {
+                    var deduped = BookmarkList
+                        .GroupBy(b => $"{b.Number}|{b.BookmarkGroup}", StringComparer.OrdinalIgnoreCase)
+                        .Select(g => g.OrderByDescending(b => b.TimeStamp).First())
+                        .OrderByDescending(b => b.TimeStamp)
+                        .ToList();
+                    if (deduped.Count != BookmarkList.Count)
+                        BookmarkList = deduped.ToObservableRangeCollection();
+                }
+            }
+
+            if (HistoryList?.Count > 0)
+            {
+                var historyChanged = false;
+                foreach (var entry in HistoryList)
+                    historyChanged |= Repair(entry);
+
+                if (historyChanged)
+                {
+                    HistoryList = HistoryList
+                        .GroupBy(h => h.Number, StringComparer.OrdinalIgnoreCase)
+                        .Select(g => g.OrderByDescending(h => h.TimeStamp).First())
+                        .OrderByDescending(h => h.TimeStamp)
+                        .ToObservableRangeCollection();
+                    OnHistoryChanged(HistoryList);
+                }
+            }
+
+            return bookmarksChanged;
         }
 
         public bool NormalizeBookmarkGroups()
@@ -2262,6 +2335,7 @@ namespace MobiHymn4.Utils
                 HistoryList = MergeHistory(
                     HistoryList ?? new ObservableRangeCollection<ShortHymn>(),
                     cloud.History).ToObservableRangeCollection();
+                RepairRenumberedReferences();
 
                 SearchList = MergeSearches(
                     SearchList ?? new ObservableRangeCollection<string>(),
@@ -2351,6 +2425,7 @@ namespace MobiHymn4.Utils
                         .OrderByDescending(x => x.TimeStamp)
                         .Take(MaxHistoryCount)
                         .ToObservableRangeCollection();
+                    RepairRenumberedReferences();
 
                     SearchList = (cloud.Searches ?? Array.Empty<string>())
                         .Where(s => !string.IsNullOrWhiteSpace(s))

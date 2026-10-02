@@ -214,6 +214,7 @@ namespace MobiHymn4
 
             CatalogBadgeState.Instance.ShowSettingsBadge = !settingsBadgeAcknowledged;
             SetHamburgerBadgeVisible(!hamburgerBadgeAcknowledged);
+            CatalogUpdatePresenter.ScheduleShow(diff);
         }
 
         private void AppShell_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)

@@ -49,6 +49,12 @@
         ]
       },
       {
+        "source": "/@(update|catalog)-policy.json",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        ]
+      },
+      {
         "source": "/launch-app.html",
         "headers": [
           { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
@@ -112,6 +118,20 @@
         "source": "/api/midi",
         "function": {
           "functionId": "midiProxy",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/share/**",
+        "function": {
+          "functionId": "hymnShare",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/og/**",
+        "function": {
+          "functionId": "hymnShareOg",
           "region": "us-central1"
         }
       },

@@ -15,8 +15,37 @@ self.addEventListener('install', (event) => {
   event.waitUntil(Promise.resolve());
 });
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(Promise.all([
+    self.clients.claim(),
+    restoreAuthUid()
+  ]));
 });
+
+async function restoreAuthUid() {
+  try {
+    const cache = await caches.open('mh-auth-v1');
+    const res = await cache.match('/__uid');
+    if (res) self.__mhAuthUid = (await res.text()) || '';
+  } catch { /* ignore */ }
+}
+
+async function setAuthUid(uid) {
+  self.__mhAuthUid = uid ? String(uid) : '';
+  try {
+    const cache = await caches.open('mh-auth-v1');
+    if (self.__mhAuthUid)
+      await cache.put('/__uid', new Response(self.__mhAuthUid, { headers: { 'Content-Type': 'text/plain' } }));
+    else
+      await cache.delete('/__uid');
+  } catch { /* ignore */ }
+}
+
+async function currentAuthUid() {
+  const mem = String(self.__mhAuthUid || '');
+  if (mem) return mem;
+  await restoreAuthUid();
+  return String(self.__mhAuthUid || '');
+}
 
 function parseNotifData(notification) {
   const raw = (notification && notification.data) || {};
@@ -91,26 +120,27 @@ function showFromPayload(payload) {
     const d = (raw.data && typeof raw.data === 'object') ? raw.data : raw;
     const n = (raw.notification && typeof raw.notification === 'object') ? raw.notification : {};
     const updatedBy = String(d.updatedBy || '');
-    const me = String(self.__mhAuthUid || '');
-    // Same Firebase account on another device — suppress tray for own edits.
-    if (me && updatedBy && me === updatedBy) {
-      console.log('[BoardOpen][fcm-sw] skip self-update notification', { updatedBy });
-      return Promise.resolve();
-    }
-    const title = String(n.title || d.title || 'MobiHymn');
-    const body = String(n.body || d.body || '');
-    const groupId = String(d.groupId || '');
-    const listId = String(d.listId || d.date || '');
-    const boardPath = String(d.boardPath || '');
-    const tag = listId ? ('board-' + listId) : (groupId ? ('board-' + groupId) : 'board');
-    console.log('[BoardOpen][fcm-sw] showNotification', { title, body, groupId, listId });
-    return self.registration.showNotification(title, {
-      body,
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      tag,
-      renotify: true,
-      data: Object.assign({}, d, { groupId, listId, boardPath, title, body })
+    return currentAuthUid().then((me) => {
+      // Same Firebase account — suppress tray for own edits.
+      if (me && updatedBy && me === updatedBy) {
+        console.log('[BoardOpen][fcm-sw] skip self-update notification', { updatedBy });
+        return;
+      }
+      const title = String(n.title || d.title || 'MobiHymn');
+      const body = String(n.body || d.body || '');
+      const groupId = String(d.groupId || '');
+      const listId = String(d.listId || d.date || '');
+      const boardPath = String(d.boardPath || '');
+      const tag = listId ? ('board-' + listId) : (groupId ? ('board-' + groupId) : 'board');
+      console.log('[BoardOpen][fcm-sw] showNotification', { title, body, groupId, listId });
+      return self.registration.showNotification(title, {
+        body,
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        tag,
+        renotify: true,
+        data: Object.assign({}, d, { groupId, listId, boardPath, title, body })
+      });
     });
   } catch (e) {
     return self.registration.showNotification('MobiHymn', {
@@ -125,7 +155,7 @@ self.addEventListener('message', (event) => {
   try {
     const data = event && event.data;
     if (data && data.type === 'mh-auth')
-      self.__mhAuthUid = data.uid ? String(data.uid) : '';
+      event.waitUntil(setAuthUid(data.uid ? String(data.uid) : ''));
   } catch { /* ignore */ }
 });
 

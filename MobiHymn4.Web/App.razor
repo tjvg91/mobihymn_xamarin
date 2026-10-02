@@ -30,18 +30,41 @@ else if (gateReady)
     /// <summary>Installed PWA/TWA — never re-apply browser gate on navigation.</summary>
     bool installedShell;
 
+    protected override async Task OnInitializedAsync()
+    {
+        // index.html sets window.__mhStandalone before Blazor boots — skip an
+        // extra post-render interop round-trip on installed PWAs.
+        try
+        {
+            installedShell = await Js.InvokeAsync<bool>("mobihymnBoot.isStandalone");
+        }
+        catch
+        {
+            installedShell = false;
+        }
+
+        if (installedShell)
+        {
+            allowApp = true;
+            gateReady = true;
+        }
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender)
             return;
 
-        try
+        if (!installedShell)
         {
-            installedShell = await Js.InvokeAsync<bool>("mobihymnPwa.isStandalone");
-        }
-        catch
-        {
-            installedShell = false;
+            try
+            {
+                installedShell = await Js.InvokeAsync<bool>("mobihymnPwa.isStandalone");
+            }
+            catch
+            {
+                installedShell = false;
+            }
         }
 
         if (!navWired)

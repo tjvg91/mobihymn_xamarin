@@ -2818,7 +2818,7 @@ body.dark .confirm-dialog-btn-danger {
 .update-dialog-host {
   position: fixed;
   inset: 0;
-  z-index: 130;
+  z-index: 9950;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3363,13 +3363,13 @@ body.dark .action-menu-option.is-danger { color: #ff6b6b; }
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 8px;
+  padding: 12px 15px;
 }
 .settings-row-tight {
   padding: 0;
 }
 .settings-block {
-  padding: 12px 8px;
+  padding: 12px 15px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -4876,6 +4876,11 @@ input[type=range].midi-stem-volume {
   gap: 12px;
   flex-shrink: 0;
 }
+.midi-dials--solo {
+  grid-template-columns: 1fr;
+  max-width: 180px;
+  margin: 0 auto;
+}
 .midi-dial-wrap {
   --dial: var(--primary);
   display: flex;
@@ -4890,6 +4895,7 @@ input[type=range].midi-stem-volume {
 }
 .midi-dial-wrap.tone-tempo { --dial: var(--primary); }
 .midi-dial-wrap.tone-key { --dial: #d9a520; }
+.midi-dial-wrap.tone-fade { --dial: #c9a227; }
 
 .midi-dial {
   position: relative;

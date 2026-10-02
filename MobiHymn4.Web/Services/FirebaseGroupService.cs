@@ -139,6 +139,21 @@ public sealed class FirebaseProfileService : IProfileService
     internal static string? GetString(JsonElement d, string name) =>
         d.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
 
+    /// <summary>String fields that Firestore/JS may store as number or bool.</summary>
+    internal static string? GetFlexibleString(JsonElement d, string name)
+    {
+        if (!d.TryGetProperty(name, out var p))
+            return null;
+        return p.ValueKind switch
+        {
+            JsonValueKind.String => p.GetString(),
+            JsonValueKind.Number => p.GetRawText(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            _ => null
+        };
+    }
+
     internal static List<string> GetStringList(JsonElement d, string name)
     {
         if (!d.TryGetProperty(name, out var p) || p.ValueKind != JsonValueKind.Array)

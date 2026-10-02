@@ -23,6 +23,8 @@ public static class CommunitySignInPresenter
     /// </summary>
     public static bool ReaderContentReady { get; private set; }
 
+    public static bool IsShowing => showing;
+
     public static bool ShouldShow =>
         !Preferences.Get(PreferencesVar.IS_NEW, true)
         && !ServiceHelper.Get<IAuthService>().IsSignedIn
@@ -71,7 +73,8 @@ public static class CommunitySignInPresenter
 
             if (!ReaderContentReady
                 || DownloadPopupPresenter.IsPopupOpen
-                || Globals.Instance.IsDownloadRecoveryPending)
+                || Globals.Instance.IsDownloadRecoveryPending
+                || CatalogUpdatePresenter.IsShowing)
             {
                 await Task.Delay(500);
                 continue;

@@ -20,6 +20,8 @@
 <KeepAwakeSync />
 <IntroSlider />
 <DownloadLibraryDialog />
+<CatalogUpdateDialog />
+<UpdateAppDialog />
 <CommunitySignInPrompt />
 
 <!-- Sidebar overlay -->
@@ -575,7 +577,11 @@
     }
 
     [JSInvokable]
-    public Task OnAppForeground() => Sync.SyncOnAppOpenAsync();
+    public Task OnAppForeground()
+    {
+        _ = Catalog.RefreshIfStaleAsync(TimeSpan.FromMinutes(15));
+        return Sync.SyncOnAppOpenAsync();
+    }
 
     async Task RefreshNotifPromptAsync()
     {
@@ -786,10 +792,12 @@
     async Task ShareHymn()
     {
         if (State.ActiveHymn == null) return;
-        var url = "https://mobihymn.web.app/" + $"read/{Uri.EscapeDataString(State.ActiveHymn.Number)}".TrimStart('/');
+        // /share/{n} is a Cloud Function that injects og:title with number + first line
+        // for WhatsApp/iMessage/etc., then redirects people into /read/{n}.
+        var url = "https://mobihymn.web.app/" + $"share/{Uri.EscapeDataString(State.ActiveHymn.Number)}".TrimStart('/');
         var title = string.IsNullOrWhiteSpace(State.ActiveHymn.FirstLine)
-            ? $"MobiHymn — Hymn #{State.ActiveHymn.Number}"
-            : $"MobiHymn — #{State.ActiveHymn.Number} {State.ActiveHymn.FirstLine}";
+            ? $"#{State.ActiveHymn.Number}"
+            : $"#{State.ActiveHymn.Number} — {State.ActiveHymn.FirstLine}";
         var text = "Read this hymn on MobiHymn";
         try
         {

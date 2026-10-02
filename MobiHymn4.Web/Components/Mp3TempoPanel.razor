@@ -1,0 +1,151 @@
+@namespace MobiHymn4.Web.Components
+
+@* MP3 playback controls: tempo (playbackRate) + fade length. *@
+<div class="midi-panel-content @(Entering ? "is-entering" : null)">
+    <div class="midi-panel-header">
+        <span class="midi-panel-title">MP3 Controls</span>
+    </div>
+    <div class="midi-dials">
+        <div class="midi-dial-wrap tone-tempo">
+            <span class="midi-section-label">Tempo</span>
+            <div class="midi-dial" style="--dial-fill:@TempoDialFill"
+                 data-drag-dial="tempo"
+                 data-dial-min="@TempoMin"
+                 data-dial-max="@TempoMax"
+                 data-dial-step="@TempoStep"
+                 data-dial-value="@TempoOffset">
+                <div class="midi-dial-ring" aria-hidden="true"></div>
+                <div class="midi-dial-core">
+                    <span class="midi-dial-cap">BPM</span>
+                    @if (TempoEditing)
+                    {
+                        <input class="midi-dial-edit"
+                               type="number"
+                               value="@TempoBpm"
+                               min="@BpmEditMin"
+                               max="@BpmEditMax"
+                               @onchange="OnTempoBpmTyped"
+                               @onblur="() => OnTempoEditEnd.InvokeAsync()"
+                               @onkeydown="OnTempoKeyDown"
+                               @onclick:stopPropagation="true"
+                               aria-label="Type BPM" />
+                    }
+                    else
+                    {
+                        <span class="midi-dial-value midi-dial-value--tap"
+                              title="Tap to type BPM"
+                              @onclick="() => OnTempoEditStart.InvokeAsync()"
+                              @onclick:stopPropagation="true">@TempoBpm</span>
+                    }
+                </div>
+                <input class="midi-dial-input" type="range"
+                       min="@TempoMin" max="@TempoMax" step="@TempoStep"
+                       value="@TempoOffset"
+                       @oninput="OnTempoInput"
+                       aria-label="Tempo" />
+            </div>
+            <div class="midi-dial-ops">
+                <button type="button" class="midi-dial-nudge" @onclick="() => OnTempoNudge.InvokeAsync(-TempoStep)" aria-label="Slower">−</button>
+                <span class="midi-dial-sub">@TempoOffsetLabel</span>
+                <button type="button" class="midi-dial-nudge" @onclick="() => OnTempoNudge.InvokeAsync(TempoStep)" aria-label="Faster">+</button>
+                <button type="button"
+                        class="midi-dial-reset"
+                        @onclick="() => OnTempoReset.InvokeAsync()"
+                        disabled="@TempoIsDefault"
+                        title="Reset tempo" aria-label="Reset tempo">
+                    <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="midi-dial-wrap tone-fade">
+            <span class="midi-section-label">Fade</span>
+            <div class="midi-dial" style="--dial-fill:@FadeDialFill"
+                 data-drag-dial="fade"
+                 data-dial-min="@FadeMin"
+                 data-dial-max="@FadeMax"
+                 data-dial-step="@FadeStep"
+                 data-dial-value="@FadeSeconds">
+                <div class="midi-dial-ring" aria-hidden="true"></div>
+                <div class="midi-dial-core">
+                    <span class="midi-dial-cap">sec</span>
+                    <span class="midi-dial-value">@FadeDisplay</span>
+                </div>
+                <input class="midi-dial-input" type="range"
+                       min="@FadeMin" max="@FadeMax" step="@FadeStep"
+                       value="@FadeSeconds"
+                       @oninput="OnFadeInput"
+                       aria-label="Fade in and out duration" />
+            </div>
+            <div class="midi-dial-ops">
+                <button type="button" class="midi-dial-nudge" @onclick="() => OnFadeNudge.InvokeAsync(-FadeStep)" aria-label="Shorter fade">−</button>
+                <span class="midi-dial-sub">@FadeLabel</span>
+                <button type="button" class="midi-dial-nudge" @onclick="() => OnFadeNudge.InvokeAsync(FadeStep)" aria-label="Longer fade">+</button>
+                <button type="button"
+                        class="midi-dial-reset"
+                        @onclick="() => OnFadeReset.InvokeAsync()"
+                        disabled="@FadeIsDefault"
+                        title="Reset fade" aria-label="Reset fade">
+                    <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public bool Entering { get; set; }
+    [Parameter] public string TempoDialFill { get; set; } = "0.5";
+    [Parameter] public int TempoMin { get; set; } = -10;
+    [Parameter] public int TempoMax { get; set; } = 10;
+    [Parameter] public int TempoStep { get; set; } = 1;
+    [Parameter] public int TempoOffset { get; set; }
+    [Parameter] public int TempoBpm { get; set; } = 100;
+    [Parameter] public string TempoOffsetLabel { get; set; } = "0";
+    [Parameter] public bool TempoIsDefault { get; set; } = true;
+    [Parameter] public bool TempoEditing { get; set; }
+    [Parameter] public EventCallback<ChangeEventArgs> OnTempoChange { get; set; }
+    [Parameter] public EventCallback<int> OnTempoNudge { get; set; }
+    [Parameter] public EventCallback OnTempoReset { get; set; }
+    [Parameter] public EventCallback OnTempoEditStart { get; set; }
+    [Parameter] public EventCallback OnTempoEditEnd { get; set; }
+    [Parameter] public EventCallback<int> OnTempoBpmType { get; set; }
+
+    [Parameter] public string FadeDialFill { get; set; } = "0.333";
+    [Parameter] public double FadeSeconds { get; set; } = 1;
+    [Parameter] public double FadeMin { get; set; } = 0.5;
+    [Parameter] public double FadeMax { get; set; } = 2;
+    [Parameter] public double FadeStep { get; set; } = 0.5;
+    [Parameter] public bool FadeIsDefault { get; set; } = true;
+    [Parameter] public EventCallback<double> OnFadeChange { get; set; }
+    [Parameter] public EventCallback<double> OnFadeNudge { get; set; }
+    [Parameter] public EventCallback OnFadeReset { get; set; }
+
+    int BpmEditMin => 100 + TempoMin;
+    int BpmEditMax => 100 + TempoMax;
+
+    string FadeDisplay =>
+        FadeSeconds.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+    string FadeLabel => FadeDisplay + "s";
+
+    async Task OnTempoInput(ChangeEventArgs e) => await OnTempoChange.InvokeAsync(e);
+
+    async Task OnTempoBpmTyped(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var bpm))
+            await OnTempoBpmType.InvokeAsync(bpm);
+        await OnTempoEditEnd.InvokeAsync();
+    }
+
+    async Task OnTempoKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or "Escape") await OnTempoEditEnd.InvokeAsync();
+    }
+
+    async Task OnFadeInput(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var seconds))
+            await OnFadeChange.InvokeAsync(seconds);
+    }
+}

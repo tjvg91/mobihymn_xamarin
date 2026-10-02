@@ -19,6 +19,11 @@
     <ProjectReference Include="..\MobiHymn4.Shared\MobiHymn4.Shared.csproj" />
   </ItemGroup>
 
+  <!-- Stamped by tools/deploy-web-hosting.ps1; compared against /update-policy.json. -->
+  <ItemGroup Condition="'$(MobiHymnBuildId)' != ''">
+    <AssemblyMetadata Include="MobiHymnBuildId" Value="$(MobiHymnBuildId)" />
+  </ItemGroup>
+
   <ItemGroup>
     <ServiceWorker Include="wwwroot\service-worker.js" PublishedContent="wwwroot\service-worker.published.js" />
   </ItemGroup>

@@ -25,6 +25,8 @@ namespace MobiHymn4.Utils
         public const string COMMUNITY_PROMPT_DISMISSED = "communityPromptDismissedV2";
         public const string HYMN_TOTAL = "hymnTotal";
         public const string HYMN_CATALOG_HASH = "hymnCatalogHash";
+        // Server catalogHash the update popup was last shown for (once per catalog version).
+        public const string CATALOG_UPDATE_PROMPTED_HASH = "catalogUpdatePromptedHash";
         public const string AGENT_MODE = "agentMode";
         public const string AGENT_CHAT_LIMIT = "agentChatLimit";
         public const string PENDING_INVITES_CHECKED_AT = "pendingInvitesCheckedAt";

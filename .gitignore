@@ -420,3 +420,6 @@ midi/
 midi-satb/
 midi-custom/
 
+
+# Demo recorder auth (Firebase session)
+tools/demo-record/.auth/

@@ -1,0 +1,147 @@
+@inject AppState State
+@inject CatalogUpdateService Catalog
+@implements IDisposable
+
+@if (show)
+{
+    <div class="download-dialog-host @(animOpen ? "is-open" : null)" aria-live="polite">
+        <div class="download-dialog-overlay" aria-hidden="true"></div>
+        <div class="download-dialog" @onclick:stopPropagation="true" role="alertdialog"
+             aria-modal="true" aria-labelledby="catalog-update-title">
+            <lottie-player class="download-dialog-lottie"
+                           src="@(State.DarkMode ? "/lottie/update-dark.json" : "/lottie/update.json")"
+                           background="transparent"
+                           speed="1"
+                           loop
+                           autoplay>
+            </lottie-player>
+            <h2 id="catalog-update-title" class="download-dialog-title">@Title</h2>
+            <p class="download-dialog-message">@Message</p>
+
+            @if (updating)
+            {
+                <div class="download-dialog-progress">
+                    <div class="download-dialog-bar" role="progressbar"
+                         aria-valuemin="0" aria-valuemax="100"
+                         aria-valuenow="@((int)(Catalog.DownloadProgress * 100))">
+                        <div class="download-dialog-bar-fill" style="width: @(Catalog.DownloadProgress * 100)%"></div>
+                    </div>
+                    <div class="download-dialog-progress-text">@Catalog.DownloadProgressText</div>
+                </div>
+            }
+            else
+            {
+                @if (failed)
+                {
+                    <p class="download-dialog-error">@Catalog.CheckError</p>
+                }
+                <div class="download-dialog-actions">
+                    @if (!Catalog.IsMandatoryUpdate)
+                    {
+                        <button type="button" class="download-dialog-btn" @onclick="LaterAsync">
+                            Later
+                        </button>
+                    }
+                    <button type="button" class="download-dialog-btn download-dialog-btn-primary" @onclick="UpdateAsync">
+                        @(failed ? "Try again" : "Update now")
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    bool show;
+    bool animOpen;
+    bool updating;
+    bool failed;
+
+    string Title =>
+        updating ? "Updating hymns"
+        : failed ? "Update failed"
+        : Catalog.IsMandatoryUpdate ? "Hymn catalog update required"
+        : "Hymn updates available";
+
+    string Message =>
+        updating ? "Saving the latest hymn library on this device."
+        : failed ? "The update could not be saved. Check your connection and try again."
+        : !string.IsNullOrEmpty(Catalog.PendingMessage) ? Catalog.PendingMessage!
+        : Catalog.IsMandatoryUpdate ? "Important hymn corrections are ready. Update now to keep your library accurate."
+        : "The hymn catalog has changed on the server. Update now to get the latest hymns, lyrics and numbering.";
+
+    protected override void OnInitialized()
+    {
+        Catalog.Changed += OnCatalog;
+        SyncVisibility();
+    }
+
+    void OnCatalog() => InvokeAsync(() =>
+    {
+        SyncVisibility();
+        StateHasChanged();
+    });
+
+    void SyncVisibility()
+    {
+        if (!show && Catalog.ShouldPromptForUpdate)
+        {
+            show = true;
+            animOpen = false;
+            _ = EnterAsync();
+        }
+        else if (show && !updating && !failed && !Catalog.HasPendingUpdates)
+        {
+            // Updated elsewhere (e.g. Settings → Refresh library) while the popup was open.
+            _ = ExitAsync();
+        }
+    }
+
+    async Task EnterAsync()
+    {
+        await Task.Delay(20);
+        if (!show) return;
+        animOpen = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task ExitAsync()
+    {
+        animOpen = false;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(200);
+        show = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task LaterAsync()
+    {
+        Catalog.MarkUpdatePrompted();
+        failed = false;
+        await ExitAsync();
+    }
+
+    async Task UpdateAsync()
+    {
+        Catalog.MarkUpdatePrompted();
+        updating = true;
+        failed = false;
+        await InvokeAsync(StateHasChanged);
+
+        await Catalog.ApplyUpdatesAsync();
+        updating = false;
+
+        if (!string.IsNullOrEmpty(Catalog.CheckError))
+        {
+            failed = true;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        await State.RepairRenumberedReferencesAsync();
+        State.ShowToast("/lottie/done.gif", "Hymn library updated.");
+        await ExitAsync();
+    }
+
+    public void Dispose() => Catalog.Changed -= OnCatalog;
+}

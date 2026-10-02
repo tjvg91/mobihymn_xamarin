@@ -204,14 +204,20 @@
     {
         await Catalog.DownloadLibraryAsync();
         if (Catalog.IsLibraryDownloaded && string.IsNullOrEmpty(Catalog.CheckError))
+        {
+            await State.RepairRenumberedReferencesAsync();
             State.ShowToast("/lottie/done.gif", "Hymn library downloaded.");
+        }
     }
 
     async Task RefreshLibrary()
     {
         await Catalog.ApplyUpdatesAsync();
         if (string.IsNullOrEmpty(Catalog.CheckError))
+        {
+            await State.RepairRenumberedReferencesAsync();
             State.ShowToast("/lottie/done.gif", "Hymn library refreshed.");
+        }
     }
 
     public void Dispose()

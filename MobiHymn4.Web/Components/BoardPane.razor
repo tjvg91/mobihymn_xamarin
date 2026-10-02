@@ -2514,6 +2514,13 @@
         if (ActiveGroup == null || ActiveList == null || editingHymn == null)
             return;
 
+        var editId = editingHymn.Id;
+        if (string.IsNullOrWhiteSpace(editId))
+        {
+            editHymnError = "That hymn entry is missing an id.";
+            return;
+        }
+
         await EnsureAddHymnCatalogAsync();
         var resolved = await ResolveEditHymnSelectionAsync();
         if (resolved == null)
@@ -2523,7 +2530,7 @@
 
         if (ActiveList.Hymns.Any(h =>
                 !h.IsSection
-                && !string.Equals(h.Id, editingHymn.Id, StringComparison.Ordinal)
+                && !string.Equals(h.Id, editId, StringComparison.Ordinal)
                 && string.Equals(h.HymnNumber, number, StringComparison.OrdinalIgnoreCase)))
         {
             editHymnError = $"Hymn #{number} is already on this list.";
@@ -2535,18 +2542,28 @@
         Error = null;
         try
         {
-            editingHymn.HymnNumber = number;
-            editingHymn.Notes = string.IsNullOrWhiteSpace(editHymnNotes) ? null : editHymnNotes.Trim();
-            editingHymn.UpdatedAt = DateTimeOffset.UtcNow;
+            // Resolve against the live list — a realtime snapshot can replace
+            // ActiveList while the modal is open and orphan editingHymn.
+            var target = ActiveList.Hymns.FirstOrDefault(h =>
+                string.Equals(h.Id, editId, StringComparison.Ordinal));
+            if (target == null)
+            {
+                editHymnError = "That hymn is no longer on this list.";
+                return;
+            }
+
+            target.HymnNumber = number;
+            target.Notes = string.IsNullOrWhiteSpace(editHymnNotes) ? null : editHymnNotes.Trim();
+            target.UpdatedAt = DateTimeOffset.UtcNow;
             if (!string.IsNullOrWhiteSpace(line))
                 firstLineCache[number] = line.Trim();
 
-            var currentSectionId = FindSectionIdForHymn(editingHymn) ?? "";
+            var currentSectionId = FindSectionIdForHymn(target) ?? "";
             var targetSectionId = editHymnSectionId?.Trim() ?? "";
             if (!string.Equals(currentSectionId, targetSectionId, StringComparison.Ordinal))
             {
-                ActiveList.Hymns.Remove(editingHymn);
-                InsertHymnIntoSection(editingHymn, targetSectionId);
+                ActiveList.Hymns.RemoveAll(h => string.Equals(h.Id, editId, StringComparison.Ordinal));
+                InsertHymnIntoSection(target, targetSectionId);
                 RenumberBoard();
             }
 
@@ -2764,11 +2781,10 @@
         listSub = BoardService.SubscribeList(ActiveGroup.Id, list.Id, updated =>
         {
             if (updated == null) return;
+            // Same content — keep the existing object so in-flight edit/delete
+            // still holds live references into ActiveList.Hymns.
             if (ActiveList != null && BoardListContentEquals(ActiveList, updated))
-            {
-                ActiveList = updated;
                 return;
-            }
             ActiveList = updated;
             RebuildBoardDisplayRows();
             _ = ResolveFirstLinesAsync();

@@ -1,6 +1,7 @@
 // Copy values from Firebase Console (Web app). Do not commit production secrets if restricted.
 // vapidKey: Project settings → Cloud Messaging → Web Push certificates (Key pair).
-window.mobihymnFirebaseConfig = {
+// `self`, not `window`: service-worker.js importScripts this file and workers have no window.
+self.mobihymnFirebaseConfig = {
   apiKey: "AIzaSyCkfwQTuYxSwOapUMiGVXlEBEOqFXGoMg8",
   databaseURL: "https://mobihymn.firebaseio.com",
   authDomain: "mobihymn.firebaseapp.com",

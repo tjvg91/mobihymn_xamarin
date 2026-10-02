@@ -96,7 +96,7 @@ else
                 </div>
             }
 
-            <div class="read-player @(UsesLightPlayerBar ? "read-player-on-dark-theme" : null) @(MidiPanelOpen ? "midi-open" : null) @(MidiPanelOpen && MidiPanelExpanded ? "midi-expanded" : null)"
+            <div class="read-player @(UsesLightPlayerBar ? "read-player-on-dark-theme" : null) @(MidiPanelOpen ? "midi-open" : null) @(MidiPanelOpen && MidiPanelExpanded && AudioMode == "midi" ? "midi-expanded" : null)"
                  style="@PlayerBarStyle"
                  @onclick:stopPropagation="true">
                 @if (AudioMode == "midi")
@@ -107,6 +107,41 @@ else
                          @onclick:stopPropagation="true">
                         <div class="read-midi-panel-inner">
                             @MidiPanelComponent(expanded: false)
+                        </div>
+                    </div>
+                }
+                else if (AudioMode == "mp3")
+                {
+                    <div class="read-midi-panel is-mp3-tempo @(State.DarkMode ? null : "is-light") @(MidiPanelOpen ? "is-open" : null)"
+                         aria-hidden="@(!MidiPanelOpen)"
+                         inert="@(!MidiPanelOpen)"
+                         @onclick:stopPropagation="true">
+                        <div class="read-midi-panel-inner">
+                            <Mp3TempoPanel Entering="@MidiEnterAnim"
+                                           TempoDialFill="@Mp3TempoDialFill"
+                                           TempoMin="@Mp3TempoMin"
+                                           TempoMax="@Mp3TempoMax"
+                                           TempoStep="@Mp3TempoStep"
+                                           TempoOffset="@Mp3TempoOffset"
+                                           TempoBpm="@Mp3TempoBpm"
+                                           TempoOffsetLabel="@Mp3TempoOffsetLabel"
+                                           TempoIsDefault="@Mp3TempoIsDefault"
+                                           TempoEditing="@TempoEditing"
+                                           OnTempoChange="@OnTempoInput"
+                                           OnTempoNudge="@NudgeTempo"
+                                           OnTempoReset="@ResetTempo"
+                                           OnTempoEditStart="@StartTempoEdit"
+                                           OnTempoEditEnd="@(() => TempoEditing = false)"
+                                           OnTempoBpmType="@(bpm => OnTempoBpmTyped(new ChangeEventArgs { Value = bpm.ToString() }))"
+                                           FadeDialFill="@Mp3FadeDialFill"
+                                           FadeSeconds="@Mp3FadeSeconds"
+                                           FadeMin="@Mp3FadeMin"
+                                           FadeMax="@Mp3FadeMax"
+                                           FadeStep="@Mp3FadeStep"
+                                           FadeIsDefault="@Mp3FadeIsDefault"
+                                           OnFadeChange="@SetMp3FadeSecondsAsync"
+                                           OnFadeNudge="@NudgeMp3Fade"
+                                           OnFadeReset="@ResetMp3Fade" />
                         </div>
                     </div>
                 }
@@ -177,7 +212,14 @@ else
                     }
                     else if (AudioMode == "mp3")
                     {
-                        <span class="player-mode-label" title="MP3" aria-label="MP3 playback">MP3</span>
+                        <button type="button"
+                                class="player-tool player-midi-toggle @(MidiPanelOpen ? "is-open" : null)"
+                                @onclick="ToggleMidiPanel"
+                                title="MP3 controls"
+                                aria-label="MP3 controls"
+                                aria-expanded="@MidiPanelOpen">
+                            <i class="fa-solid fa-gauge-high"></i>
+                        </button>
                     }
                     @if (AudioMode == "mp3" && !string.IsNullOrEmpty(AudioUrl))
                     {
@@ -346,6 +388,34 @@ else
     const int TempoMinBpm = -60;
     const int TempoMaxBpm = 60;
     const int TempoStepBpm = 5;
+    // MP3 uses playbackRate against a nominal 100 BPM, capped at ±10.
+    const int Mp3BaseBpm = 100;
+    const int Mp3TempoMin = -10;
+    const int Mp3TempoMax = 10;
+    const int Mp3TempoStep = 1;
+    int Mp3TempoOffset;
+    const double Mp3FadeMin = 0.5;
+    const double Mp3FadeMax = 2;
+    const double Mp3FadeStep = 0.5;
+    const double Mp3FadeDefault = 1;
+    double Mp3FadeSeconds = Mp3FadeDefault;
+    bool Mp3FadeIsDefault => Math.Abs(Mp3FadeSeconds - Mp3FadeDefault) < 0.01;
+    string Mp3FadeDialFill => Math.Clamp(
+            (Mp3FadeSeconds - Mp3FadeMin) / (Mp3FadeMax - Mp3FadeMin), 0, 1)
+        .ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+
+    int ActiveTempoMin => AudioMode == "mp3" ? Mp3TempoMin : TempoMinBpm;
+    int ActiveTempoMax => AudioMode == "mp3" ? Mp3TempoMax : TempoMaxBpm;
+    int ActiveTempoStep => AudioMode == "mp3" ? Mp3TempoStep : TempoStepBpm;
+    int ActiveTempoOffset => AudioMode == "mp3" ? Mp3TempoOffset : MidiTempoOffset;
+    int Mp3TempoBpm => Mp3BaseBpm + Mp3TempoOffset;
+    string Mp3TempoOffsetLabel =>
+        (Mp3TempoOffset > 0 ? "+" : "") + Mp3TempoOffset;
+    bool Mp3TempoIsDefault => Mp3TempoOffset == 0;
+    string Mp3TempoDialFill => Math.Clamp(
+            (Mp3TempoOffset - Mp3TempoMin) / (double)(Mp3TempoMax - Mp3TempoMin), 0, 1)
+        .ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+
     int MidiFileBpm =>
         MidiTempoScale > 0.01
             ? Math.Max(1, (int)Math.Round(MidiTempoBpm / MidiTempoScale))
@@ -815,6 +885,23 @@ else
 
     async Task SetTempoOffsetAsync(int offset, bool persist = true)
     {
+        if (AudioMode == "mp3")
+        {
+            offset = Math.Clamp(offset, Mp3TempoMin, Mp3TempoMax);
+            try
+            {
+                var c = await Js.InvokeAsync<Mp3TempoDto>("mobihymnAudio.setMp3TempoOffset", offset);
+                Mp3TempoOffset = c.Offset;
+                // Rescale displayed times to wall-clock length at the new rate
+                // (same place in the track; total time and labels update).
+                var state = await Js.InvokeAsync<AudioStateDto>("mobihymnAudio.getState", audioRef);
+                if (state.Duration > 0) Duration = state.Duration;
+                if (!seeking) CurrentTime = state.Current;
+            }
+            catch { /* ignore */ }
+            return;
+        }
+
         var scale = TempoOffsetToScale(offset);
         try
         {
@@ -837,7 +924,7 @@ else
 
     async Task NudgeTempo(int delta)
     {
-        await SetTempoOffsetAsync(Math.Clamp(MidiTempoOffset + delta, TempoMinBpm, TempoMaxBpm));
+        await SetTempoOffsetAsync(Math.Clamp(ActiveTempoOffset + delta, ActiveTempoMin, ActiveTempoMax));
     }
 
     async Task OnTransposeInput(ChangeEventArgs e)
@@ -867,6 +954,12 @@ else
 
     async Task ResetTempo()
     {
+        if (AudioMode == "mp3")
+        {
+            if (Mp3TempoIsDefault) return;
+            await SetTempoOffsetAsync(0);
+            return;
+        }
         if (MidiTempoIsDefault) return;
         await SetTempoOffsetAsync(0);
     }
@@ -882,14 +975,42 @@ else
         TempoEditing = true;
     }
 
+    async Task SetMp3FadeSecondsAsync(double seconds)
+    {
+        var stepped = Math.Round(seconds / Mp3FadeStep) * Mp3FadeStep;
+        stepped = Math.Clamp(stepped, Mp3FadeMin, Mp3FadeMax);
+        Mp3FadeSeconds = stepped;
+        State.SetMp3FadeSeconds(stepped);
+        try
+        {
+            await Js.InvokeVoidAsync("mobihymnAudio.setMp3FadeSeconds", stepped);
+        }
+        catch { /* ignore */ }
+    }
+
+    async Task NudgeMp3Fade(double delta) =>
+        await SetMp3FadeSecondsAsync(Mp3FadeSeconds + delta);
+
+    async Task ResetMp3Fade()
+    {
+        if (Mp3FadeIsDefault) return;
+        await SetMp3FadeSecondsAsync(Mp3FadeDefault);
+    }
+
     async Task OnTempoBpmTyped(ChangeEventArgs e)
     {
         TempoEditing = false;
         if (!int.TryParse(e.Value?.ToString(), out var bpm)) return;
+        if (AudioMode == "mp3")
+        {
+            var offset = Math.Clamp(bpm - Mp3BaseBpm, Mp3TempoMin, Mp3TempoMax);
+            await SetTempoOffsetAsync(offset);
+            return;
+        }
         bpm = Math.Clamp(bpm, 20, 300);
         // Convert typed absolute BPM to an offset relative to the file tempo.
-        var offset = ScaleToTempoOffset(bpm, MidiFileBpm);
-        await SetTempoOffsetAsync(offset);
+        var midiOffset = ScaleToTempoOffset(bpm, MidiFileBpm);
+        await SetTempoOffsetAsync(midiOffset);
     }
 
     async Task OnTempoBpmKeyDown(KeyboardEventArgs e)
@@ -1020,6 +1141,8 @@ else
             await SetTempoOffsetAsync((int)Math.Round(value));
         else if (name == "key")
             await SetTransposeAsync((int)Math.Round(value));
+        else if (name == "fade")
+            await SetMp3FadeSecondsAsync(value);
         else if (name.StartsWith("vol:", StringComparison.Ordinal)
                  && int.TryParse(name.AsSpan(4), out var channel))
             await SetChannelVolumeAsync(channel, value);
@@ -1138,6 +1261,8 @@ else
         MidiTempoScale = 1;
         MidiTranspose = 0;
         MidiTempoBpm = 120;
+        Mp3TempoOffset = 0;
+        TempoEditing = false;
         MidiKeyName = "C";
         MidiChannels = new();
         MidiChannelNames = new();
@@ -1282,6 +1407,14 @@ else
         public bool InstrumentLoading { get; set; }
     }
 
+    sealed class Mp3TempoDto
+    {
+        public int Offset { get; set; }
+        public int Bpm { get; set; }
+        public double Rate { get; set; } = 1;
+        public int BaseBpm { get; set; } = 100;
+    }
+
     sealed class MidiInstrumentDto
     {
         public string? Id { get; set; }
@@ -1366,7 +1499,18 @@ else
         {
             try
             {
-                await Js.InvokeVoidAsync("mobihymnAudio.bindMp3", audioRef, AudioUrl);
+                await Js.InvokeVoidAsync(
+                    "mobihymnAudio.bindMp3",
+                    audioRef,
+                    AudioUrl,
+                    new
+                    {
+                        title = State.ActiveHymn == null
+                            ? "MobiHymn"
+                            : $"#{State.ActiveHymn.Number} — {State.ActiveHymn.FirstLine}",
+                        artist = "MobiHymn"
+                    });
+                await Js.InvokeVoidAsync("mobihymnAudio.setMp3FadeSeconds", Mp3FadeSeconds);
             }
             catch { /* ref may not be ready on first paint */ }
         }
@@ -1420,6 +1564,7 @@ else
     protected override void OnInitialized()
     {
         MidiPanelExpanded = State.MidiPanelExpanded;
+        Mp3FadeSeconds = State.Mp3FadeSeconds;
         State.Changed += OnChanged;
         BoardNav.Changed += OnBoardNavChanged;
         Auth.AuthStateChanged += OnAuthChanged;

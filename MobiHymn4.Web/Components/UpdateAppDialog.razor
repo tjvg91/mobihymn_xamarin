@@ -43,6 +43,12 @@
         SyncFromService();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await Updates.StartAsync();
+    }
+
     void OnUpdates() => InvokeAsync(() =>
     {
         SyncFromService();

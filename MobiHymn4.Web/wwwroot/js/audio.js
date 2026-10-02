@@ -37,6 +37,16 @@ window.mobihymnAudio = (function () {
   let midiKeyRoot = "C"; // pitch class from Key Signature (or default)
   let midiKeyMode = "Major"; // Major | Minor
   let midiKeyDetected = false;
+  /** MP3 tempo offset in BPM from a nominal base (playbackRate = (base+offset)/base). */
+  const MP3_BASE_BPM = 100;
+  const MP3_TEMPO_MIN = -10;
+  const MP3_TEMPO_MAX = 10;
+  const MP3_FADE_MIN = 0.5;
+  const MP3_FADE_MAX = 2;
+  let mp3TempoOffset = 0;
+  let mp3FadeSeconds = 1;
+  let mp3FadeRaf = 0;
+  let mp3FadeToken = 0;
   /** Whether playback restarts at end (MIDI + MP3). Survives track changes. */
   let playbackLoop = false;
   /** Instrument/preset id — survives hymn changes; samples reload per AudioContext. */
@@ -394,6 +404,219 @@ window.mobihymnAudio = (function () {
     midiKeyMode = "Major";
     midiKeyDetected = false;
     midiBaseDuration = 0;
+  }
+
+  function mp3TempoState() {
+    const offset = mp3TempoOffset;
+    const bpm = MP3_BASE_BPM + offset;
+    const rate = Math.max(0.5, Math.min(1.5, (MP3_BASE_BPM + offset) / MP3_BASE_BPM));
+    return {
+      offset,
+      bpm,
+      rate,
+      baseBpm: MP3_BASE_BPM,
+      min: MP3_TEMPO_MIN,
+      max: MP3_TEMPO_MAX
+    };
+  }
+
+  function mp3PlaybackRate() {
+    return Math.max(0.5, Math.min(1.5, (MP3_BASE_BPM + mp3TempoOffset) / MP3_BASE_BPM));
+  }
+
+  function applyMp3PlaybackRate() {
+    if (!audioEl) return;
+    try {
+      audioEl.playbackRate = mp3PlaybackRate();
+    } catch { /* ignore */ }
+  }
+
+  function clampMp3FadeSeconds(seconds) {
+    const n = Number(seconds);
+    if (!isFinite(n)) return mp3FadeSeconds;
+    // Snap to 0.5 steps within 0.5..2.
+    const stepped = Math.round(n * 2) / 2;
+    return Math.max(MP3_FADE_MIN, Math.min(MP3_FADE_MAX, stepped));
+  }
+
+  function cancelMp3Fade() {
+    if (mp3FadeRaf) {
+      cancelAnimationFrame(mp3FadeRaf);
+      mp3FadeRaf = 0;
+    }
+    mp3FadeToken++;
+  }
+
+  function setMp3Volume(v) {
+    if (!audioEl) return;
+    try {
+      audioEl.volume = Math.max(0, Math.min(1, v));
+    } catch { /* ignore */ }
+  }
+
+  function fadeMp3Volume(to, seconds) {
+    return new Promise((resolve) => {
+      if (!audioEl) {
+        resolve();
+        return;
+      }
+      cancelMp3Fade();
+      const token = mp3FadeToken;
+      const from = isFinite(audioEl.volume) ? audioEl.volume : 1;
+      const durMs = Math.max(50, (seconds > 0 ? seconds : 0) * 1000);
+      if (Math.abs(to - from) < 0.01 || durMs <= 50) {
+        setMp3Volume(to);
+        resolve();
+        return;
+      }
+      const start = performance.now();
+      const step = (now) => {
+        if (token !== mp3FadeToken) {
+          resolve();
+          return;
+        }
+        const t = Math.min(1, (now - start) / durMs);
+        const e = t * t * (3 - 2 * t); // smoothstep
+        setMp3Volume(from + (to - from) * e);
+        if (t < 1) {
+          mp3FadeRaf = requestAnimationFrame(step);
+        } else {
+          mp3FadeRaf = 0;
+          setMp3Volume(to);
+          resolve();
+        }
+      };
+      mp3FadeRaf = requestAnimationFrame(step);
+    });
+  }
+
+  function mp3FadeState() {
+    return {
+      seconds: mp3FadeSeconds,
+      min: MP3_FADE_MIN,
+      max: MP3_FADE_MAX
+    };
+  }
+
+  let mediaSessionWired = false;
+  let mediaSessionMeta = { title: "MobiHymn", artist: "Hymn", artwork: [] };
+
+  function mediaSessionAvailable() {
+    return typeof navigator !== "undefined" && !!navigator.mediaSession;
+  }
+
+  function updateMediaSessionMetadata(meta) {
+    if (!mediaSessionAvailable() || typeof MediaMetadata === "undefined") return;
+    if (meta && typeof meta === "object") {
+      if (meta.title) mediaSessionMeta.title = String(meta.title);
+      if (meta.artist) mediaSessionMeta.artist = String(meta.artist);
+      if (Array.isArray(meta.artwork)) mediaSessionMeta.artwork = meta.artwork;
+    }
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: mediaSessionMeta.title || "MobiHymn",
+        artist: mediaSessionMeta.artist || "Hymn",
+        album: "MobiHymn",
+        artwork: mediaSessionMeta.artwork.length
+          ? mediaSessionMeta.artwork
+          : [
+              { src: "/icon-512-maskable.png", sizes: "512x512", type: "image/png" }
+            ]
+      });
+    } catch { /* ignore */ }
+  }
+
+  /**
+   * Report wall-clock duration/position (playbackRate 1) so Android's media
+   * notification total time matches the in-app player after tempo changes.
+   */
+  function updateMediaSessionPosition() {
+    if (!mediaSessionAvailable() || typeof navigator.mediaSession.setPositionState !== "function")
+      return;
+    if (mode !== "mp3" || !audioEl) {
+      try { navigator.mediaSession.setPositionState(null); } catch { /* ignore */ }
+      return;
+    }
+    const mediaDuration = audioEl.duration;
+    const mediaCurrent = audioEl.currentTime;
+    if (!isFinite(mediaDuration) || mediaDuration <= 0) return;
+    const rate = mp3PlaybackRate();
+    const duration = mediaDuration / rate;
+    const position = Math.max(0, Math.min(duration, (isFinite(mediaCurrent) ? mediaCurrent : 0) / rate));
+    try {
+      navigator.mediaSession.setPositionState({
+        duration,
+        position,
+        playbackRate: 1
+      });
+    } catch { /* ignore invalid state */ }
+  }
+
+  function setMediaSessionPlaybackState(state) {
+    if (!mediaSessionAvailable()) return;
+    try { navigator.mediaSession.playbackState = state; } catch { /* ignore */ }
+  }
+
+  function wireMediaSessionOnce() {
+    if (mediaSessionWired || !mediaSessionAvailable()) return;
+    mediaSessionWired = true;
+    const skip = 10;
+    const bind = (action, handler) => {
+      try { navigator.mediaSession.setActionHandler(action, handler); }
+      catch { /* action unsupported */ }
+    };
+    bind("play", async () => {
+      try {
+        await window.mobihymnAudio.play();
+        setMediaSessionPlaybackState("playing");
+        updateMediaSessionPosition();
+      } catch { /* ignore */ }
+    });
+    bind("pause", async () => {
+      await window.mobihymnAudio.pause();
+      setMediaSessionPlaybackState("paused");
+      updateMediaSessionPosition();
+    });
+    bind("seekbackward", (details) => {
+      const offset = (details && details.seekOffset) || skip;
+      const state = window.mobihymnAudio.getState();
+      window.mobihymnAudio.seek(null, Math.max(0, (state.current || 0) - offset));
+      updateMediaSessionPosition();
+    });
+    bind("seekforward", (details) => {
+      const offset = (details && details.seekOffset) || skip;
+      const state = window.mobihymnAudio.getState();
+      const dur = state.duration || 0;
+      window.mobihymnAudio.seek(null, Math.min(dur, (state.current || 0) + offset));
+      updateMediaSessionPosition();
+    });
+    bind("seekto", (details) => {
+      if (!details || typeof details.seekTime !== "number") return;
+      window.mobihymnAudio.seek(null, details.seekTime);
+      updateMediaSessionPosition();
+    });
+  }
+
+  function attachMp3MediaSessionListeners(el) {
+    if (!el || el._mhMediaSessionBound) return;
+    el._mhMediaSessionBound = true;
+    const refresh = () => updateMediaSessionPosition();
+    el.addEventListener("loadedmetadata", refresh);
+    el.addEventListener("durationchange", refresh);
+    el.addEventListener("timeupdate", refresh);
+    el.addEventListener("ratechange", refresh);
+    el.addEventListener("play", () => {
+      setMediaSessionPlaybackState("playing");
+      refresh();
+    });
+    el.addEventListener("pause", () => {
+      setMediaSessionPlaybackState("paused");
+      refresh();
+    });
+    el.addEventListener("ended", () => {
+      setMediaSessionPlaybackState("paused");
+      refresh();
+    });
   }
 
   function preferFlats(root) {
@@ -905,7 +1128,7 @@ window.mobihymnAudio = (function () {
       return this.loadMidiBuffer(buffer);
     },
 
-    bindMp3(el, url) {
+    bindMp3(el, url, meta) {
       audioEl = el;
       mode = "mp3";
       if (!el || !url) return;
@@ -913,9 +1136,15 @@ window.mobihymnAudio = (function () {
       let abs = url;
       try { abs = new URL(url, window.location.href).href; } catch { /* keep raw */ }
       // Avoid reload on every Blazor render — el.src is always absolute.
-      if (el.src === abs) return;
-      el.src = url;
-      el.load();
+      if (el.src !== abs) {
+        el.src = url;
+        el.load();
+      }
+      applyMp3PlaybackRate();
+      wireMediaSessionOnce();
+      attachMp3MediaSessionListeners(el);
+      updateMediaSessionMetadata(meta);
+      updateMediaSessionPosition();
     },
 
     setLoop(enabled) {
@@ -945,8 +1174,19 @@ window.mobihymnAudio = (function () {
       const target = el || audioEl;
       if (!target) return false;
       audioEl = target;
+      applyMp3PlaybackRate();
       try {
+        cancelMp3Fade();
+        setMp3Volume(0);
         await target.play();
+        if (target.paused) {
+          setMediaSessionPlaybackState("paused");
+          updateMediaSessionPosition();
+          return false;
+        }
+        setMediaSessionPlaybackState("playing");
+        updateMediaSessionPosition();
+        await fadeMp3Volume(1, mp3FadeSeconds);
         return !target.paused;
       } catch (e) {
         console.warn("MP3 play failed", e);
@@ -954,7 +1194,7 @@ window.mobihymnAudio = (function () {
       }
     },
 
-    pause(el) {
+    async pause(el) {
       if (mode === "midi") {
         try { midiPlayer?.pause(); } catch { /* ignore */ }
         midiPaused = true;
@@ -963,7 +1203,20 @@ window.mobihymnAudio = (function () {
         return;
       }
       const target = el || audioEl;
-      if (target) target.pause();
+      if (!target) return;
+      audioEl = target;
+      if (target.paused) {
+        setMediaSessionPlaybackState("paused");
+        updateMediaSessionPosition();
+        return;
+      }
+      await fadeMp3Volume(0, mp3FadeSeconds);
+      // A new play() cancels the fade and raises volume again — don't pause then.
+      if (audioEl !== target || target.paused) return;
+      if ((isFinite(target.volume) ? target.volume : 0) > 0.05) return;
+      try { target.pause(); } catch { /* ignore */ }
+      setMediaSessionPlaybackState("paused");
+      updateMediaSessionPosition();
     },
 
     async stop() {
@@ -971,13 +1224,18 @@ window.mobihymnAudio = (function () {
         await tearDownMidi();
       } else if (audioEl) {
         try {
+          cancelMp3Fade();
           audioEl.pause();
+          setMp3Volume(1);
           audioEl.removeAttribute("src");
           audioEl.load();
         } catch { /* ignore */ }
       }
       mode = "none";
       audioEl = null;
+      mp3TempoOffset = 0;
+      setMediaSessionPlaybackState("none");
+      updateMediaSessionPosition();
     },
 
     seek(el, seconds) {
@@ -1017,7 +1275,10 @@ window.mobihymnAudio = (function () {
       }
       const target = el || audioEl;
       if (!target) return;
-      target.currentTime = t;
+      // UI times are wall-clock (duration/rate); HTMLMediaElement uses media time.
+      const rate = mp3PlaybackRate();
+      target.currentTime = t * rate;
+      updateMediaSessionPosition();
     },
 
     getState(el) {
@@ -1034,9 +1295,12 @@ window.mobihymnAudio = (function () {
       const target = el || audioEl;
       if (!target) return { current: 0, duration: 0, paused: true, mode: mode || "none" };
       const d = target.duration;
+      const mediaCurrent = isFinite(target.currentTime) ? target.currentTime : 0;
+      const mediaDuration = isFinite(d) ? d : 0;
+      const rate = mp3PlaybackRate();
       return {
-        current: isFinite(target.currentTime) ? target.currentTime : 0,
-        duration: isFinite(d) ? d : 0,
+        current: mediaCurrent / rate,
+        duration: mediaDuration / rate,
         paused: !!target.paused,
         mode: "mp3"
       };
@@ -1057,6 +1321,31 @@ window.mobihymnAudio = (function () {
       midiTempoScale = Math.max(0.5, Math.min(1.5, s));
       applyTempo();
       return midiControlState();
+    },
+
+    /** MP3-only: BPM offset from nominal 100 (±10). Maps to HTMLAudioElement.playbackRate. */
+    setMp3TempoOffset(offset) {
+      const n = Math.round(Number(offset));
+      if (!isFinite(n)) return mp3TempoState();
+      mp3TempoOffset = Math.max(MP3_TEMPO_MIN, Math.min(MP3_TEMPO_MAX, n));
+      if (mode === "mp3") {
+        applyMp3PlaybackRate();
+        updateMediaSessionPosition();
+      }
+      return mp3TempoState();
+    },
+
+    getMp3Tempo() {
+      return mp3TempoState();
+    },
+
+    setMp3FadeSeconds(seconds) {
+      mp3FadeSeconds = clampMp3FadeSeconds(seconds);
+      return mp3FadeState();
+    },
+
+    getMp3FadeSeconds() {
+      return mp3FadeState();
     },
 
     setTranspose(semitones) {

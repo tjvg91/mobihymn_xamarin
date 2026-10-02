@@ -36,6 +36,8 @@ public static class PrefKeys
     public const string BoardNavState = "boardNavState";
     /// <summary>Device-local MIDI panel layout: expanded sheet vs compact radial.</summary>
     public const string MidiPanelExpanded = "midiPanelExpanded";
+    /// <summary>MP3 play/pause fade length in seconds (0.5–2).</summary>
+    public const string Mp3FadeSeconds = "mp3FadeSeconds";
 
     /// <summary>
     /// Account-scoped keys wiped on sign-out / account switch.
@@ -73,4 +75,10 @@ public static class PrefKeys
     /// Catalog update badges only run when this is set.
     /// </summary>
     public const string HymnLibraryDownloaded = "hymnLibraryDownloaded";
+
+    /// <summary>Server catalogHash the update popup was last shown for (once per catalog version).</summary>
+    public const string CatalogUpdatePromptedHash = "catalogUpdatePromptedHash";
+
+    /// <summary>Last catalog-policy.json id (tools/push-catalog-update.ps1) this device has synced past.</summary>
+    public const string CatalogPolicyAppliedId = "catalogPolicyAppliedId";
 }

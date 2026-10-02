@@ -152,6 +152,7 @@
         await Catalog.DownloadLibraryAsync();
         if (Catalog.IsLibraryDownloaded && string.IsNullOrEmpty(Catalog.CheckError))
         {
+            await State.RepairRenumberedReferencesAsync();
             if (!completedToastShown)
             {
                 completedToastShown = true;
