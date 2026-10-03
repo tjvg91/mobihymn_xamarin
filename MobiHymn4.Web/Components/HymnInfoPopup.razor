@@ -55,7 +55,6 @@
     [Parameter] public bool Visible { get; set; }
     [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
     [Parameter] public Hymn? Hymn { get; set; }
-
     string HeaderNumber => $"Hymn #{(Hymn?.Number ?? "").Trim()}";
 
     List<DetailRow> Rows => BuildRows(Hymn);

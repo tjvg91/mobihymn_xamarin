@@ -195,6 +195,80 @@ exports.midiProxy = onRequest(
 const PUBLIC_ORIGIN = "https://mobihymn.web.app";
 const SHARE_NUMBER_RE = /^\d{1,6}[a-zA-Z]{0,3}$/;
 
+const PDF_PREFIX = "pdf/";
+
+const PDF_CLIENT_HEADER = "x-mobihymn-client";
+
+/**
+ * Hymn sheet-music PDFs from Storage pdf/Hymn {n}.pdf (Storage rules block anonymous reads).
+ *   GET|HEAD /api/pdf?n=796  (ETag = Storage generation, so offline copies can detect updates)
+ * App-only: requires the X-MobiHymn-Client header the in-app viewer sends, so plain links and
+ * address-bar visits can't download the file. Responses are never shared-cached, since the CDN
+ * would otherwise serve them without this check.
+ */
+exports.hymnPdf = onRequest(
+  {
+    region: "us-central1",
+    cors: false,
+    timeoutSeconds: 60,
+    memory: "256MiB",
+    invoker: "public",
+  },
+  async (req, res) => {
+    try {
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        res.status(405).send("Method not allowed");
+        return;
+      }
+      const navigating = req.get("sec-fetch-mode") === "navigate" || req.get("sec-fetch-dest") === "document";
+      if (!req.get(PDF_CLIENT_HEADER) || navigating) {
+        res.setHeader("Cache-Control", "no-store");
+        res.status(403).send("Sheet music is available in the MobiHymn app.");
+        return;
+      }
+      const bucket = getStorage().bucket(STORAGE_BUCKET);
+      const n = typeof req.query.n === "string" ? req.query.n.trim() : "";
+      if (!SHARE_NUMBER_RE.test(n)) {
+        res.status(400).send("Missing hymn number.");
+        return;
+      }
+
+      const file = bucket.file(`${PDF_PREFIX}Hymn ${n}.pdf`);
+      let size = 0;
+      let generation = "";
+      try {
+        const [meta] = await file.getMetadata();
+        size = Number(meta?.size || 0);
+        generation = String(meta?.generation || "");
+      } catch (e) {
+        if (e?.code !== 404) throw e;
+      }
+      if (!size) {
+        res.setHeader("Cache-Control", "private, max-age=300");
+        res.status(404).end();
+        return;
+      }
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Cache-Control", "no-store");
+      if (generation) res.setHeader("ETag", `"${generation}"`);
+      if (req.method === "HEAD") {
+        res.setHeader("Content-Length", String(size));
+        res.status(200).end();
+        return;
+      }
+      const [bytes] = await file.download();
+      res.setHeader("Content-Length", String(bytes.length));
+      res.status(200).send(bytes);
+    } catch (e) {
+      console.error("hymnPdf failed", e);
+      if (!res.headersSent)
+        res.status(502).send("PDF proxy failed");
+    }
+  }
+);
+
 function hymnOgImageUrl(number) {
   return `${PUBLIC_ORIGIN}/og/${encodeURIComponent(number)}.png`;
 }
@@ -207,13 +281,14 @@ function escapeHtmlAttr(value) {
     .replace(/>/g, "&gt;");
 }
 
-function extractShareNumber(req) {
+/** /share/{n} → lyrics; /share/{n}/sheet → sheet-music viewer. */
+function extractShareTarget(req) {
   const path = String(req.path || req.originalUrl || "").split("?")[0];
-  const fromPath = path.match(/\/(?:share|hymn)\/([^/]+)\/?$/i);
+  const fromPath = path.match(/\/(?:share|hymn)\/([^/]+)(?:\/(sheet))?\/?$/i);
   if (fromPath && fromPath[1])
-    return decodeURIComponent(fromPath[1]).trim();
+    return { number: decodeURIComponent(fromPath[1]).trim(), sheet: !!fromPath[2] };
   const q = req.query && typeof req.query.n === "string" ? req.query.n.trim() : "";
-  return q;
+  return { number: q, sheet: req.query?.sheet === "1" };
 }
 
 function firstLineFromHymnJson(data) {
@@ -270,7 +345,7 @@ exports.hymnShare = onRequest(
         return;
       }
 
-      const number = extractShareNumber(req);
+      const { number, sheet } = extractShareTarget(req);
       // Hymn ids are digits, optionally with a short letter/tune suffix (e.g. 77b).
       if (!number || !SHARE_NUMBER_RE.test(number)) {
         res.redirect(302, `${PUBLIC_ORIGIN}/read`);
@@ -284,13 +359,16 @@ exports.hymnShare = onRequest(
         console.warn("hymnShare lookup failed", e?.message || e);
       }
 
-      const readPath = `/read/${encodeURIComponent(number)}`;
-      const shareUrl = `${PUBLIC_ORIGIN}/share/${encodeURIComponent(number)}`;
+      const readPath = `/read/${encodeURIComponent(number)}${sheet ? "?sheet=1" : ""}`;
+      const shareUrl = `${PUBLIC_ORIGIN}/share/${encodeURIComponent(number)}${sheet ? "/sheet" : ""}`;
       const readUrl = `${PUBLIC_ORIGIN}${readPath}`;
-      const title = firstLine
+      const baseTitle = firstLine
         ? `#${number} — ${firstLine}`
         : `Hymn #${number}`;
-      const description = firstLine || "Read this hymn on MobiHymn";
+      const title = sheet ? `${baseTitle} · Sheet music` : baseTitle;
+      const description = sheet
+        ? "View the sheet music on MobiHymn"
+        : firstLine || "Read this hymn on MobiHymn";
       const escTitle = escapeHtmlAttr(title);
       const escDesc = escapeHtmlAttr(description);
       const escShare = escapeHtmlAttr(shareUrl);
@@ -328,7 +406,7 @@ exports.hymnShare = onRequest(
   <script>location.replace(${jsRead});</script>
 </head>
 <body>
-  <p><a href="${escRead}">Open hymn #${escNum} on MobiHymn</a></p>
+  <p><a href="${escRead}">Open hymn #${escNum}${sheet ? " sheet music" : ""} on MobiHymn</a></p>
 </body>
 </html>`;
 

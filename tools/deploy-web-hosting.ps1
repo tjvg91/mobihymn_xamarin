@@ -111,7 +111,7 @@ if (Test-Path $assetlinksSrc) {
   Write-Warning "assetlinks.json not found at $assetlinksSrc - TWA verification will fail until added."
 }
 
-$targets = if ($SiteOnly) { "hosting" } elseif ($HostingOnly) { "hosting,functions:hymnShare,functions:hymnShareOg" } else { "hosting,functions:hymnProxy,functions:midiProxy,functions:hymnShare,functions:hymnShareOg" }
+$targets = if ($SiteOnly) { "hosting" } elseif ($HostingOnly) { "hosting,functions:hymnShare,functions:hymnShareOg" } else { "hosting,functions:hymnProxy,functions:midiProxy,functions:hymnPdf,functions:hymnShare,functions:hymnShareOg" }
 Write-Host "Deploying Firebase ($targets)..."
 npx --yes firebase-tools deploy --only $targets --project mobihymn
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

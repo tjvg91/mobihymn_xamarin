@@ -6,6 +6,7 @@
 @inject BoardDeepLinkService DeepLinks
 @inject BoardNavigationContext BoardNav
 @inject IAuthService Auth
+@inject SheetMusicService SheetMusic
 @implements IDisposable
 
 <PageTitle>@(State.ActiveHymn != null ? $"#{State.ActiveHymn.Number} — {State.ActiveHymn.FirstLine}" : "Read")</PageTitle>
@@ -46,10 +47,36 @@ else
                     background:@State.ReaderTheme;
                     color:@LyricsColor">
 
-            <button type="button" class="read-title-row" @onclick="OpenHymnInfo" @onclick:stopPropagation="true" title="Hymn info">
-                <span class="read-title-text">Hymn #@h.Number</span>
-                <i class="fa-solid fa-circle-info read-title-info" aria-hidden="true"></i>
-            </button>
+            @{
+                var hasSheet = SheetMusic.HasPdf(h.Number);
+                var menuOpen = hasSheet && titleMenuFor == h.Number;
+            }
+            <div class="read-title-wrap">
+                <button type="button" class="read-title-row" @onclick="() => OnTitleClick(h.Number, hasSheet)" @onclick:stopPropagation="true"
+                        title="@(hasSheet ? "Hymn options" : "Hymn info")"
+                        aria-haspopup="@(hasSheet ? "menu" : null)" aria-expanded="@(hasSheet ? (menuOpen ? "true" : "false") : null)">
+                    <span class="read-title-text">Hymn #@h.Number</span>
+                    <i class="fa-solid @(hasSheet ? "fa-chevron-down" : "fa-circle-info") read-title-info @(menuOpen ? "is-open" : null)" aria-hidden="true"></i>
+                </button>
+                @if (menuOpen)
+                {
+                    <div class="read-title-menu-backdrop" @onclick="CloseTitleMenu" @onclick:stopPropagation="true"></div>
+                    <div class="read-title-menu" role="menu" @onclick:stopPropagation="true">
+                        <button type="button" class="read-title-menu-item" role="menuitem" @onclick="ViewInfoFromMenu">
+                            <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+                            <span>View Info</span>
+                        </button>
+                        <button type="button" class="read-title-menu-item" role="menuitem" @onclick="ViewSheetFromMenu">
+                            <i class="fa-solid fa-music" aria-hidden="true"></i>
+                            <span>View Music Sheet</span>
+                        </button>
+                        <button type="button" class="read-title-menu-item" role="menuitem" @onclick="ShareSheetFromMenu">
+                            <i class="fa-solid fa-share-nodes" aria-hidden="true"></i>
+                            <span>Share Music Sheet</span>
+                        </button>
+                    </div>
+                }
+            </div>
             <div class="read-lyrics">@((MarkupString)(h.Lyrics ?? ""))</div>
         </div>
 
@@ -266,6 +293,7 @@ else
 }
 
 <HymnInfoPopup @bind-Visible="showHymnInfo" Hymn="State.ActiveHymn" />
+<PdfViewer @bind-Visible="showSheetMusic" Number="@State.ActiveHymn?.Number" />
 
 @code {
     [Parameter] public string? Number { get; set; }
@@ -276,8 +304,15 @@ else
     [SupplyParameterFromQuery(Name = "listId")]
     public string? BoardListId { get; set; }
 
+    /// <summary>?sheet=1 (from /share/{n}/sheet links) opens the sheet-music viewer once the PDF is confirmed.</summary>
+    [SupplyParameterFromQuery(Name = "sheet")]
+    public string? SheetQuery { get; set; }
+
+    string? pendingSheetFor;
+
     string? lastBoardQueryKey;
     bool showHymnInfo;
+    bool showSheetMusic;
     ElementReference readBodyRef;
     DotNetObjectReference<Read>? pinchRef;
     bool suppressChromeToggle;
@@ -464,6 +499,55 @@ else
     }
 
     void OpenHymnInfo() => showHymnInfo = true;
+
+    void OpenSheetMusic() => showSheetMusic = true;
+
+    string? titleMenuFor;
+
+    void OnTitleClick(string? number, bool hasSheet)
+    {
+        if (!hasSheet)
+        {
+            OpenHymnInfo();
+            return;
+        }
+        titleMenuFor = titleMenuFor == number ? null : number;
+    }
+
+    void CloseTitleMenu() => titleMenuFor = null;
+
+    void ViewInfoFromMenu()
+    {
+        titleMenuFor = null;
+        OpenHymnInfo();
+    }
+
+    void ViewSheetFromMenu()
+    {
+        titleMenuFor = null;
+        OpenSheetMusic();
+    }
+
+    async Task ShareSheetFromMenu()
+    {
+        titleMenuFor = null;
+        var h = State.ActiveHymn;
+        if (h == null) return;
+        // /share/{n}/sheet: link-preview page (hymnShare) that sends people to /read/{n}?sheet=1.
+        var url = $"https://mobihymn.web.app/share/{Uri.EscapeDataString(h.Number)}/sheet";
+        var title = string.IsNullOrWhiteSpace(h.FirstLine)
+            ? $"#{h.Number} · Sheet music"
+            : $"#{h.Number} — {h.FirstLine} · Sheet music";
+        string result;
+        try { result = await Js.InvokeAsync<string>("mhSheetMusic.share", url, title, "View the sheet music on MobiHymn"); }
+        catch { result = "failed"; }
+        if (result == "copied")
+            State.ShowToast("/lottie/done.gif", "Sheet music link copied.");
+        else if (result == "failed")
+            State.ShowToast("/lottie/done.gif", "Couldn't share the link.");
+    }
+
+    void OnSheetMusicChanged() => InvokeAsync(StateHasChanged);
 
     Task GoBoardPrev() => NavigateBoardHymnAsync(-1);
 
@@ -1448,7 +1532,24 @@ else
             await ResolveAudioAsync(State.ActiveHymn.Number);
         }
 
+        if (SheetQuery == "1" && State.ActiveHymn != null)
+            pendingSheetFor = State.ActiveHymn.Number;
+
         await OpenBoardFromQueryAsync();
+    }
+
+    void OpenSheetFromLinkIfReady()
+    {
+        var number = State.ActiveHymn?.Number;
+        if (pendingSheetFor == null || !string.Equals(pendingSheetFor, number, StringComparison.OrdinalIgnoreCase))
+            return;
+        if (!SheetMusic.HasPdf(number))
+            return;
+        pendingSheetFor = null;
+        showSheetMusic = true;
+        // Drop ?sheet=1 so refresh / back doesn't reopen the viewer.
+        Nav.NavigateTo(Nav.GetUriWithQueryParameter("sheet", (string?)null), replace: true);
+        StateHasChanged();
     }
 
     async Task OpenBoardFromQueryAsync()
@@ -1474,6 +1575,8 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        _ = SheetMusic.CheckAsync(State.ActiveHymn?.Number);
+        OpenSheetFromLinkIfReady();
         if (firstRender)
         {
             try
@@ -1568,6 +1671,7 @@ else
         State.Changed += OnChanged;
         BoardNav.Changed += OnBoardNavChanged;
         Auth.AuthStateChanged += OnAuthChanged;
+        SheetMusic.Changed += OnSheetMusicChanged;
     }
 
     void OnChanged() => _ = InvokeAsync(async () =>
@@ -1597,6 +1701,7 @@ else
         State.Changed -= OnChanged;
         BoardNav.Changed -= OnBoardNavChanged;
         Auth.AuthStateChanged -= OnAuthChanged;
+        SheetMusic.Changed -= OnSheetMusicChanged;
         StopMidiPoll();
         try { _ = Js.InvokeVoidAsync("mobihymnReadPinch.detach", readBodyRef); }
         catch { /* ignore */ }

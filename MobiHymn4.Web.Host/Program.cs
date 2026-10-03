@@ -91,6 +91,49 @@ app.MapGet("/api/midi", async (
     return Results.File(bytes, "audio/midi");
 });
 
+// Hymn sheet-music PDFs (Storage pdf/Hymn {n}.pdf). Storage rules block anonymous reads, so we relay
+// to the hymnPdf Cloud Function (Admin SDK) — the same backend Firebase Hosting rewrites /api/pdf to.
+app.MapMethods("/api/pdf", new[] { "GET", "HEAD" }, async (
+    HttpContext context,
+    string? n,
+    IHttpClientFactory httpClientFactory,
+    IConfiguration config,
+    CancellationToken cancellationToken) =>
+{
+    var number = n?.Trim() ?? "";
+    if (!System.Text.RegularExpressions.Regex.IsMatch(number, @"^\d{1,6}[a-zA-Z]{0,3}$"))
+        return Results.BadRequest("Missing hymn number.");
+
+    var clientHeader = context.Request.Headers["X-MobiHymn-Client"].ToString();
+    var navigating = context.Request.Headers["Sec-Fetch-Mode"] == "navigate"
+        || context.Request.Headers["Sec-Fetch-Dest"] == "document";
+    if (string.IsNullOrEmpty(clientHeader) || navigating)
+        return Results.Text("Sheet music is available in the MobiHymn app.", statusCode: StatusCodes.Status403Forbidden);
+
+    var functionUrl = config["Firebase:PdfFunctionUrl"] ?? "https://us-central1-mobihymn.cloudfunctions.net/hymnPdf";
+    var client = httpClientFactory.CreateClient("FirebaseStorage");
+    using var request = new HttpRequestMessage(new HttpMethod(context.Request.Method),
+        $"{functionUrl}?n={Uri.EscapeDataString(number)}");
+    request.Headers.TryAddWithoutValidation("X-MobiHymn-Client", clientHeader);
+    using var response = await client.SendAsync(request, cancellationToken);
+    context.Response.Headers.CacheControl = "no-store";
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        return Results.NotFound();
+    if (!response.IsSuccessStatusCode)
+        return Results.StatusCode((int)response.StatusCode);
+
+    if (response.Headers.ETag is { } etag)
+        context.Response.Headers.ETag = etag.ToString();
+    if (HttpMethods.IsHead(context.Request.Method))
+    {
+        context.Response.ContentType = "application/pdf";
+        context.Response.ContentLength = response.Content.Headers.ContentLength;
+        return Results.Empty;
+    }
+    var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+    return Results.File(bytes, "application/pdf");
+});
+
 app.Map("/api/hymn/{**path}", async (HttpContext context, IHttpClientFactory httpClientFactory) =>
 {
     var path = context.Request.RouteValues["path"]?.ToString() ?? "";

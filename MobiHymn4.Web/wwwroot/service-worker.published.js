@@ -218,7 +218,8 @@ self.addEventListener('message', event => {
 const cacheNamePrefix = 'offline-cache-';
 const cacheName = `${cacheNamePrefix}${self.assetsManifest.version}`;
 const offlineAssetsInclude = [ /\.dll$/, /\.pdb$/, /\.wasm/, /\.html$/, /\.js$/, /\.json$/, /\.css$/, /\.woff$/, /\.png$/, /\.jpe?g$/, /\.gif$/, /\.ico$/, /\.svg$/, /\.blat$/, /\.dat$/, /\.ttf$/, /\.otf$/, /\.woff2$/ ];
-const offlineAssetsExclude = [ /^service-worker\.js$/ ];
+// PDF.js (~2.5 MB) loads on first sheet-music open; don't precache it for everyone.
+const offlineAssetsExclude = [ /^service-worker\.js$/, /^lib\/pdfjs\// ];
 
 // Replace with your base path if you are hosting on a subfolder. Ensure there is a trailing '/'.
 const base = "/";
@@ -366,7 +367,7 @@ async function onFetch(event) {
     }
 
     // Always network for hymn API proxy (lyrics/agent/audio) — never serve stale API data.
-    if (url.pathname.startsWith('/api/hymn') || url.pathname.startsWith('/api/midi')) {
+    if (url.pathname.startsWith('/api/hymn') || url.pathname.startsWith('/api/midi') || url.pathname.startsWith('/api/pdf')) {
         try {
             return await fetch(event.request);
         } catch {

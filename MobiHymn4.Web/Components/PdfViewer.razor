@@ -1,0 +1,260 @@
+@namespace MobiHymn4.Web.Components
+@inject IJSRuntime Js
+@inject SheetMusicService SheetMusic
+@inject AppState State
+@implements IAsyncDisposable
+
+@if (Visible && !string.IsNullOrWhiteSpace(Number))
+{
+    <div class="pdf-viewer-host @(fullscreen ? "is-fullscreen" : "") @(DarkPages ? "is-dark" : "")" role="dialog" aria-modal="true" aria-label="Sheet music"
+         @onkeydown="OnKeyDown" tabindex="-1">
+        <header class="pdf-viewer-bar">
+            <button type="button" class="pdf-viewer-btn" title="Close" aria-label="Close" @onclick="CloseAsync">
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+            <div class="pdf-viewer-title">
+                <span class="pdf-viewer-title-main">Hymn #@Number</span>
+                <span class="pdf-viewer-title-sub">@SubTitle</span>
+            </div>
+            <button type="button" class="pdf-viewer-btn"
+                    title="@(DarkPages ? "Light pages" : "Dark pages")" aria-label="Dark pages" aria-pressed="@(DarkPages ? "true" : "false")"
+                    @onclick="ToggleDarkPagesAsync">
+                <i class="fa-solid @(DarkPages ? "fa-sun" : "fa-moon")" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="pdf-viewer-btn @(saved ? "is-on" : "")"
+                    title="@(saved ? "Saved on this device — tap to remove" : "Keep offline on this device")"
+                    aria-label="Keep offline" aria-pressed="@(saved ? "true" : "false")"
+                    disabled="@(!ready || saving)" @onclick="ToggleSavedAsync">
+                <i class="fa-solid @(saving ? "fa-spinner fa-spin" : saved ? "fa-circle-check" : "fa-download")" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="pdf-viewer-btn" title="Zoom out" aria-label="Zoom out"
+                    disabled="@(!ready)" @onclick="() => ZoomAsync(1 / 1.5)">
+                <i class="fa-solid fa-magnifying-glass-minus" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="pdf-viewer-btn" title="Zoom in" aria-label="Zoom in"
+                    disabled="@(!ready)" @onclick="() => ZoomAsync(1.5)">
+                <i class="fa-solid fa-magnifying-glass-plus" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="pdf-viewer-btn" title="Full screen" aria-label="Full screen"
+                    disabled="@(!ready)" @onclick="() => SetFullscreenAsync(true)">
+                <i class="fa-solid fa-expand" aria-hidden="true"></i>
+            </button>
+        </header>
+
+        @if (fullscreen)
+        {
+            <button type="button" class="pdf-viewer-fs-exit" title="Exit full screen" aria-label="Exit full screen"
+                    @onclick="() => SetFullscreenAsync(false)">
+                <i class="fa-solid fa-compress" aria-hidden="true"></i>
+            </button>
+        }
+
+        @* Children are owned by pdf-viewer.js — keep this element empty in the render tree. *@
+        <div class="pdf-viewer-body" @ref="bodyRef"></div>
+
+        @if (loading)
+        {
+            <div class="pdf-viewer-status">
+                <span class="spinner" aria-hidden="true"></span>
+                <p>Loading sheet music…</p>
+            </div>
+        }
+        else if (error != null)
+        {
+            <div class="pdf-viewer-status">
+                <p>@error</p>
+                <button type="button" class="btn secondary" @onclick="RetryAsync">Try again</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public string? Number { get; set; }
+
+    ElementReference bodyRef;
+    DotNetObjectReference<PdfViewer>? selfRef;
+    bool fullscreen;
+    const string DarkPagesKey = "mhSheetDarkPages";
+    bool? darkPagesPref;
+    bool darkPagesPrefLoaded;
+    bool DarkPages => darkPagesPref ?? State.DarkMode;
+    string? openedFor;
+    bool pendingOpen;
+    bool loading;
+    bool ready;
+    string? error;
+    string? notice;
+    int pageCount;
+    bool saved;
+    bool saving;
+
+    sealed record OpenResult(int Pages, bool Saved);
+
+    string SubTitle
+    {
+        get
+        {
+            if (notice != null) return notice;
+            var text = "Sheet music";
+            if (pageCount > 1) text += $" · {pageCount} pages";
+            if (saved) text += " · Offline";
+            return text;
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        var target = Visible ? Number?.Trim() : null;
+        if (string.IsNullOrEmpty(target))
+        {
+            if (openedFor != null)
+                _ = CloseJsAsync();
+            return;
+        }
+        if (!string.Equals(target, openedFor, StringComparison.OrdinalIgnoreCase))
+            pendingOpen = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!pendingOpen) return;
+        pendingOpen = false;
+        await OpenAsync();
+    }
+
+    async Task OpenAsync()
+    {
+        if (!darkPagesPrefLoaded)
+        {
+            darkPagesPrefLoaded = true;
+            try
+            {
+                var stored = await Js.InvokeAsync<string?>("localStorage.getItem", DarkPagesKey);
+                darkPagesPref = stored switch { "1" => true, "0" => false, _ => null };
+            }
+            catch { /* storage blocked — follow the app theme */ }
+        }
+        var number = Number!.Trim();
+        openedFor = number;
+        loading = true;
+        ready = false;
+        error = null;
+        notice = null;
+        pageCount = 0;
+        saved = false;
+        StateHasChanged();
+        try
+        {
+            selfRef ??= DotNetObjectReference.Create(this);
+            var result = await Js.InvokeAsync<OpenResult>("mhPdfViewer.open", bodyRef, number, selfRef);
+            if (!string.Equals(openedFor, number, StringComparison.OrdinalIgnoreCase)) return;
+            pageCount = result.Pages;
+            saved = result.Saved;
+            ready = pageCount > 0;
+            if (!ready) error = "This sheet music has no pages.";
+        }
+        catch
+        {
+            if (!string.Equals(openedFor, number, StringComparison.OrdinalIgnoreCase)) return;
+            error = "Couldn't load the sheet music. Check your connection and try again.";
+        }
+        loading = false;
+        StateHasChanged();
+    }
+
+    async Task ToggleSavedAsync()
+    {
+        var number = openedFor;
+        if (number == null || saving) return;
+        saving = true;
+        notice = null;
+        try
+        {
+            saved = await SheetMusic.SetSavedAsync(number, !saved);
+            notice = saved ? "Saved for offline use" : "Removed from this device";
+        }
+        catch
+        {
+            notice = "Couldn't save — device storage may be full";
+        }
+        saving = false;
+        StateHasChanged();
+        await Task.Delay(2500);
+        if (openedFor == number && notice != null)
+        {
+            notice = null;
+            StateHasChanged();
+        }
+    }
+
+    async Task ToggleDarkPagesAsync()
+    {
+        darkPagesPref = !DarkPages;
+        try { await Js.InvokeVoidAsync("localStorage.setItem", DarkPagesKey, darkPagesPref.Value ? "1" : "0"); }
+        catch { /* storage blocked — applies for this session only */ }
+    }
+
+    Task RetryAsync()
+    {
+        openedFor = null;
+        return OpenAsync();
+    }
+
+    async Task ZoomAsync(double factor)
+    {
+        try { await Js.InvokeAsync<double>("mhPdfViewer.zoomBy", factor); }
+        catch { /* viewer closed */ }
+    }
+
+    async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key != "Escape") return;
+        if (fullscreen)
+            await SetFullscreenAsync(false);
+        else
+            await CloseAsync();
+    }
+
+    /// <summary>Full screen hides the viewer's top bar within the app window (no browser/OS full screen).</summary>
+    async Task SetFullscreenAsync(bool on)
+    {
+        fullscreen = on;
+        try { await Js.InvokeVoidAsync("mhPdfViewer.setFullscreen", on); }
+        catch { /* viewer closed */ }
+    }
+
+    /// <summary>Single tap on the sheet toggles full screen.</summary>
+    [JSInvokable]
+    public void OnFullscreenChanged(bool on)
+    {
+        if (fullscreen == on) return;
+        fullscreen = on;
+        StateHasChanged();
+    }
+
+    async Task CloseAsync()
+    {
+        await CloseJsAsync();
+        Visible = false;
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+    async Task CloseJsAsync()
+    {
+        openedFor = null;
+        ready = false;
+        fullscreen = false;
+        try { await Js.InvokeVoidAsync("mhPdfViewer.close"); }
+        catch { /* page unloading */ }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (openedFor != null)
+            await CloseJsAsync();
+        selfRef?.Dispose();
+    }
+}

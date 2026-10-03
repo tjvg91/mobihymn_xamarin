@@ -5,6 +5,7 @@
 @inject AuthNavigation AuthNav
 @inject CatalogUpdateService Catalog
 @inject IJSRuntime Js
+@inject SheetMusicService SheetMusic
 @implements IDisposable
 
 <PageTitle>App Settings</PageTitle>
@@ -135,12 +136,34 @@
             </div>
         }
     </div>
+
+    @if (savedSheets is { Count: > 0 })
+    {
+        <div class="settings-divider"></div>
+
+        <div class="settings-block">
+            <div class="settings-copy">
+                <div class="settings-title">Offline sheet music</div>
+                <div class="settings-sub">
+                    @savedSheets.Count @(savedSheets.Count == 1 ? "hymn" : "hymns") saved on this device
+                    (@FormatSize(savedSheets.Bytes)). Save more from the sheet-music viewer.
+                </div>
+            </div>
+            <div class="settings-cloud-actions">
+                <span></span>
+                <button class="btn secondary settings-sync-btn" type="button" @onclick="ClearSavedSheets">
+                    Remove all
+                </button>
+            </div>
+        </div>
+    }
 </div>
 
 @code {
     bool DarkMode;
     bool KeepAwake;
     bool showResyncPanel;
+    SheetMusicService.SavedSummary? savedSheets;
 
     string CloudStatus =>
         !Auth.IsSignedIn
@@ -153,6 +176,7 @@
         State.Changed += OnChanged;
         Sync.SyncStateChanged += OnSync;
         Catalog.Changed += OnCatalog;
+        savedSheets = await SheetMusic.GetSavedSummaryAsync();
         await Catalog.InitializeAsync();
         if (Catalog.IsUpdateTrackingEnabled)
         {
@@ -219,6 +243,16 @@
             State.ShowToast("/lottie/done.gif", "Hymn library refreshed.");
         }
     }
+
+    async Task ClearSavedSheets()
+    {
+        await SheetMusic.ClearSavedAsync();
+        savedSheets = await SheetMusic.GetSavedSummaryAsync();
+        State.ShowToast("/lottie/done.gif", "Offline sheet music removed.");
+    }
+
+    static string FormatSize(long bytes) =>
+        bytes >= 1024 * 1024 ? $"{bytes / (1024d * 1024):0.#} MB" : $"{Math.Max(1, bytes / 1024)} KB";
 
     public void Dispose()
     {

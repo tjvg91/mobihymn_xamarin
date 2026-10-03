@@ -38,6 +38,7 @@ builder.Services.AddScoped<FirebaseJs>();
 builder.Services.AddScoped<AuthNavigation>();
 builder.Services.AddScoped<CatalogUpdateService>();
 builder.Services.AddScoped<AppUpdateService>();
+builder.Services.AddScoped<SheetMusicService>();
 
 var host = builder.Build();
 
